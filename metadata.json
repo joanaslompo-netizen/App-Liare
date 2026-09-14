@@ -1,0 +1,6 @@
+{
+  "name": "Gestor de Custos Ateliê",
+  "description": "Controle de custos de insumos, fichas técnicas, cadastro de clientes com aniversários e compras, precificação com margem de lucro, formas de pagamento e pedidos para ateliê.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

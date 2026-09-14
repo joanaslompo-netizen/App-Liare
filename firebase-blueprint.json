@@ -1,0 +1,98 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile data for registered atelier owners",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The unique Firebase Auth user ID"
+        },
+        "email": {
+          "type": "string",
+          "description": "User email address"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Artisan or user display name"
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "User profile photo URL"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last updated ISO timestamp"
+        }
+      },
+      "required": ["userId", "email", "updatedAt"]
+    },
+    "AtelierWorkspace": {
+      "title": "AtelierWorkspace",
+      "description": "Full synchronized workspace data containing atelier materials, products, purchases, sales, suppliers, and calculation settings",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner user ID"
+        },
+        "materials": {
+          "type": "array",
+          "description": "List of cataloged atelier raw materials and stock"
+        },
+        "products": {
+          "type": "array",
+          "description": "List of artisan products, recipes and intermediate components"
+        },
+        "purchases": {
+          "type": "array",
+          "description": "List of material purchase invoices and history"
+        },
+        "sales": {
+          "type": "array",
+          "description": "List of completed customer sales records"
+        },
+        "customers": {
+          "type": "array",
+          "description": "List of registered atelier customers with contact and birthday"
+        },
+        "paymentMethods": {
+          "type": "array",
+          "description": "List of available payment categories (offline, site, pix, etc.)"
+        },
+        "suppliers": {
+          "type": "array",
+          "description": "List of trusted suppliers contact info"
+        },
+        "settings": {
+          "type": "object",
+          "description": "Hourly rate, fixed cost %, profit margin, and atelier branding"
+        },
+        "version": {
+          "type": "number",
+          "description": "Data schema version"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of the latest change"
+        },
+        "lastModifiedBy": {
+          "type": "string",
+          "description": "Client device identifier or browser platform"
+        }
+      },
+      "required": ["userId", "updatedAt", "version"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Private user account profile document"
+    },
+    "/users/{userId}/workspaces/{workspaceId}": {
+      "schema": "AtelierWorkspace",
+      "description": "Atelier synchronized workspace data across notebook, smartphone, and tablet"
+    }
+  }
+}
