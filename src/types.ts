@@ -88,6 +88,8 @@ export interface Product {
   netProfit: number; // actualPrice - totalCost
   batchYield: number; // Number of units produced with this recipe (defaults to 1, or e.g. 50 tags)
   unitCostFromBatch: number; // totalCost / batchYield
+  currentStock?: number; // Estoque atual disponível (peças/unidades prontas)
+  minStock?: number; // Estoque mínimo de segurança para alerta
   createdAt: string;
   updatedAt: string;
 }
@@ -175,6 +177,38 @@ export interface Sale {
   createdAt: string;
 }
 
+export interface ProductionIngredientDeduction {
+  id: string; // ID do item na receita
+  targetId: string; // ID do Material ou Product
+  type: RecipeItemType;
+  name: string;
+  unit: string;
+  quantityPerBatch: number; // Qtd necessária por lote
+  quantityTotal: number; // Qtd total consumida nesta produção
+  unitCost: number; // Custo unitário do insumo
+  totalCost: number; // Custo total do insumo consumido
+  stockBefore: number; // Estoque antes da produção
+  stockAfter: number; // Estoque após a baixa da produção
+}
+
+export interface Production {
+  id: string;
+  date: string; // YYYY-MM-DD
+  productId: string;
+  productName: string;
+  productCategory?: string;
+  productImageUrl?: string;
+  isIntermediate?: boolean; // Peça final vs Componente/Sub-produto
+  batchYield: number; // Rendimento por lote da receita (ex: 1 un, 10 un)
+  batchCount: number; // Quantidade de lotes/bateladas produzidas
+  quantityProduced: number; // Total de peças/unidades obtidas (batchCount * batchYield)
+  costPerUnit: number; // Custo por peça da receita
+  totalCost: number; // Custo total da produção realizada
+  deductedItems: ProductionIngredientDeduction[]; // Insumos e sub-produtos consumidos
+  notes?: string;
+  createdAt: string;
+}
+
 export interface AtelierSettings {
   atelierName: string;
   artisanName: string;
@@ -188,6 +222,7 @@ export type NavTab =
   | 'home' 
   | 'materials' 
   | 'products' 
+  | 'productions'
   | 'purchases' 
   | 'sales' 
   | 'reports' 

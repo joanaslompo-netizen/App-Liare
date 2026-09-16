@@ -11,17 +11,24 @@ interface SearchableProductComboboxProps {
   id?: string;
   autoFocus?: boolean;
   filterOnlyFinalForSale?: boolean; // When true, filters out intermediate products if desired, or highlights them
+  mode?: 'sale' | 'production';
 }
 
 export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps> = ({
   products,
   selectedProductId,
   onSelectProduct,
-  placeholder = 'Buscar produto pelo nome ou categoria...',
+  placeholder,
   id = 'searchable-product-combobox',
   autoFocus = false,
   filterOnlyFinalForSale = true,
+  mode = 'sale',
 }) => {
+  const defaultPlaceholder = mode === 'production'
+    ? 'Buscar receita por palavras-chave (ex: vela lavanda, difusor, aroma)...'
+    : 'Buscar produto pelo nome ou categoria...';
+  const effectivePlaceholder = placeholder || defaultPlaceholder;
+
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -44,15 +51,16 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
     return products.find((p) => p.id === selectedProductId) || null;
   }, [products, selectedProductId]);
 
-  // Filtered products based on search term
+  // Filtered products based on search term (multi-keyword search)
   const filteredProducts = useMemo(() => {
     const trimmed = query.trim().toLowerCase();
     if (!trimmed) return eligibleProducts;
 
+    const keywords = trimmed.split(/\s+/).filter(Boolean);
     return eligibleProducts.filter((p) => {
-      const matchName = p.name.toLowerCase().includes(trimmed);
-      const matchCat = p.category.toLowerCase().includes(trimmed);
-      return matchName || matchCat;
+      const itemsText = (p.items || []).map((it) => it.name).join(' ');
+      const searchBlob = `${p.name} ${p.category} ${p.description || ''} ${itemsText}`.toLowerCase();
+      return keywords.every((kw) => searchBlob.includes(kw));
     });
   }, [eligibleProducts, query]);
 
@@ -164,11 +172,21 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
                 )}
               </div>
               <p className="text-[11px] text-stone-500 mt-0.5">
-                Preço de venda:{' '}
-                <strong className="text-stone-900 font-bold">
-                  {formatCurrency(selectedProduct.actualPrice)}
-                </strong>{' '}
-                • Custo prod.: {formatCurrency(selectedProduct.unitCostFromBatch > 0 ? selectedProduct.unitCostFromBatch : selectedProduct.totalCost)}
+                {mode === 'production' ? (
+                  <span>
+                    Rendimento: <strong className="text-stone-900 font-bold">{selectedProduct.batchYield || 1} un/batelada</strong>
+                    {' '}• Estoque atual: <strong className={`font-bold ${(selectedProduct.currentStock ?? 0) <= (selectedProduct.minStock ?? 0) ? 'text-amber-800' : 'text-stone-800'}`}>{selectedProduct.currentStock ?? 0} un</strong>
+                    {' '}• Custo: {formatCurrency(selectedProduct.unitCostFromBatch > 0 ? selectedProduct.unitCostFromBatch : selectedProduct.totalCost)}
+                  </span>
+                ) : (
+                  <span>
+                    Preço de venda:{' '}
+                    <strong className="text-stone-900 font-bold">
+                      {formatCurrency(selectedProduct.actualPrice)}
+                    </strong>{' '}
+                    • Custo prod.: {formatCurrency(selectedProduct.unitCostFromBatch > 0 ? selectedProduct.unitCostFromBatch : selectedProduct.totalCost)}
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -212,7 +230,7 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
               }}
               onFocus={() => setIsOpen(true)}
               onKeyDown={handleKeyDown}
-              placeholder={placeholder}
+              placeholder={effectivePlaceholder}
               className="w-full pl-9 pr-16 py-2.5 text-sm bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-stone-900 shadow-2xs placeholder:text-stone-400"
             />
             <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -245,9 +263,9 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
               <div className="px-3 py-2 bg-stone-50 border-b border-stone-200 flex items-center justify-between text-xs text-stone-500">
                 <span className="font-semibold text-stone-700 flex items-center gap-1">
                   <Sparkles className="w-3 h-3 text-amber-500" />
-                  {filteredProducts.length === 1
-                    ? '1 produto encontrado para venda'
-                    : `${filteredProducts.length} produtos encontrados para venda`}
+                  {mode === 'production'
+                    ? (filteredProducts.length === 1 ? '1 receita encontrada' : `${filteredProducts.length} receitas encontradas`)
+                    : (filteredProducts.length === 1 ? '1 produto encontrado para venda' : `${filteredProducts.length} produtos encontrados para venda`)}
                 </span>
                 <span className="text-[11px] text-stone-400">↑ ↓ e Enter</span>
               </div>
@@ -255,9 +273,9 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
               <ul ref={listRef} className="overflow-y-auto divide-y divide-stone-100 flex-1 py-1">
                 {filteredProducts.length === 0 ? (
                   <li className="p-4 text-center text-sm text-stone-500">
-                    <p className="font-medium text-stone-700">Nenhum produto encontrado</p>
+                    <p className="font-medium text-stone-700">Nenhum resultado encontrado</p>
                     <p className="text-xs text-stone-400 mt-1">
-                      Nenhum resultado para "{query}". Tente buscar por outro termo.
+                      Nenhuma receita para "{query}". Tente buscar por outras palavras-chave ou ingredientes.
                     </p>
                     {query && (
                       <button
@@ -265,7 +283,7 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
                         onClick={() => setQuery('')}
                         className="mt-2 text-xs text-amber-700 font-semibold hover:underline"
                       >
-                        Ver todos os produtos
+                        Ver todas as receitas
                       </button>
                     )}
                   </li>
@@ -313,31 +331,55 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
                               )}
                             </div>
 
-                            <div className="flex items-center gap-2 mt-0.5 text-[11px] text-stone-500">
-                              <span>
-                                Venda: <strong className="text-stone-900 font-bold">{formatCurrency(prod.actualPrice)}</strong>
-                              </span>
-                              <span>•</span>
-                              <span>
-                                Custo: <span className="text-stone-700">{formatCurrency(unitCost)}</span>
-                              </span>
-                              <span>•</span>
-                              <span className="text-emerald-700 font-semibold">
-                                Lucro: +{formatCurrency(prod.actualPrice - unitCost)}
-                              </span>
-                            </div>
+                            {mode === 'production' ? (
+                              <div className="flex items-center gap-2 mt-0.5 text-[11px] text-stone-500 flex-wrap">
+                                <span>
+                                  Rende: <strong className="text-stone-800 font-semibold">{prod.batchYield || 1} un</strong>
+                                </span>
+                                <span>•</span>
+                                <span>
+                                  Estoque: <strong className={`font-semibold ${(prod.currentStock ?? 0) <= (prod.minStock ?? 0) ? 'text-amber-800' : 'text-stone-800'}`}>{prod.currentStock ?? 0} un</strong>
+                                </span>
+                                <span>•</span>
+                                <span>
+                                  Custo: <span className="text-stone-700 font-medium">{formatCurrency(unitCost)}</span>
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 mt-0.5 text-[11px] text-stone-500">
+                                <span>
+                                  Venda: <strong className="text-stone-900 font-bold">{formatCurrency(prod.actualPrice)}</strong>
+                                </span>
+                                <span>•</span>
+                                <span>
+                                  Custo: <span className="text-stone-700">{formatCurrency(unitCost)}</span>
+                                </span>
+                                <span>•</span>
+                                <span className="text-emerald-700 font-semibold">
+                                  Lucro: +{formatCurrency(prod.actualPrice - unitCost)}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
 
                         <div className="shrink-0 flex items-center gap-1.5 text-right">
                           {isSelected && (
-                            <span className="text-amber-700 bg-amber-100 p-1 rounded-full" title="Produto selecionado">
+                            <span className="text-amber-700 bg-amber-100 p-1 rounded-full" title="Receita selecionada">
                               <Check className="w-3.5 h-3.5" />
                             </span>
                           )}
-                          <span className="text-sm font-extrabold text-stone-900">
-                            {formatCurrency(prod.actualPrice)}
-                          </span>
+                          <div className="text-right">
+                            {mode === 'production' ? (
+                              <span className="text-xs font-bold text-amber-900 bg-amber-100/70 px-2 py-0.5 rounded-md">
+                                {formatCurrency(unitCost)}/un
+                              </span>
+                            ) : (
+                              <span className="text-sm font-extrabold text-stone-900">
+                                {formatCurrency(prod.actualPrice)}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </li>
                     );

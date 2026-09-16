@@ -6,11 +6,12 @@ import {
   Unsubscribe 
 } from 'firebase/firestore';
 import { db, User } from '../lib/firebase';
-import { Material, Product, Purchase, Sale, Customer, Supplier, AtelierSettings, TodoItem } from '../types';
+import { Material, Product, Purchase, Sale, Customer, Supplier, AtelierSettings, TodoItem, Production } from '../types';
 
 export interface WorkspaceData {
   materials: Material[];
   products: Product[];
+  productions?: Production[];
   purchases: Purchase[];
   sales: Sale[];
   customers?: Customer[];
@@ -61,6 +62,7 @@ export async function uploadWorkspaceToCloud(
     lastModifiedBy: deviceLabel,
     materials: workspace.materials,
     products: workspace.products,
+    productions: workspace.productions || [],
     purchases: workspace.purchases,
     sales: workspace.sales,
     customers: workspace.customers || [],
@@ -85,6 +87,7 @@ export async function fetchWorkspaceFromCloud(userId: string): Promise<Workspace
     return {
       materials: data.materials || [],
       products: data.products || [],
+      productions: data.productions || [],
       purchases: data.purchases || [],
       sales: data.sales || [],
       customers: data.customers || [],
@@ -118,6 +121,7 @@ export function subscribeToWorkspace(
         onData({
           materials: data.materials || [],
           products: data.products || [],
+          productions: data.productions || [],
           purchases: data.purchases || [],
           sales: data.sales || [],
           customers: data.customers || [],

@@ -1,8 +1,9 @@
-import { Material, Product, Purchase, Sale, Customer, Supplier, AtelierSettings, RecipeItem, TodoItem } from '../types';
+import { Material, Product, Purchase, Sale, Customer, Supplier, AtelierSettings, RecipeItem, TodoItem, Production } from '../types';
 
 const STORAGE_KEYS = {
   MATERIALS: 'atelie_materials_v1',
   PRODUCTS: 'atelie_products_v1',
+  PRODUCTIONS: 'atelie_productions_v1',
   PURCHASES: 'atelie_purchases_v1',
   SALES: 'atelie_sales_v1',
   CUSTOMERS: 'atelie_customers_v1',
@@ -543,63 +544,6 @@ export const DEFAULT_PRODUCTS: Product[] = [
   // SUB-PRODUTOS (Rótulos e Itens Intermediários Feitos em Casa)
   // -------------------------------------------------------------
   {
-    id: 'prod_sub_1',
-    name: 'Rótulo Frontal Vinílico Fosco 6x6cm (Impresso em Casa)',
-    category: 'Rótulos & Papelaria',
-    description: 'Rótulo frontal impresso em vinil adesivo na impressora jato de tinta caseira, laminado a frio com película fosca para resistência térmica e a óleos de essência, refilado em guilhotina ou plotter (rendimento de 6 rótulos por folha A4).',
-    isIntermediate: true, // SUB-PRODUTO USADO NAS VELAS
-    imageUrl: 'https://images.unsplash.com/photo-1586075010923-2dd4570fb338?w=400&auto=format&fit=crop&q=80',
-    items: [
-      {
-        id: 'ri_s1_1',
-        type: 'material',
-        targetId: 'mat_rot_1',
-        name: 'Papel Vinil Adesivo Branco Fosco A4',
-        quantity: 0.166, // 1/6 de folha A4
-        unit: 'folha',
-        unitCost: 1.30,
-        totalCost: 0.216,
-      },
-      {
-        id: 'ri_s1_2',
-        type: 'material',
-        targetId: 'mat_rot_2',
-        name: 'Película de Laminação a Frio Fosca Transparente A4',
-        quantity: 0.166,
-        unit: 'folha',
-        unitCost: 0.76,
-        totalCost: 0.126,
-      },
-      {
-        id: 'ri_s1_3',
-        type: 'material',
-        targetId: 'mat_rot_3',
-        name: 'Tinta Corante / Pigmentada para Impressora Jato de Tinta',
-        quantity: 0.166,
-        unit: 'folha',
-        unitCost: 0.06,
-        totalCost: 0.010,
-      }
-    ],
-    materialsCost: 0.352,
-    productionTimeMinutes: 2, // 2 min para impressão em alta resolução, laminação e refile
-    hourlyRate: 38.0,
-    laborCost: 1.27, // (2/60)*38
-    fixedCostPercent: 12,
-    fixedCost: 0.19,
-    otherCosts: 0.05,
-    totalCost: 1.86,
-    profitMarginPercent: 35,
-    suggestedPrice: 2.86,
-    actualPrice: 2.80,
-    calculatedMarginPercent: 33.6,
-    netProfit: 0.94,
-    batchYield: 1,
-    unitCostFromBatch: 1.86,
-    createdAt: '2026-08-10',
-    updatedAt: '2026-09-01',
-  },
-  {
     id: 'prod_sub_2',
     name: 'Rótulo de Segurança Fundo 5cm (Instruções de Queima)',
     category: 'Rótulos & Papelaria',
@@ -642,6 +586,8 @@ export const DEFAULT_PRODUCTS: Product[] = [
     netProfit: 0.38,
     batchYield: 1,
     unitCostFromBatch: 0.82,
+    currentStock: 30,
+    minStock: 15,
     createdAt: '2026-08-10',
     updatedAt: '2026-09-01',
   },
@@ -708,6 +654,8 @@ export const DEFAULT_PRODUCTS: Product[] = [
     netProfit: 0.80,
     batchYield: 1,
     unitCostFromBatch: 1.70,
+    currentStock: 18,
+    minStock: 10,
     createdAt: '2026-08-11',
     updatedAt: '2026-09-02',
   },
@@ -764,6 +712,8 @@ export const DEFAULT_PRODUCTS: Product[] = [
     netProfit: 0.60,
     batchYield: 1,
     unitCostFromBatch: 1.40,
+    currentStock: 22,
+    minStock: 10,
     createdAt: '2026-08-11',
     updatedAt: '2026-09-02',
   },
@@ -832,9 +782,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
       // SUB-PRODUTOS DE RÓTULOS IMPRESSOS EM CASA!
       {
         id: 'ri_f1_6',
-        type: 'product',
-        targetId: 'prod_sub_1',
-        name: 'Rótulo Frontal Vinílico Fosco 6x6cm (Impresso em Casa)',
+        type: 'material',
+        targetId: 'mat_rot_1',
+        name: 'Rótulo Frontal Vinílico Fosco 6x6cm',
         quantity: 1,
         unit: 'un',
         unitCost: 1.86,
@@ -896,6 +846,8 @@ export const DEFAULT_PRODUCTS: Product[] = [
     netProfit: 44.39,
     batchYield: 1,
     unitCostFromBatch: 47.61,
+    currentStock: 8,
+    minStock: 4,
     createdAt: '2026-08-15',
     updatedAt: '2026-09-05',
   },
@@ -1003,6 +955,8 @@ export const DEFAULT_PRODUCTS: Product[] = [
     netProfit: 27.84,
     batchYield: 1,
     unitCostFromBatch: 27.16,
+    currentStock: 12,
+    minStock: 5,
     createdAt: '2026-08-16',
     updatedAt: '2026-09-02',
   },
@@ -1066,9 +1020,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
       },
       {
         id: 'ri_f3_6',
-        type: 'product',
-        targetId: 'prod_sub_1',
-        name: 'Rótulo Frontal Vinílico Fosco 6x6cm (Impresso em Casa)',
+        type: 'material',
+        targetId: 'mat_rot_1',
+        name: 'Rótulo Frontal Vinílico Fosco 6x6cm',
         quantity: 1,
         unit: 'un',
         unitCost: 1.86,
@@ -1120,6 +1074,8 @@ export const DEFAULT_PRODUCTS: Product[] = [
     netProfit: 66.50,
     batchYield: 1,
     unitCostFromBatch: 58.50,
+    currentStock: 3,
+    minStock: 4,
     createdAt: '2026-08-18',
     updatedAt: '2026-09-04',
   },
@@ -1173,9 +1129,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
       },
       {
         id: 'ri_f4_5',
-        type: 'product',
-        targetId: 'prod_sub_1',
-        name: 'Rótulo Frontal Vinílico Fosco 6x6cm (Impresso em Casa)',
+        type: 'material',
+        targetId: 'mat_rot_1',
+        name: 'Rótulo Frontal Vinílico Fosco 6x6cm',
         quantity: 1,
         unit: 'un',
         unitCost: 1.86,
@@ -1197,6 +1153,8 @@ export const DEFAULT_PRODUCTS: Product[] = [
     netProfit: 17.00,
     batchYield: 1,
     unitCostFromBatch: 19.00,
+    currentStock: 7,
+    minStock: 3,
     createdAt: '2026-08-20',
     updatedAt: '2026-09-02',
   },
@@ -1275,6 +1233,8 @@ export const DEFAULT_PRODUCTS: Product[] = [
     netProfit: 84.24,
     batchYield: 1,
     unitCostFromBatch: 90.76,
+    currentStock: 2,
+    minStock: 2,
     createdAt: '2026-08-22',
     updatedAt: '2026-09-04',
   }
@@ -1701,14 +1661,184 @@ export const DEFAULT_SALES: Sale[] = [
   }
 ];
 
+export const DEFAULT_PRODUCTIONS: Production[] = [
+  {
+    id: 'prod_exec_1',
+    date: '2026-09-01',
+    productId: 'prod_final_1',
+    productName: 'Vela Aromática Cera de Coco 140g Pote Âmbar - Lavanda & Vanilla',
+    productCategory: 'Velas em Vidro',
+    productImageUrl: 'https://images.unsplash.com/photo-1595872240033-90d2382c4187?w=400&auto=format&fit=crop&q=80',
+    isIntermediate: false,
+    batchYield: 1,
+    batchCount: 8,
+    quantityProduced: 8,
+    costPerUnit: 47.61,
+    totalCost: 380.88,
+    deductedItems: [
+      {
+        id: 'ri_f1_1',
+        targetId: 'mat_cera_1',
+        type: 'material',
+        name: 'Cera Vegetal de Coco T02 (Blend Coco, Palma e Arroz)',
+        unit: 'g',
+        quantityPerBatch: 135,
+        quantityTotal: 1080,
+        unitCost: 0.033,
+        totalCost: 35.64,
+        stockBefore: 2880,
+        stockAfter: 1800,
+      },
+      {
+        id: 'ri_f1_2',
+        targetId: 'mat_ess_1',
+        type: 'material',
+        name: 'Essência Concentrada Lavanda Francesa & Vanilla',
+        unit: 'ml',
+        quantityPerBatch: 15,
+        quantityTotal: 120,
+        unitCost: 0.46,
+        totalCost: 55.20,
+        stockBefore: 370,
+        stockAfter: 250,
+      },
+      {
+        id: 'ri_f1_3',
+        targetId: 'mat_pav_1',
+        type: 'material',
+        name: 'Pavio de Algodão Trançado Encerado com Ilhós 15cm',
+        unit: 'un',
+        quantityPerBatch: 1,
+        quantityTotal: 8,
+        unitCost: 0.48,
+        totalCost: 3.84,
+        stockBefore: 48,
+        stockAfter: 40,
+      },
+      {
+        id: 'ri_f1_5',
+        targetId: 'mat_rec_1',
+        type: 'material',
+        name: 'Pote de Vidro Âmbar 200ml com Tampa de Madeira Torneada',
+        unit: 'un',
+        quantityPerBatch: 1,
+        quantityTotal: 8,
+        unitCost: 6.50,
+        totalCost: 52.00,
+        stockBefore: 36,
+        stockAfter: 28,
+      },
+      {
+        id: 'ri_f1_6',
+        targetId: 'mat_rot_1',
+        type: 'material',
+        name: 'Rótulo Frontal Vinílico Fosco 6x6cm',
+        unit: 'un',
+        quantityPerBatch: 1,
+        quantityTotal: 8,
+        unitCost: 1.86,
+        totalCost: 14.88,
+        stockBefore: 32,
+        stockAfter: 24,
+      },
+      {
+        id: 'ri_f1_9',
+        targetId: 'mat_emb_1',
+        type: 'material',
+        name: 'Caixa de Papelão Kraft Microondulado 10x10x10cm (Individual)',
+        unit: 'un',
+        quantityPerBatch: 1,
+        quantityTotal: 8,
+        unitCost: 2.30,
+        totalCost: 18.40,
+        stockBefore: 43,
+        stockAfter: 35,
+      }
+    ],
+    notes: 'Produção de 8 unidades para estoque da loja e pedidos do início do mês.',
+    createdAt: '2026-09-01',
+  },
+  {
+    id: 'prod_exec_2',
+    date: '2026-09-05',
+    productId: 'prod_final_2',
+    productName: 'Vela Travel Tin 90g Ouro Nobre - Alecrim & Capim Limão',
+    productCategory: 'Velas em Latas',
+    productImageUrl: 'https://images.unsplash.com/photo-1572726729437-3732efed37c1?w=400&auto=format&fit=crop&q=80',
+    isIntermediate: false,
+    batchYield: 1,
+    batchCount: 15,
+    quantityProduced: 15,
+    costPerUnit: 27.16,
+    totalCost: 407.40,
+    deductedItems: [
+      {
+        id: 'ri_f2_1',
+        targetId: 'mat_cera_1',
+        type: 'material',
+        name: 'Cera Vegetal de Coco T02',
+        unit: 'g',
+        quantityPerBatch: 80,
+        quantityTotal: 1200,
+        unitCost: 0.033,
+        totalCost: 39.60,
+        stockBefore: 3000,
+        stockAfter: 1800,
+      },
+      {
+        id: 'ri_f2_2',
+        targetId: 'mat_ess_3',
+        type: 'material',
+        name: 'Essência Concentrada Alecrim Silvestre & Capim Limão',
+        unit: 'ml',
+        quantityPerBatch: 9,
+        quantityTotal: 135,
+        unitCost: 0.44,
+        totalCost: 59.40,
+        stockBefore: 355,
+        stockAfter: 220,
+      },
+      {
+        id: 'ri_f2_5',
+        targetId: 'mat_rec_2',
+        type: 'material',
+        name: 'Lata de Alumínio Travel Tin 90g Ouro Nobre',
+        unit: 'un',
+        quantityPerBatch: 1,
+        quantityTotal: 15,
+        unitCost: 3.70,
+        totalCost: 55.50,
+        stockBefore: 47,
+        stockAfter: 32,
+      },
+      {
+        id: 'ri_f2_6',
+        targetId: 'prod_sub_4',
+        type: 'product',
+        name: 'Rótulo Adesivo Redondo para Tampa de Lata 6.5cm',
+        unit: 'un',
+        quantityPerBatch: 1,
+        quantityTotal: 15,
+        unitCost: 1.40,
+        totalCost: 21.00,
+        stockBefore: 37,
+        stockAfter: 22,
+      }
+    ],
+    notes: 'Lote de velas em latas para reposição de pronta-entrega.',
+    createdAt: '2026-09-05',
+  }
+];
+
 const SCHEMA_VERSION_KEY = 'atelie_schema_version';
-const CURRENT_SCHEMA_VERSION = 'v3_clientes_formas_pagamento';
+const CURRENT_SCHEMA_VERSION = 'v5_remove_sub1_and_production_direct';
 
 export const loadStoredData = () => {
   try {
     const version = localStorage.getItem(SCHEMA_VERSION_KEY);
     const storedMaterials = localStorage.getItem(STORAGE_KEYS.MATERIALS);
     const storedProducts = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
+    const storedProductions = localStorage.getItem(STORAGE_KEYS.PRODUCTIONS);
     const storedPurchases = localStorage.getItem(STORAGE_KEYS.PURCHASES);
     const storedSales = localStorage.getItem(STORAGE_KEYS.SALES);
     const storedCustomers = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
@@ -1716,30 +1846,69 @@ export const loadStoredData = () => {
     const storedSuppliers = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
     const storedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
 
-    // If schema is older than v3, seed with customers and payment methods
-    if (version !== CURRENT_SCHEMA_VERSION || !storedCustomers) {
+    // Sanitize product stock (ensures currentStock and minStock exist, and removes prod_sub_1)
+    const sanitizeProducts = (prods: Product[]) => {
+      return prods
+        .filter((p) => p.id !== 'prod_sub_1')
+        .map((p) => {
+          const def = DEFAULT_PRODUCTS.find((dp) => dp.id === p.id);
+          const sanitizedItems = (p.items || []).map((it) => {
+            if (it.targetId === 'prod_sub_1') {
+              return {
+                ...it,
+                type: 'material' as const,
+                targetId: 'mat_rot_1',
+                name: 'Rótulo Frontal Vinílico Fosco 6x6cm',
+              };
+            }
+            return it;
+          });
+          return {
+            ...p,
+            items: sanitizedItems,
+            currentStock: typeof p.currentStock === 'number' ? p.currentStock : (def?.currentStock ?? 0),
+            minStock: typeof p.minStock === 'number' ? p.minStock : (def?.minStock ?? 2),
+          };
+        });
+    };
+
+    const sanitizeProductions = (prods: Production[]) => {
+      return prods.filter((p) => p.productId !== 'prod_sub_1');
+    };
+
+    // If schema is older than v5, migrate and initialize productions and stock
+    if (version !== CURRENT_SCHEMA_VERSION || !storedProductions) {
       localStorage.setItem(SCHEMA_VERSION_KEY, CURRENT_SCHEMA_VERSION);
       if (!storedMaterials) localStorage.setItem(STORAGE_KEYS.MATERIALS, JSON.stringify(DEFAULT_MATERIALS));
-      if (!storedProducts) localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(DEFAULT_PRODUCTS));
+      
+      const loadedProducts: Product[] = storedProducts ? JSON.parse(storedProducts) : DEFAULT_PRODUCTS;
+      const sanitizedProducts = sanitizeProducts(loadedProducts);
+      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(sanitizedProducts));
+
+      const productionsToStore: Production[] = storedProductions ? JSON.parse(storedProductions) : DEFAULT_PRODUCTIONS;
+      const sanitizedProductionsList = sanitizeProductions(productionsToStore);
+      localStorage.setItem(STORAGE_KEYS.PRODUCTIONS, JSON.stringify(sanitizedProductionsList));
+
       if (!storedPurchases) localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(DEFAULT_PURCHASES));
       
       // Update sales with default customer links if not existing
       const salesToStore = storedSales ? JSON.parse(storedSales) : DEFAULT_SALES;
       localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(salesToStore));
       
-      localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(DEFAULT_CUSTOMERS));
-      localStorage.setItem(STORAGE_KEYS.PAYMENT_METHODS, JSON.stringify(DEFAULT_PAYMENT_METHODS));
+      if (!storedCustomers) localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(DEFAULT_CUSTOMERS));
+      if (!storedPaymentMethods) localStorage.setItem(STORAGE_KEYS.PAYMENT_METHODS, JSON.stringify(DEFAULT_PAYMENT_METHODS));
       if (!storedSuppliers) localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(DEFAULT_SUPPLIERS));
       if (!storedSettings) localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
       if (!localStorage.getItem(STORAGE_KEYS.TODOS)) localStorage.setItem(STORAGE_KEYS.TODOS, JSON.stringify(DEFAULT_TODOS));
 
       return {
         materials: storedMaterials ? JSON.parse(storedMaterials) : DEFAULT_MATERIALS,
-        products: storedProducts ? JSON.parse(storedProducts) : DEFAULT_PRODUCTS,
+        products: sanitizedProducts,
+        productions: sanitizedProductionsList,
         purchases: storedPurchases ? JSON.parse(storedPurchases) : DEFAULT_PURCHASES,
         sales: salesToStore,
-        customers: DEFAULT_CUSTOMERS,
-        paymentMethods: DEFAULT_PAYMENT_METHODS,
+        customers: storedCustomers ? JSON.parse(storedCustomers) : DEFAULT_CUSTOMERS,
+        paymentMethods: storedPaymentMethods ? JSON.parse(storedPaymentMethods) : DEFAULT_PAYMENT_METHODS,
         suppliers: storedSuppliers ? JSON.parse(storedSuppliers) : DEFAULT_SUPPLIERS,
         settings: storedSettings ? JSON.parse(storedSettings) : DEFAULT_SETTINGS,
         todos: localStorage.getItem(STORAGE_KEYS.TODOS) ? JSON.parse(localStorage.getItem(STORAGE_KEYS.TODOS)!) : DEFAULT_TODOS,
@@ -1747,10 +1916,13 @@ export const loadStoredData = () => {
     }
 
     const storedTodos = localStorage.getItem(STORAGE_KEYS.TODOS);
+    const parsedProducts = storedProducts ? JSON.parse(storedProducts) : DEFAULT_PRODUCTS;
+    const parsedProductions = storedProductions ? JSON.parse(storedProductions) : DEFAULT_PRODUCTIONS;
 
     return {
       materials: storedMaterials ? JSON.parse(storedMaterials) : DEFAULT_MATERIALS,
-      products: storedProducts ? JSON.parse(storedProducts) : DEFAULT_PRODUCTS,
+      products: sanitizeProducts(parsedProducts),
+      productions: sanitizeProductions(parsedProductions),
       purchases: storedPurchases ? JSON.parse(storedPurchases) : DEFAULT_PURCHASES,
       sales: storedSales ? JSON.parse(storedSales) : DEFAULT_SALES,
       customers: storedCustomers ? JSON.parse(storedCustomers) : DEFAULT_CUSTOMERS,
@@ -1764,6 +1936,7 @@ export const loadStoredData = () => {
     return {
       materials: DEFAULT_MATERIALS,
       products: DEFAULT_PRODUCTS,
+      productions: DEFAULT_PRODUCTIONS,
       purchases: DEFAULT_PURCHASES,
       sales: DEFAULT_SALES,
       customers: DEFAULT_CUSTOMERS,
@@ -1781,6 +1954,10 @@ export const saveMaterials = (materials: Material[]) => {
 
 export const saveProducts = (products: Product[]) => {
   localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
+};
+
+export const saveProductions = (productions: Production[]) => {
+  localStorage.setItem(STORAGE_KEYS.PRODUCTIONS, JSON.stringify(productions));
 };
 
 export const savePurchases = (purchases: Purchase[]) => {

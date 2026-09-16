@@ -19,7 +19,8 @@ import {
   Truck,
   CreditCard,
   Phone,
-  AlertCircle
+  AlertCircle,
+  Factory
 } from 'lucide-react';
 import { Material, Product, Purchase, Sale, TodoItem, NavTab } from '../types';
 import { formatCurrency, formatPercent, formatDate } from '../utils/formatters';
@@ -62,6 +63,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const lowStockMaterials = useMemo(
     () => materials.filter((m) => m.currentStock <= m.minStock),
     [materials]
+  );
+
+  // Low stock products / recipes
+  const lowStockProducts = useMemo(
+    () => products.filter((p) => (p.minStock ?? 0) > 0 && (p.currentStock ?? 0) <= (p.minStock ?? 0)),
+    [products]
   );
 
   // Pending Deliveries & Payments
@@ -201,6 +208,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
             >
               <Package className="w-3.5 h-3.5 text-amber-600" />
               <span>+ Material</span>
+            </button>
+
+            <button
+              id="btn-home-quick-production"
+              onClick={() => onNavigate('productions')}
+              className="px-3.5 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Factory className="w-3.5 h-3.5 text-amber-700" />
+              <span>+ Lançar Produção</span>
             </button>
           </div>
         </div>
@@ -685,28 +701,32 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 Alertas de Estoque
               </h3>
               <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                lowStockMaterials.length > 0 ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
+                (lowStockMaterials.length + lowStockProducts.length) > 0 ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
               }`}>
-                {lowStockMaterials.length} {lowStockMaterials.length === 1 ? 'item' : 'itens'}
+                {lowStockMaterials.length + lowStockProducts.length} {(lowStockMaterials.length + lowStockProducts.length) === 1 ? 'item' : 'itens'}
               </span>
             </div>
 
-            {lowStockMaterials.length > 0 ? (
+            {(lowStockMaterials.length + lowStockProducts.length) > 0 ? (
               <div className="space-y-2.5">
                 <p className="text-xs text-stone-500">
-                  Os materiais abaixo atingiram a quantidade mínima de segurança:
+                  Insumos e receitas que atingiram ou estão abaixo da quantidade mínima:
                 </p>
-                <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                  {/* Materiais Baixos */}
                   {lowStockMaterials.map((mat) => (
                     <div 
                       key={mat.id}
                       className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/70 flex items-center justify-between text-xs"
                     >
                       <div className="min-w-0 pr-2">
-                        <span className="font-semibold text-stone-900 block truncate" title={mat.name}>
-                          {mat.name}
-                        </span>
-                        <span className="text-[11px] text-rose-600 font-medium">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] uppercase font-bold text-stone-500 bg-stone-200/60 px-1.5 py-0.2 rounded">Insumo</span>
+                          <span className="font-semibold text-stone-900 truncate" title={mat.name}>
+                            {mat.name}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-rose-600 font-medium block mt-0.5">
                           Resta: {mat.currentStock} {mat.unit} (Mín: {mat.minStock} {mat.unit})
                         </span>
                       </div>
@@ -719,22 +739,59 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       </button>
                     </div>
                   ))}
+
+                  {/* Produtos/Receitas Baixas */}
+                  {lowStockProducts.map((prod) => (
+                    <div 
+                      key={prod.id}
+                      className="p-2.5 rounded-xl bg-rose-50/70 border border-rose-200/70 flex items-center justify-between text-xs"
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] uppercase font-bold text-amber-800 bg-amber-200/60 px-1.5 py-0.2 rounded">Receita</span>
+                          <span className="font-semibold text-stone-900 truncate" title={prod.name}>
+                            {prod.name}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-rose-700 font-medium block mt-0.5">
+                          Estoque: {prod.currentStock ?? 0} un (Mín: {prod.minStock ?? 0} un)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onNavigate('productions')}
+                        className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-stone-950 text-[11px] font-bold rounded-lg shrink-0 cursor-pointer shadow-2xs flex items-center gap-1"
+                      >
+                        <Factory className="w-3 h-3" />
+                        <span>Produzir</span>
+                      </button>
+                    </div>
+                  ))}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onNavigate('materials')}
-                  className="w-full mt-2 py-2 px-3 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                >
-                  <span>Gerenciar Estoque Completo</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('materials')}
+                    className="py-1.5 px-2 bg-stone-100 hover:bg-stone-200 text-stone-800 font-semibold text-xs rounded-xl transition-colors text-center cursor-pointer"
+                  >
+                    Estoque Insumos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('productions')}
+                    className="py-1.5 px-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs rounded-xl transition-colors text-center cursor-pointer flex items-center justify-center gap-1"
+                  >
+                    <span>Lançar Produção</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="text-center py-6 bg-emerald-50/50 rounded-xl border border-emerald-200/60 p-4">
                 <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-1.5" />
                 <h4 className="text-xs font-bold text-emerald-950">Estoque Saudável</h4>
                 <p className="text-[11px] text-emerald-800 mt-0.5 leading-relaxed">
-                  Nenhum material está abaixo do estoque mínimo de segurança no momento.
+                  Todos os insumos e receitas estão com estoque suficiente!
                 </p>
               </div>
             )}

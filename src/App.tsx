@@ -4,6 +4,7 @@ import {
   saveMaterials, 
   saveProducts, 
   savePurchases, 
+  saveProductions,
   saveSales, 
   saveCustomers,
   savePaymentMethods,
@@ -17,6 +18,7 @@ import {
   Material, 
   Product, 
   Purchase, 
+  Production,
   Sale, 
   Customer,
   Supplier, 
@@ -31,6 +33,7 @@ import { HomeView } from './components/HomeView';
 import { MaterialsView } from './components/MaterialsView';
 import { ProductsView } from './components/ProductsView';
 import { PurchasesView } from './components/PurchasesView';
+import { ProductionsView } from './components/ProductionsView';
 import { SalesView } from './components/SalesView';
 import { CustomersView } from './components/CustomersView';
 import { ReportsView } from './components/ReportsView';
@@ -62,6 +65,8 @@ export default function App() {
   const [materials, setMaterials] = useState<Material[]>(initialData.materials);
   const [products, setProducts] = useState<Product[]>(initialData.products);
   const [purchases, setPurchases] = useState<Purchase[]>(initialData.purchases);
+  const [productions, setProductions] = useState<Production[]>(initialData.productions || []);
+  const [productionInitialProduct, setProductionInitialProduct] = useState<Product | null>(null);
   const [sales, setSales] = useState<Sale[]>(initialData.sales);
   const [customers, setCustomers] = useState<Customer[]>(initialData.customers || []);
   const [paymentMethods, setPaymentMethods] = useState<string[]>(initialData.paymentMethods || ['offline', 'site']);
@@ -122,6 +127,7 @@ export default function App() {
             if (cloudData.materials) setMaterials(cloudData.materials);
             if (cloudData.products) setProducts(cloudData.products);
             if (cloudData.purchases) setPurchases(cloudData.purchases);
+            if (cloudData.productions) setProductions(cloudData.productions);
             if (cloudData.sales) setSales(cloudData.sales);
             if (cloudData.customers) setCustomers(cloudData.customers);
             if (cloudData.paymentMethods) setPaymentMethods(cloudData.paymentMethods);
@@ -141,6 +147,7 @@ export default function App() {
               materials,
               products,
               purchases,
+              productions,
               sales,
               customers,
               paymentMethods,
@@ -169,6 +176,7 @@ export default function App() {
               if (updatedData.materials) setMaterials(updatedData.materials);
               if (updatedData.products) setProducts(updatedData.products);
               if (updatedData.purchases) setPurchases(updatedData.purchases);
+              if (updatedData.productions) setProductions(updatedData.productions);
               if (updatedData.sales) setSales(updatedData.sales);
               if (updatedData.customers) setCustomers(updatedData.customers);
               if (updatedData.paymentMethods) setPaymentMethods(updatedData.paymentMethods);
@@ -214,6 +222,7 @@ export default function App() {
           materials,
           products,
           purchases,
+          productions,
           sales,
           customers,
           paymentMethods,
@@ -232,7 +241,7 @@ export default function App() {
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
-  }, [materials, products, purchases, sales, customers, paymentMethods, suppliers, settings, todos, user]);
+  }, [materials, products, purchases, productions, sales, customers, paymentMethods, suppliers, settings, todos, user]);
 
   // Auto-persist changes to local storage cache as well (offline fallback)
   useEffect(() => {
@@ -246,6 +255,10 @@ export default function App() {
   useEffect(() => {
     savePurchases(purchases);
   }, [purchases]);
+
+  useEffect(() => {
+    saveProductions(productions);
+  }, [productions]);
 
   useEffect(() => {
     saveSales(sales);
@@ -427,6 +440,28 @@ export default function App() {
     handleSaveProduct(copy);
   }, [handleSaveProduct]);
 
+  const handleQuickProductStockChange = useCallback((id: string, delta: number) => {
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === id) {
+          const currentStock = p.currentStock ?? 0;
+          const newStock = Math.max(0, currentStock + delta);
+          return {
+            ...p,
+            currentStock: newStock,
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+        }
+        return p;
+      })
+    );
+  }, []);
+
+  const handleOpenProductionFromProduct = useCallback((prod: Product) => {
+    setProductionInitialProduct(prod);
+    setActiveTab('productions');
+  }, []);
+
   // ----------------------------------------------------
   // Purchase Handlers
   // ----------------------------------------------------
@@ -453,6 +488,130 @@ export default function App() {
 
   const handleDeletePurchase = useCallback((id: string) => {
     setPurchases((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
+  // ----------------------------------------------------
+  // Production Handlers (Baixa de Insumos & Entrada no Estoque)
+  // ----------------------------------------------------
+  const handleSaveProduction = useCallback((production: Production, updateStock: boolean) => {
+    setProductions((prev) => [production, ...prev]);
+
+    if (updateStock) {
+      // 1. Aumenta o estoque do produto acabado / receita produzida
+      setProducts((prevProducts) => {
+        return prevProducts.map((p) => {
+          if (p.id === production.productId) {
+            const current = p.currentStock ?? 0;
+            return {
+              ...p,
+              currentStock: current + production.quantityProduced,
+              updatedAt: new Date().toISOString().split('T')[0],
+            };
+          }
+          return p;
+        });
+      });
+
+      // 2. Baixa os materiais consumidos
+      const materialDeductions = production.deductedItems.filter((it) => it.type === 'material');
+      if (materialDeductions.length > 0) {
+        setMaterials((prevMaterials) => {
+          return prevMaterials.map((mat) => {
+            const deduction = materialDeductions.find((it) => it.targetId === mat.id);
+            if (deduction) {
+              const newStock = Math.max(0, Number((mat.currentStock - deduction.quantityTotal).toFixed(4)));
+              return {
+                ...mat,
+                currentStock: newStock,
+                updatedAt: new Date().toISOString().split('T')[0],
+              };
+            }
+            return mat;
+          });
+        });
+      }
+
+      // 3. Baixa sub-produtos / componentes intermediários consumidos (se houver)
+      const productDeductions = production.deductedItems.filter((it) => it.type === 'product');
+      if (productDeductions.length > 0) {
+        setProducts((prevProducts) => {
+          return prevProducts.map((p) => {
+            const deduction = productDeductions.find((it) => it.targetId === p.id);
+            if (deduction && p.id !== production.productId) {
+              const current = p.currentStock ?? 0;
+              const newStock = Math.max(0, Number((current - deduction.quantityTotal).toFixed(4)));
+              return {
+                ...p,
+                currentStock: newStock,
+                updatedAt: new Date().toISOString().split('T')[0],
+              };
+            }
+            return p;
+          });
+        });
+      }
+    }
+  }, []);
+
+  const handleDeleteProduction = useCallback((id: string, revertStock: boolean) => {
+    setProductions((prev) => {
+      const prodToRevert = prev.find((p) => p.id === id);
+      if (revertStock && prodToRevert) {
+        // Estorna o produto produzido (diminui)
+        setProducts((prevProducts) => {
+          return prevProducts.map((p) => {
+            if (p.id === prodToRevert.productId) {
+              const current = p.currentStock ?? 0;
+              return {
+                ...p,
+                currentStock: Math.max(0, current - prodToRevert.quantityProduced),
+                updatedAt: new Date().toISOString().split('T')[0],
+              };
+            }
+            return p;
+          });
+        });
+
+        // Devolve os materiais consumidos ao estoque
+        const materialDeductions = prodToRevert.deductedItems.filter((it) => it.type === 'material');
+        if (materialDeductions.length > 0) {
+          setMaterials((prevMaterials) => {
+            return prevMaterials.map((mat) => {
+              const deduction = materialDeductions.find((it) => it.targetId === mat.id);
+              if (deduction) {
+                return {
+                  ...mat,
+                  currentStock: Number((mat.currentStock + deduction.quantityTotal).toFixed(4)),
+                  updatedAt: new Date().toISOString().split('T')[0],
+                };
+              }
+              return mat;
+            });
+          });
+        }
+
+        // Devolve os sub-produtos consumidos ao estoque
+        const productDeductions = prodToRevert.deductedItems.filter((it) => it.type === 'product');
+        if (productDeductions.length > 0) {
+          setProducts((prevProducts) => {
+            return prevProducts.map((p) => {
+              const deduction = productDeductions.find((it) => it.targetId === p.id);
+              if (deduction && p.id !== prodToRevert.productId) {
+                const current = p.currentStock ?? 0;
+                return {
+                  ...p,
+                  currentStock: Number((current + deduction.quantityTotal).toFixed(4)),
+                  updatedAt: new Date().toISOString().split('T')[0],
+                };
+              }
+              return p;
+            });
+          });
+        }
+      }
+
+      return prev.filter((p) => p.id !== id);
+    });
   }, []);
 
   // ----------------------------------------------------
@@ -539,6 +698,7 @@ export default function App() {
     if (data.materials) setMaterials(data.materials);
     if (data.products) setProducts(data.products);
     if (data.purchases) setPurchases(data.purchases);
+    if (data.productions) setProductions(data.productions);
     if (data.sales) setSales(data.sales);
     if (data.customers) setCustomers(data.customers);
     if (data.paymentMethods) setPaymentMethods(data.paymentMethods);
@@ -591,6 +751,7 @@ export default function App() {
         materialsCount={materials.length}
         salesCount={sales.length}
         purchasesCount={purchases.length}
+        productionsCount={productions.length}
         customersCount={customers.length}
         birthdayCustomersCount={birthdayCustomersCount}
         atelierName={settings.atelierName}
@@ -658,6 +819,8 @@ export default function App() {
             onSaveProduct={handleSaveProduct}
             onDeleteProduct={handleDeleteProduct}
             onDuplicateProduct={handleDuplicateProduct}
+            onQuickStockChange={handleQuickProductStockChange}
+            onOpenProduction={handleOpenProductionFromProduct}
           />
         )}
 
@@ -668,6 +831,19 @@ export default function App() {
             suppliers={suppliers}
             onSavePurchase={handleSavePurchase}
             onDeletePurchase={handleDeletePurchase}
+          />
+        )}
+
+        {activeTab === 'productions' && (
+          <ProductionsView
+            productions={productions}
+            products={products}
+            materials={materials}
+            onSaveProduction={handleSaveProduction}
+            onDeleteProduction={handleDeleteProduction}
+            onNavigateToProducts={() => setActiveTab('products')}
+            initialSelectedProduct={productionInitialProduct}
+            onClearInitialProduct={() => setProductionInitialProduct(null)}
           />
         )}
 
@@ -732,6 +908,7 @@ export default function App() {
           materials,
           products,
           purchases,
+          productions,
           sales,
           customers,
           paymentMethods,
@@ -755,6 +932,7 @@ export default function App() {
           materials: materials.length,
           products: products.length,
           purchases: purchases.length,
+          productions: productions.length,
           sales: sales.length,
           customers: customers.length,
         }}

@@ -6,7 +6,8 @@ import {
   DollarSign, 
   BarChart3, 
   Truck,
-  Users
+  Users,
+  Hammer
 } from 'lucide-react';
 import { NavTab } from '../types';
 
@@ -15,6 +16,7 @@ interface NavigationProps {
   onTabChange: (tab: NavTab) => void;
   lowStockCount: number;
   customersCount?: number;
+  productionsCount?: number;
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
@@ -22,6 +24,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   onTabChange,
   lowStockCount,
   customersCount = 0,
+  productionsCount = 0,
 }) => {
   const tabs = [
     {
@@ -44,6 +47,13 @@ export const Navigation: React.FC<NavigationProps> = ({
       icon: ShoppingCart,
       badge: null,
       badgeColor: '',
+    },
+    {
+      id: 'productions' as NavTab,
+      label: 'Histórico de Produção',
+      icon: Hammer,
+      badge: productionsCount > 0 ? `${productionsCount}` : null,
+      badgeColor: 'bg-amber-100 text-amber-900 font-semibold',
     },
     {
       id: 'sales' as NavTab,

@@ -16,10 +16,13 @@ import {
   Check, 
   Info, 
   AlertCircle,
+  AlertTriangle,
   HelpCircle,
   ArrowRight,
   TrendingUp,
-  Percent
+  Percent,
+  Hammer,
+  Package
 } from 'lucide-react';
 import { Product, Material, RecipeItem, RecipeItemType } from '../types';
 import { 
@@ -41,6 +44,9 @@ interface ProductsViewProps {
   onSaveProduct: (product: Product) => void;
   onDeleteProduct: (id: string) => void;
   onDuplicateProduct: (product: Product) => void;
+  onQuickStockChange?: (id: string, delta: number) => void;
+  onOpenProduction?: (product: Product) => void;
+  filterLowStockInitial?: boolean;
 }
 
 export const ProductsView: React.FC<ProductsViewProps> = ({
@@ -52,13 +58,27 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   onSaveProduct,
   onDeleteProduct,
   onDuplicateProduct,
+  onQuickStockChange,
+  onOpenProduction,
+  filterLowStockInitial = false,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'final' | 'intermediate'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [stockFilter, setStockFilter] = useState<'all' | 'in_stock' | 'low_stock' | 'out_of_stock'>(
+    filterLowStockInitial ? 'low_stock' : 'all'
+  );
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [viewingFichaProduct, setViewingFichaProduct] = useState<Product | null>(null);
+
+  // Quick adjust inline state
+  const [adjustingId, setAdjustingId] = useState<string | null>(null);
+  const [adjustDelta, setAdjustDelta] = useState<string>('');
+
+  const lowStockCount = useMemo(() => {
+    return products.filter((p) => (p.currentStock ?? 0) <= (p.minStock ?? 2)).length;
+  }, [products]);
 
   // Categories
   const categories = useMemo(() => {
@@ -84,9 +104,17 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
       const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
 
-      return matchesSearch && matchesType && matchesCategory;
+      const currentStock = p.currentStock ?? 0;
+      const minStock = p.minStock ?? 2;
+      const matchesStock =
+        stockFilter === 'all' ||
+        (stockFilter === 'in_stock' && currentStock > minStock) ||
+        (stockFilter === 'low_stock' && currentStock <= minStock && currentStock > 0) ||
+        (stockFilter === 'out_of_stock' && currentStock <= 0);
+
+      return matchesSearch && matchesType && matchesCategory && matchesStock;
     });
-  }, [products, searchTerm, typeFilter, selectedCategory]);
+  }, [products, searchTerm, typeFilter, selectedCategory, stockFilter]);
 
   const handleOpenAdd = () => {
     setEditingProduct(null);
@@ -96,6 +124,15 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const handleOpenEdit = (p: Product) => {
     setEditingProduct(p);
     setIsModalOpen(true);
+  };
+
+  const handleConfirmAdjust = (id: string) => {
+    const val = parseFloat(adjustDelta);
+    if (!isNaN(val) && val !== 0 && onQuickStockChange) {
+      onQuickStockChange(id, val);
+    }
+    setAdjustingId(null);
+    setAdjustDelta('');
   };
 
   return (
@@ -176,9 +213,65 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           </div>
         </div>
 
+        {/* Stock Filter Pills */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-100 text-xs">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            <span className="text-stone-500 font-medium flex items-center gap-1 shrink-0">
+              <Package className="w-3.5 h-3.5 text-stone-400" />
+              Estoque Pronta-Entrega:
+            </span>
+            <button
+              onClick={() => setStockFilter('all')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                stockFilter === 'all'
+                  ? 'bg-stone-900 text-white shadow-2xs'
+                  : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+              }`}
+            >
+              Todos
+            </button>
+            <button
+              onClick={() => setStockFilter('in_stock')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                stockFilter === 'in_stock'
+                  ? 'bg-emerald-700 text-white shadow-2xs'
+                  : 'text-stone-600 hover:text-emerald-700 hover:bg-emerald-50'
+              }`}
+            >
+              Em Estoque
+            </button>
+            <button
+              onClick={() => setStockFilter('low_stock')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1 ${
+                stockFilter === 'low_stock'
+                  ? 'bg-amber-500 text-stone-950 font-bold shadow-2xs'
+                  : 'text-stone-600 hover:text-amber-800 hover:bg-amber-50'
+              }`}
+            >
+              <AlertTriangle className="w-3 h-3 text-amber-600" />
+              <span>Estoque Baixo</span>
+              {lowStockCount > 0 && (
+                <span className="bg-amber-200 text-amber-950 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                  {lowStockCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setStockFilter('out_of_stock')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                stockFilter === 'out_of_stock'
+                  ? 'bg-rose-700 text-white shadow-2xs'
+                  : 'text-stone-600 hover:text-rose-700 hover:bg-rose-50'
+              }`}
+            >
+              Esgotados
+            </button>
+          </div>
+        </div>
+
         {/* Category Pills */}
         {categories.length > 0 && (
-          <div className="flex items-center gap-2 overflow-x-auto pt-1 no-scrollbar">
+          <div className="flex items-center gap-2 overflow-x-auto pt-2 border-t border-stone-100 no-scrollbar">
             <span className="text-xs font-medium text-stone-500 shrink-0">Categorias:</span>
             <button
               onClick={() => setSelectedCategory('all')}
@@ -423,6 +516,131 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       )}
                     </div>
                   </div>
+
+                  {/* Product Inventory Control & Stock Level */}
+                  {(() => {
+                    const currentStock = p.currentStock ?? 0;
+                    const minStock = p.minStock ?? 2;
+                    const isOutOfStock = currentStock <= 0;
+                    const isLowStock = currentStock <= minStock && !isOutOfStock;
+                    const stockPct = minStock > 0 ? Math.min(100, (currentStock / (minStock * 2)) * 100) : 100;
+
+                    return (
+                      <div className="px-5 py-3.5 bg-stone-50/70 border-t border-stone-200/70 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <Package className="w-4 h-4 text-stone-500" />
+                            <span className="text-xs font-bold text-stone-800">
+                              Estoque Pronta-Entrega:
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {isOutOfStock ? (
+                              <span className="text-[11px] font-bold text-rose-700 bg-rose-100 border border-rose-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3" />
+                                Esgotado (0 un)
+                              </span>
+                            ) : isLowStock ? (
+                              <span className="text-[11px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3 text-amber-700" />
+                                {currentStock} un (Estoque Baixo)
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                {currentStock} un em estoque
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Progress Bar & Alert */}
+                        <div className="space-y-1">
+                          <div className="w-full bg-stone-200 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                isOutOfStock ? 'bg-rose-500' : isLowStock ? 'bg-amber-500' : 'bg-emerald-500'
+                              }`}
+                              style={{ width: `${isOutOfStock ? 0 : Math.min(100, Math.max(8, stockPct))}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] text-stone-400">
+                            <span>Mínimo recomendado: {minStock} un</span>
+                            <span>
+                              Total em estoque: {formatCurrency(currentStock * p.actualPrice)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Quick stock adjust & Produce button */}
+                        <div className="pt-1 flex items-center justify-between gap-2">
+                          {adjustingId === p.id ? (
+                            <div className="flex items-center gap-1.5 flex-1">
+                              <input
+                                type="number"
+                                step="1"
+                                placeholder="+5 ou -2"
+                                value={adjustDelta}
+                                onChange={(e) => setAdjustDelta(e.target.value)}
+                                className="w-24 text-xs px-2 py-1 bg-white border border-stone-300 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500 text-stone-900"
+                                autoFocus
+                              />
+                              <button
+                                onClick={() => handleConfirmAdjust(p.id)}
+                                className="px-2 py-1 bg-stone-900 text-white rounded text-xs font-semibold hover:bg-stone-800"
+                              >
+                                Ok
+                              </button>
+                              <button
+                                onClick={() => setAdjustingId(null)}
+                                className="text-xs text-stone-500 hover:text-stone-700"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => onQuickStockChange && onQuickStockChange(p.id, -1)}
+                                className="w-6 h-6 flex items-center justify-center rounded bg-stone-200/70 hover:bg-stone-300 text-stone-700 text-xs font-bold transition-colors cursor-pointer"
+                                title="Diminuir 1 unidade do estoque"
+                              >
+                                -1
+                              </button>
+                              <button
+                                onClick={() => onQuickStockChange && onQuickStockChange(p.id, 1)}
+                                className="w-6 h-6 flex items-center justify-center rounded bg-stone-200/70 hover:bg-stone-300 text-stone-700 text-xs font-bold transition-colors cursor-pointer"
+                                title="Aumentar 1 unidade no estoque"
+                              >
+                                +1
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setAdjustingId(p.id);
+                                  setAdjustDelta('');
+                                }}
+                                className="text-[11px] text-stone-500 hover:text-amber-800 underline cursor-pointer ml-1"
+                              >
+                                Ajustar
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Shortcut to produce this recipe */}
+                          {onOpenProduction && (
+                            <button
+                              onClick={() => onOpenProduction(p)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-amber-900 bg-amber-100 hover:bg-amber-200 rounded-lg border border-amber-300/80 transition-all cursor-pointer shadow-2xs"
+                              title="Lançar produção para esta receita (baixa insumos e abastece estoque)"
+                            >
+                              <Hammer className="w-3.5 h-3.5 text-amber-700" />
+                              <span>Produzir Lote</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Footer Controls */}
@@ -549,6 +767,12 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   const [imageUrl, setImageUrl] = useState(product?.imageUrl || '');
   const [isIntermediate, setIsIntermediate] = useState(product?.isIntermediate || false);
   const [batchYield, setBatchYield] = useState<string>(product?.batchYield ? product.batchYield.toString() : '1');
+  const [currentStock, setCurrentStock] = useState<string>(
+    product?.currentStock !== undefined ? product.currentStock.toString() : '0'
+  );
+  const [minStock, setMinStock] = useState<string>(
+    product?.minStock !== undefined ? product.minStock.toString() : '2'
+  );
 
   // Recipe items (BOM)
   const [items, setItems] = useState<RecipeItem[]>(product?.items || []);
@@ -698,6 +922,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     }
 
     const finalActualPrice = parseFloat(actualPrice) > 0 ? parseFloat(actualPrice) : suggestedPrice;
+    const parsedCurrentStock = parseFloat(currentStock) || 0;
+    const parsedMinStock = parseFloat(minStock) || 0;
 
     const savedProduct: Product = {
       id: product?.id || `prod_${Date.now()}`,
@@ -722,6 +948,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       actualPrice: finalActualPrice,
       netProfit: finalActualPrice - unitCostFromBatch,
       calculatedMarginPercent: finalActualPrice > 0 ? ((finalActualPrice - unitCostFromBatch) / finalActualPrice) * 100 : 0,
+      currentStock: parsedCurrentStock,
+      minStock: parsedMinStock,
       createdAt: product?.createdAt || new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString().split('T')[0],
     };
@@ -862,6 +1090,53 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   <p className="text-[11px] text-amber-800 mt-0.5">
                     Marque esta opção para permitir que esta peça seja adicionada como um insumo no custo de outros produtos (ex: aplicar a etiqueta produzida nesta receita dentro do custo de uma bolsa ou necessaire).
                   </p>
+                </div>
+              </div>
+
+              {/* Stock Management Fields */}
+              <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-3">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-stone-800 uppercase tracking-wider">
+                  <Package className="w-3.5 h-3.5 text-stone-500" />
+                  <span>Controle de Estoque & Pronta-Entrega</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-stone-700 mb-1">
+                      Estoque Atual (Unidades)
+                    </label>
+                    <input
+                      id="input-product-stock"
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={currentStock}
+                      onChange={(e) => setCurrentStock(e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
+                      placeholder="0"
+                    />
+                    <span className="text-[10px] text-stone-400 block mt-0.5">
+                      Peças já produzidas e disponíveis para entrega.
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-stone-700 mb-1">
+                      Estoque Mínimo de Alerta
+                    </label>
+                    <input
+                      id="input-product-min-stock"
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={minStock}
+                      onChange={(e) => setMinStock(e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
+                      placeholder="2"
+                    />
+                    <span className="text-[10px] text-stone-400 block mt-0.5">
+                      Avisa quando você precisa produzir mais deste item.
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
