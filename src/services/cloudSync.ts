@@ -45,6 +45,30 @@ export async function syncUserProfile(user: User): Promise<void> {
 }
 
 /**
+ * Recursively sanitizes data before sending to Firestore:
+ * - Removes keys with undefined values from objects
+ * - Converts undefined in arrays to null
+ */
+function sanitizeForFirestore<T>(data: T): T {
+  if (data === undefined) {
+    return null as unknown as T;
+  }
+  if (data === null || typeof data !== 'object') {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data.map((item) => (item === undefined ? null : sanitizeForFirestore(item))) as unknown as T;
+  }
+  const clean: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data as Record<string, any>)) {
+    if (value !== undefined) {
+      clean[key] = sanitizeForFirestore(value);
+    }
+  }
+  return clean as T;
+}
+
+/**
  * Uploads full atelier workspace to /users/{userId}/workspaces/default
  */
 export async function uploadWorkspaceToCloud(
@@ -72,7 +96,8 @@ export async function uploadWorkspaceToCloud(
     todos: workspace.todos || [],
   };
 
-  await setDoc(workspaceRef, payload, { merge: true });
+  const sanitizedPayload = sanitizeForFirestore(payload);
+  await setDoc(workspaceRef, sanitizedPayload, { merge: true });
 }
 
 /**

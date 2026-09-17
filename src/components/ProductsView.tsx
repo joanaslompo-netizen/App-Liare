@@ -394,6 +394,13 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                         </p>
                       )}
 
+                      {p.notes && (
+                        <p className="text-[11px] text-stone-600 bg-stone-50 border border-stone-200/80 rounded-md px-2 py-1 mt-1.5 line-clamp-2 italic" title={p.notes}>
+                          <span className="font-semibold not-italic text-stone-700">Obs: </span>
+                          {p.notes}
+                        </p>
+                      )}
+
                       {/* Composition summary badge */}
                       <div className="flex items-center gap-3 mt-2 text-xs text-stone-500">
                         <span className="flex items-center gap-1">
@@ -773,6 +780,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   const [minStock, setMinStock] = useState<string>(
     product?.minStock !== undefined ? product.minStock.toString() : '2'
   );
+  const [notes, setNotes] = useState(product?.notes || '');
 
   // Recipe items (BOM)
   const [items, setItems] = useState<RecipeItem[]>(product?.items || []);
@@ -950,6 +958,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       calculatedMarginPercent: finalActualPrice > 0 ? ((finalActualPrice - unitCostFromBatch) / finalActualPrice) * 100 : 0,
       currentStock: parsedCurrentStock,
       minStock: parsedMinStock,
+      notes: notes.trim() || undefined,
       createdAt: product?.createdAt || new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString().split('T')[0],
     };
@@ -1137,6 +1146,21 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                       Avisa quando você precisa produzir mais deste item.
                     </span>
                   </div>
+                </div>
+
+                {/* Notas / Observações */}
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                    Observações / Notas da Receita (opcional)
+                  </label>
+                  <textarea
+                    id="input-product-notes"
+                    rows={2}
+                    placeholder="Ex: Instruções de confecção, ordem de montagem dos componentes, temperatura ou cuidados especiais..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900 resize-none"
+                  />
                 </div>
               </div>
             </div>
@@ -1702,6 +1726,18 @@ const FichaTecnicaModal: React.FC<FichaTecnicaModalProps> = ({
               </span>
             </div>
           </div>
+
+          {/* Observações / Notas da Receita */}
+          {product.notes && (
+            <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5">
+              <h5 className="font-bold text-stone-800 text-[11px] uppercase tracking-wider mb-1">
+                Observações / Notas de Confecção
+              </h5>
+              <p className="text-stone-700 whitespace-pre-wrap leading-relaxed">
+                {product.notes}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
