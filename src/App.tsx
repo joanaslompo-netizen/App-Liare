@@ -54,7 +54,8 @@ import {
   subscribeToWorkspace, 
   syncUserProfile, 
   fetchWorkspaceFromCloud, 
-  CloudSyncStatus 
+  CloudSyncStatus,
+  CloudSyncConflictError
 } from './services/cloudSync';
 import { CheckCircle2, X } from 'lucide-react';
 
@@ -87,6 +88,9 @@ export default function App() {
   
   const isIncomingCloudSyncRef = useRef(false);
   const syncTimeoutRef = useRef<any>(null);
+  const cloudRevisionRef = useRef<number | undefined>(undefined);
+  const hasLoadedCloudRef = useRef(false);
+  const hasLocalChangesRef = useRef(false);
 
   // Active navigation tab - default to 'home' (initial dashboard screen)
   const [activeTab, setActiveTab] = useState<NavTab>('home');
@@ -121,7 +125,11 @@ export default function App() {
           // Fetch user's cloud workspace
           const cloudData = await fetchWorkspaceFromCloud(currentUser.uid);
           
-          if (cloudData && (cloudData.materials?.length || cloudData.products?.length)) {
+          if (cloudData) {
+            // Existing cloud backup is authoritative on login. Never overwrite it blindly.
+            cloudRevisionRef.current = cloudData.revision || 0;
+            hasLoadedCloudRef.current = true;
+            hasLocalChangesRef.current = false;
             // Cloud data already exists, update local state
             isIncomingCloudSyncRef.current = true;
             if (cloudData.materials) setMaterials(cloudData.materials);
@@ -143,7 +151,7 @@ export default function App() {
             });
           } else {
             // First time this user connects: upload their current local workspace to cloud so nothing is lost!
-            await uploadWorkspaceToCloud(currentUser.uid, {
+            const createdCloud = await uploadWorkspaceToCloud(currentUser.uid, {
               materials,
               products,
               purchases,
@@ -155,6 +163,9 @@ export default function App() {
               settings,
               todos,
             });
+            cloudRevisionRef.current = createdCloud.revision || 1;
+            hasLoadedCloudRef.current = true;
+            hasLocalChangesRef.current = false;
             setSyncStatus('synced');
             setLastSyncedAt(new Date());
             setSyncNotification({
@@ -172,6 +183,19 @@ export default function App() {
           currentUser.uid,
           (updatedData) => {
             if (updatedData) {
+              const incomingRevision = updatedData.revision || 0;
+              // If this device has unsent edits and cloud advanced elsewhere, do not destroy either side.
+              if (hasLocalChangesRef.current && hasLoadedCloudRef.current && incomingRevision !== cloudRevisionRef.current) {
+                setSyncStatus('error');
+                setSyncNotification({
+                  message: 'Conflito detectado: a nuvem mudou enquanto este aparelho tinha alterações locais. Nada foi sobrescrito. Clique em Sincronizar para carregar a versão mais recente da nuvem.',
+                  type: 'error',
+                });
+                return;
+              }
+              cloudRevisionRef.current = incomingRevision;
+              hasLoadedCloudRef.current = true;
+              hasLocalChangesRef.current = false;
               isIncomingCloudSyncRef.current = true;
               if (updatedData.materials) setMaterials(updatedData.materials);
               if (updatedData.products) setProducts(updatedData.products);
@@ -205,7 +229,7 @@ export default function App() {
 
   // Debounced auto-upload to cloud when user is logged in
   useEffect(() => {
-    if (!user) return;
+    if (!user || !hasLoadedCloudRef.current) return;
     
     // Skip re-upload if this state change was just triggered by an incoming cloud update
     if (isIncomingCloudSyncRef.current) {
@@ -213,12 +237,13 @@ export default function App() {
       return;
     }
 
+    hasLocalChangesRef.current = true;
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     setSyncStatus('syncing');
 
     syncTimeoutRef.current = setTimeout(async () => {
       try {
-        await uploadWorkspaceToCloud(user.uid, {
+        const uploaded = await uploadWorkspaceToCloud(user.uid, {
           materials,
           products,
           purchases,
@@ -229,12 +254,17 @@ export default function App() {
           suppliers,
           settings,
           todos,
-        });
+        }, 'Web', cloudRevisionRef.current);
+        cloudRevisionRef.current = uploaded.revision;
+        hasLocalChangesRef.current = false;
         setSyncStatus('synced');
         setLastSyncedAt(new Date());
       } catch (err) {
         console.warn('Erro ao enviar dados para a nuvem:', err);
         setSyncStatus('error');
+        if (err instanceof CloudSyncConflictError) {
+          setSyncNotification({ message: 'Sincronização bloqueada: existe uma versão mais nova na nuvem. Seus dados locais não sobrescreveram o backup.', type: 'error' });
+        }
       }
     }, 800);
 
@@ -325,26 +355,55 @@ export default function App() {
     }
     try {
       setSyncStatus('syncing');
-      await uploadWorkspaceToCloud(user.uid, {
-        materials,
-        products,
-        purchases,
-        sales,
-        customers,
-        paymentMethods,
-        suppliers,
-        settings,
-        todos,
-      });
+      // Manual sync always reads cloud first. If cloud advanced, download it instead of overwriting it.
+      const cloud = await fetchWorkspaceFromCloud(user.uid);
+      const cloudRevision = cloud?.revision || 0;
+
+      if (cloud && cloudRevision !== (cloudRevisionRef.current ?? cloudRevision)) {
+        isIncomingCloudSyncRef.current = true;
+        cloudRevisionRef.current = cloudRevision;
+        hasLoadedCloudRef.current = true;
+        hasLocalChangesRef.current = false;
+        setMaterials(cloud.materials || []);
+        setProducts(cloud.products || []);
+        setProductions(cloud.productions || []);
+        setPurchases(cloud.purchases || []);
+        setSales(cloud.sales || []);
+        setCustomers(cloud.customers || []);
+        setPaymentMethods(cloud.paymentMethods || []);
+        setSuppliers(cloud.suppliers || []);
+        if (cloud.settings) setSettings(cloud.settings);
+        setTodos(cloud.todos || []);
+        setSyncStatus('synced');
+        setLastSyncedAt(new Date());
+        setSyncNotification({ message: 'A nuvem tinha uma versão mais recente. Ela foi baixada para este dispositivo sem sobrescrever o backup.', type: 'info' });
+        return;
+      }
+
+      if (!hasLocalChangesRef.current && cloud) {
+        setSyncStatus('synced');
+        setLastSyncedAt(new Date());
+        setSyncNotification({ message: 'Este dispositivo já está com a versão mais recente da nuvem.', type: 'success' });
+        return;
+      }
+
+      const uploaded = await uploadWorkspaceToCloud(user.uid, {
+        materials, products, productions, purchases, sales, customers,
+        paymentMethods, suppliers, settings, todos,
+      }, 'Web', cloud ? cloudRevision : undefined);
+      cloudRevisionRef.current = uploaded.revision;
+      hasLoadedCloudRef.current = true;
+      hasLocalChangesRef.current = false;
       setSyncStatus('synced');
       setLastSyncedAt(new Date());
-      setSyncNotification({
-        message: 'Dados sincronizados com a nuvem com sucesso!',
-        type: 'success',
-      });
+      setSyncNotification({ message: 'Dados mais recentes enviados com segurança. A versão anterior foi preservada como backup.', type: 'success' });
     } catch (err: any) {
       setSyncStatus('error');
-      alert('Erro ao sincronizar: ' + err?.message);
+      if (err instanceof CloudSyncConflictError) {
+        setSyncNotification({ message: 'Conflito detectado. Nada foi sobrescrito. Clique novamente em Sincronizar para carregar a versão mais recente da nuvem.', type: 'error' });
+      } else {
+        alert('Erro ao sincronizar: ' + err?.message);
+      }
     }
   };
 
