@@ -38,13 +38,20 @@ service cloud.firestore {
              data.updatedAt is string && data.updatedAt.size() <= 64 &&
              (!('materials' in data) || data.materials is list) &&
              (!('products' in data) || data.products is list) &&
+             (!('productions' in data) || data.productions is list) &&
              (!('purchases' in data) || data.purchases is list) &&
              (!('sales' in data) || data.sales is list) &&
              (!('customers' in data) || data.customers is list) &&
              (!('paymentMethods' in data) || data.paymentMethods is list) &&
              (!('suppliers' in data) || data.suppliers is list) &&
              (!('settings' in data) || data.settings is map) &&
+             (!('todos' in data) || data.todos is list) &&
              (!('lastModifiedBy' in data) || (data.lastModifiedBy is string && data.lastModifiedBy.size() <= 100));
+    }
+
+    // Connection validation test endpoint
+    match /test/connection {
+      allow get: if true;
     }
 
     // User profile document

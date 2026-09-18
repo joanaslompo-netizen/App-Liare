@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Plus, 
   Search, 
@@ -80,41 +80,78 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     return products.filter((p) => (p.currentStock ?? 0) <= (p.minStock ?? 2)).length;
   }, [products]);
 
-  // Categories
+  // Categories (all registered for modals)
   const categories = useMemo(() => {
     const set = new Set<string>();
     products.forEach((p) => {
-      if (p.category) set.add(p.category);
+      if (p.category?.trim()) set.add(p.category.trim());
     });
     return Array.from(set).sort();
   }, [products]);
 
-  // Filtered Products
-  const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
-      const matchesSearch = 
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()));
-
+  // Dynamic categories based on current typeFilter ('all', 'final', 'intermediate')
+  const visibleCategories = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach((p) => {
       const matchesType = 
         typeFilter === 'all' || 
         (typeFilter === 'intermediate' && p.isIntermediate) ||
         (typeFilter === 'final' && !p.isIntermediate);
 
-      const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
-
-      const currentStock = p.currentStock ?? 0;
-      const minStock = p.minStock ?? 2;
-      const matchesStock =
-        stockFilter === 'all' ||
-        (stockFilter === 'in_stock' && currentStock > minStock) ||
-        (stockFilter === 'low_stock' && currentStock <= minStock && currentStock > 0) ||
-        (stockFilter === 'out_of_stock' && currentStock <= 0);
-
-      return matchesSearch && matchesType && matchesCategory && matchesStock;
+      if (matchesType && p.category?.trim()) {
+        set.add(p.category.trim());
+      }
     });
-  }, [products, searchTerm, typeFilter, selectedCategory, stockFilter]);
+    return Array.from(set).sort();
+  }, [products, typeFilter]);
+
+  // Automatically reset category filter to 'all' if selected category is not in the current view
+  useEffect(() => {
+    if (selectedCategory !== 'all' && !visibleCategories.includes(selectedCategory)) {
+      setSelectedCategory('all');
+    }
+  }, [selectedCategory, visibleCategories]);
+
+  // Filtered Products
+  const filteredProducts = useMemo(() => {
+    return products
+      .filter((p) => {
+        const matchesSearch = 
+          p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          p.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()));
+
+        const matchesType = 
+          typeFilter === 'all' || 
+          (typeFilter === 'intermediate' && p.isIntermediate) ||
+          (typeFilter === 'final' && !p.isIntermediate);
+
+        const isCategoryValid = selectedCategory === 'all' || visibleCategories.includes(selectedCategory);
+        const matchesCategory = !isCategoryValid || selectedCategory === 'all' || p.category === selectedCategory;
+
+        const currentStock = p.currentStock ?? 0;
+        const minStock = p.minStock !== undefined ? p.minStock : 2;
+        const matchesStock =
+          stockFilter === 'all' ||
+          (stockFilter === 'in_stock' && currentStock > minStock) ||
+          (stockFilter === 'low_stock' && minStock > 0 && currentStock <= minStock && currentStock > 0) ||
+          (stockFilter === 'out_of_stock' && currentStock <= 0);
+
+        return matchesSearch && matchesType && matchesCategory && matchesStock;
+      })
+      .sort((a, b) => {
+        const aPaused = (a.minStock ?? 2) === 0;
+        const bPaused = (b.minStock ?? 2) === 0;
+
+        // MinStock === 0 goes to the bottom of the list
+        if (aPaused !== bPaused) {
+          return aPaused ? 1 : -1;
+        }
+
+        // Alphabetical A to Z
+        return a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' });
+      });
+  }, [products, searchTerm, typeFilter, selectedCategory, stockFilter, visibleCategories]);
 
   const handleOpenAdd = () => {
     setEditingProduct(null);
@@ -270,7 +307,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         </div>
 
         {/* Category Pills */}
-        {categories.length > 0 && (
+        {visibleCategories.length > 0 && (
           <div className="flex items-center gap-2 overflow-x-auto pt-2 border-t border-stone-100 no-scrollbar">
             <span className="text-xs font-medium text-stone-500 shrink-0">Categorias:</span>
             <button
@@ -283,7 +320,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             >
               Todas
             </button>
-            {categories.map((cat) => (
+            {visibleCategories.map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
@@ -327,17 +364,17 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             const subProductItemsCount = p.items.filter((it) => it.type === 'product').length;
             const hasSubProducts = subProductItemsCount > 0;
 
-            // Cost percentages for the visual distribution bar
-            const total = p.totalCost > 0 ? p.totalCost : 1;
-            const matPct = (p.materialsCost / total) * 100;
-            const laborPct = (p.laborCost / total) * 100;
-            const fixPct = ((p.fixedCost + p.otherCosts) / total) * 100;
+            const isPaused = (p.minStock ?? 2) === 0;
 
             return (
               <div
                 key={p.id}
                 id={`product-card-${p.id}`}
-                className="bg-white rounded-2xl border border-stone-200 shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden"
+                className={`rounded-2xl border shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden ${
+                  isPaused
+                    ? 'opacity-75 bg-stone-50/70 border-stone-200'
+                    : 'bg-white border-stone-200'
+                }`}
               >
                 <div>
                   {/* Top Product Header */}
@@ -365,6 +402,13 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                         <span className="text-xs font-semibold text-stone-700 bg-stone-100 px-2 py-0.5 rounded-md">
                           {p.category}
                         </span>
+
+                        {isPaused && (
+                          <span className="text-[11px] font-medium text-stone-600 bg-stone-200/90 border border-stone-300 px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0" title="Estoque mínimo igual a 0 (Inativo/Pausado)">
+                            <span className="w-1.5 h-1.5 rounded-full bg-stone-400" />
+                            Inativo/Pausado
+                          </span>
+                        )}
 
                         {p.isIntermediate ? (
                           <span className="text-[11px] font-semibold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md flex items-center gap-1" title="Pode ser usado como insumo em outras receitas">
@@ -472,65 +516,19 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                         </span>
                       </div>
                     </div>
-
-                    {/* Visual Cost Structure Bar */}
-                    <div className="mt-3.5 pt-3 border-t border-stone-200/60">
-                      <div className="flex items-center justify-between text-[11px] text-stone-500 mb-1">
-                        <span>Estrutura do Custo:</span>
-                        <span className="flex items-center gap-3">
-                          <span className="inline-flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-blue-500" /> Materiais ({formatPercent(matPct)})
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-amber-500" /> Mão de Obra ({formatPercent(laborPct)})
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-stone-400" /> Fixos ({formatPercent(fixPct)})
-                          </span>
-                        </span>
-                      </div>
-                      <div className="w-full bg-stone-200 rounded-full h-2 flex overflow-hidden">
-                        <div style={{ width: `${matPct}%` }} className="bg-blue-500 h-full" title={`Materiais: ${formatCurrency(p.materialsCost)}`} />
-                        <div style={{ width: `${laborPct}%` }} className="bg-amber-500 h-full" title={`Mão de obra: ${formatCurrency(p.laborCost)}`} />
-                        <div style={{ width: `${fixPct}%` }} className="bg-stone-400 h-full" title={`Custos fixos: ${formatCurrency(p.fixedCost + p.otherCosts)}`} />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Quick Recipe items peek */}
-                  <div className="px-5 py-3 text-xs text-stone-600 space-y-1">
-                    <span className="font-semibold text-stone-700 text-[11px] block">
-                      Principais componentes da receita:
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {p.items.slice(0, 4).map((it) => (
-                        <span
-                          key={it.id}
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${
-                            it.type === 'product'
-                              ? 'bg-amber-50 border-amber-200 text-amber-900 font-medium'
-                              : 'bg-stone-50 border-stone-200 text-stone-700'
-                          }`}
-                        >
-                          {it.type === 'product' && <Layers className="w-3 h-3 text-amber-600" />}
-                          {formatNumber(it.quantity)} {it.unit} de {it.name}
-                        </span>
-                      ))}
-                      {p.items.length > 4 && (
-                        <span className="text-[11px] text-stone-400 py-0.5">
-                          +{p.items.length - 4} outros
-                        </span>
-                      )}
-                    </div>
                   </div>
 
                   {/* Product Inventory Control & Stock Level */}
                   {(() => {
                     const currentStock = p.currentStock ?? 0;
-                    const minStock = p.minStock ?? 2;
+                    const minStock = p.minStock !== undefined ? p.minStock : 2;
+                    const standardStock = p.standardStock !== undefined && p.standardStock > 0 ? p.standardStock : Math.max(minStock * 2, 10);
+                    const isPaused = minStock === 0;
                     const isOutOfStock = currentStock <= 0;
-                    const isLowStock = currentStock <= minStock && !isOutOfStock;
-                    const stockPct = minStock > 0 ? Math.min(100, (currentStock / (minStock * 2)) * 100) : 100;
+                    const isBelowMin = currentStock < minStock;
+                    const isBetweenMinAndStandard = currentStock >= minStock && currentStock < standardStock;
+                    const isStandardOrAbove = currentStock >= standardStock;
+                    const stockPct = standardStock > 0 ? Math.min(100, (currentStock / standardStock) * 100) : 100;
 
                     return (
                       <div className="px-5 py-3.5 bg-stone-50/70 border-t border-stone-200/70 space-y-2.5">
@@ -543,15 +541,24 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                           </div>
 
                           <div className="flex items-center gap-2">
-                            {isOutOfStock ? (
+                            {isPaused ? (
+                              <span className="text-[11px] font-medium text-stone-600 bg-stone-200/90 border border-stone-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-stone-400" />
+                                Inativo/Pausado (Alerta: 0 un)
+                              </span>
+                            ) : isOutOfStock ? (
                               <span className="text-[11px] font-bold text-rose-700 bg-rose-100 border border-rose-200 px-2 py-0.5 rounded-full flex items-center gap-1">
                                 <AlertCircle className="w-3 h-3" />
                                 Esgotado (0 un)
                               </span>
-                            ) : isLowStock ? (
-                              <span className="text-[11px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                <AlertTriangle className="w-3 h-3 text-amber-700" />
-                                {currentStock} un (Estoque Baixo)
+                            ) : isBelowMin ? (
+                              <span className="text-[11px] font-bold text-rose-800 bg-rose-100 border border-rose-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                {currentStock} un (Abaixo do Mínimo)
+                              </span>
+                            ) : isStandardOrAbove ? (
+                              <span className="text-[11px] font-semibold text-blue-800 bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full">
+                                {currentStock} un (Meta Atingida)
                               </span>
                             ) : (
                               <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full">
@@ -566,13 +573,23 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                           <div className="w-full bg-stone-200 rounded-full h-1.5 overflow-hidden">
                             <div
                               className={`h-full rounded-full transition-all ${
-                                isOutOfStock ? 'bg-rose-500' : isLowStock ? 'bg-amber-500' : 'bg-emerald-500'
+                                isPaused
+                                  ? 'bg-stone-300'
+                                  : isBelowMin
+                                  ? 'bg-rose-500'
+                                  : isStandardOrAbove
+                                  ? 'bg-blue-500'
+                                  : 'bg-emerald-500'
                               }`}
-                              style={{ width: `${isOutOfStock ? 0 : Math.min(100, Math.max(8, stockPct))}%` }}
+                              style={{ width: `${isPaused ? 25 : isOutOfStock ? 0 : Math.min(100, Math.max(6, stockPct))}%` }}
                             />
                           </div>
                           <div className="flex items-center justify-between text-[10px] text-stone-400">
-                            <span>Mínimo recomendado: {minStock} un</span>
+                            <span>
+                              {isPaused
+                                ? 'Alerta de estoque pausado (Mín: 0 un)'
+                                : `Mínimo: ${minStock} un | Meta: ${standardStock} un`}
+                            </span>
                             <span>
                               Total em estoque: {formatCurrency(currentStock * p.actualPrice)}
                             </span>
@@ -713,6 +730,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           product={editingProduct}
           allProducts={products}
           allMaterials={materials}
+          existingCategories={categories}
           defaultHourlyRate={defaultHourlyRate}
           defaultFixedCostPercent={defaultFixedCostPercent}
           defaultProfitMargin={defaultProfitMargin}
@@ -749,6 +767,7 @@ interface ProductRecipeModalProps {
   product: Product | null;
   allProducts: Product[];
   allMaterials: Material[];
+  existingCategories?: string[];
   defaultHourlyRate: number;
   defaultFixedCostPercent: number;
   defaultProfitMargin: number;
@@ -760,6 +779,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   product,
   allProducts,
   allMaterials,
+  existingCategories = [],
   defaultHourlyRate,
   defaultFixedCostPercent,
   defaultProfitMargin,
@@ -769,7 +789,61 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   const isEditing = !!product;
 
   const [name, setName] = useState(product?.name || '');
-  const [category, setCategory] = useState(product?.category || 'Acessórios & Bolsas');
+  const [localCategories, setLocalCategories] = useState<string[]>([]);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
+
+  // Category options list from existing products or passed categories
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    existingCategories.forEach((c) => {
+      if (c?.trim()) set.add(c.trim());
+    });
+    allProducts.forEach((p) => {
+      if (p.category?.trim()) set.add(p.category.trim());
+    });
+    if (product?.category?.trim()) {
+      set.add(product.category.trim());
+    }
+    if (set.size === 0) {
+      ['Acessórios & Bolsas', 'Decoração & Casa', 'Bebê & Infantil', 'Papelaria & Cartonagem'].forEach((c) => set.add(c));
+    }
+    return Array.from(set).sort();
+  }, [existingCategories, allProducts, product]);
+
+  const availableCategories = useMemo(() => {
+    const set = new Set<string>(categoryOptions);
+    localCategories.forEach((c) => {
+      if (c?.trim()) set.add(c.trim());
+    });
+    return Array.from(set).sort();
+  }, [categoryOptions, localCategories]);
+
+  const [category, setCategory] = useState<string>(() => {
+    if (product?.category) return product.category;
+    if (existingCategories.length > 0) return existingCategories[0];
+    return 'Acessórios & Bolsas';
+  });
+
+  const handleAddCustomCategory = () => {
+    const trimmed = newCategoryInput.trim();
+    if (!trimmed) {
+      setIsCustomCategory(false);
+      return;
+    }
+    const existing = availableCategories.find(
+      (c) => c.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (existing) {
+      setCategory(existing);
+    } else {
+      setLocalCategories((prev) => [...prev, trimmed]);
+      setCategory(trimmed);
+    }
+    setIsCustomCategory(false);
+    setNewCategoryInput('');
+  };
+
   const [description, setDescription] = useState(product?.description || '');
   const [imageUrl, setImageUrl] = useState(product?.imageUrl || '');
   const [isIntermediate, setIsIntermediate] = useState(product?.isIntermediate || false);
@@ -779,6 +853,9 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   );
   const [minStock, setMinStock] = useState<string>(
     product?.minStock !== undefined ? product.minStock.toString() : '2'
+  );
+  const [standardStock, setStandardStock] = useState<string>(
+    product?.standardStock !== undefined ? product.standardStock.toString() : '10'
   );
   const [notes, setNotes] = useState(product?.notes || '');
 
@@ -932,11 +1009,23 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     const finalActualPrice = parseFloat(actualPrice) > 0 ? parseFloat(actualPrice) : suggestedPrice;
     const parsedCurrentStock = parseFloat(currentStock) || 0;
     const parsedMinStock = parseFloat(minStock) || 0;
+    const parsedStandardStock = parseFloat(standardStock) > 0 ? parseFloat(standardStock) : Math.max(parsedMinStock * 2, 10);
+
+    let finalCategory = category;
+    if (isCustomCategory && newCategoryInput.trim()) {
+      const trimmed = newCategoryInput.trim();
+      const existingMatch = availableCategories.find(
+        (c) => c.toLowerCase() === trimmed.toLowerCase()
+      );
+      finalCategory = existingMatch || trimmed;
+    } else if (!finalCategory && availableCategories.length > 0) {
+      finalCategory = availableCategories[0];
+    }
 
     const savedProduct: Product = {
       id: product?.id || `prod_${Date.now()}`,
       name: name.trim(),
-      category: category.trim() || 'Acessórios & Bolsas',
+      category: (finalCategory || 'Acessórios & Bolsas').trim(),
       description: description.trim() || undefined,
       imageUrl: imageUrl || undefined,
       isIntermediate,
@@ -958,6 +1047,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       calculatedMarginPercent: finalActualPrice > 0 ? ((finalActualPrice - unitCostFromBatch) / finalActualPrice) * 100 : 0,
       currentStock: parsedCurrentStock,
       minStock: parsedMinStock,
+      standardStock: parsedStandardStock,
       notes: notes.trim() || undefined,
       createdAt: product?.createdAt || new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString().split('T')[0],
@@ -1057,13 +1147,68 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
                     Categoria
                   </label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Acessórios, Bolsas, Mesa Posta..."
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
-                  />
+                  {!isCustomCategory ? (
+                    <div className="flex gap-2">
+                      <select
+                        id="select-product-category"
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value)}
+                        className="flex-1 px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none text-stone-900 cursor-pointer"
+                      >
+                        {availableCategories.map((cat) => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        id="btn-new-product-category"
+                        onClick={() => {
+                          setIsCustomCategory(true);
+                          setNewCategoryInput('');
+                        }}
+                        className="px-3 py-2 text-xs font-medium text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-lg whitespace-nowrap cursor-pointer transition-colors"
+                      >
+                        + Nova Categoria
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        id="input-new-product-category"
+                        placeholder="Nome da nova categoria..."
+                        value={newCategoryInput}
+                        onChange={(e) => setNewCategoryInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddCustomCategory();
+                          }
+                        }}
+                        className="flex-1 px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none text-stone-900"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddCustomCategory}
+                        className="px-3 py-2 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg whitespace-nowrap cursor-pointer transition-colors"
+                      >
+                        Adicionar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCustomCategory(false);
+                          setNewCategoryInput('');
+                        }}
+                        className="px-3 py-2 text-xs font-medium text-stone-600 hover:bg-stone-100 rounded-lg cursor-pointer transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -1108,7 +1253,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   <Package className="w-3.5 h-3.5 text-stone-500" />
                   <span>Controle de Estoque & Pronta-Entrega</span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-stone-700 mb-1">
                       Estoque Atual (Unidades)
@@ -1124,13 +1269,13 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                       placeholder="0"
                     />
                     <span className="text-[10px] text-stone-400 block mt-0.5">
-                      Peças já produzidas e disponíveis para entrega.
+                      Peças disponíveis para entrega.
                     </span>
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold text-stone-700 mb-1">
-                      Estoque Mínimo de Alerta
+                      Estoque Mínimo Recomendado
                     </label>
                     <input
                       id="input-product-min-stock"
@@ -1143,7 +1288,26 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                       placeholder="2"
                     />
                     <span className="text-[10px] text-stone-400 block mt-0.5">
-                      Avisa quando você precisa produzir mais deste item.
+                      Alerta de reposição / estoque baixo.
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-stone-700 mb-1">
+                      Estoque Padrão
+                    </label>
+                    <input
+                      id="input-product-standard-stock"
+                      type="number"
+                      step="1"
+                      min="1"
+                      value={standardStock}
+                      onChange={(e) => setStandardStock(e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
+                      placeholder="10"
+                    />
+                    <span className="text-[10px] text-stone-400 block mt-0.5">
+                      Meta ideal de pronta-entrega (100%).
                     </span>
                   </div>
                 </div>
@@ -1670,6 +1834,38 @@ const FichaTecnicaModal: React.FC<FichaTecnicaModalProps> = ({
               </table>
             </div>
           </div>
+
+          {/* Visual Cost Structure Bar */}
+          {(() => {
+            const total = (product.unitCostFromBatch > 0 ? product.unitCostFromBatch : product.totalCost) || 1;
+            const matPct = (product.materialsCost / total) * 100;
+            const laborPct = (product.laborCost / total) * 100;
+            const fixPct = ((product.fixedCost + product.otherCosts) / total) * 100;
+
+            return (
+              <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-2">
+                <div className="flex items-center justify-between text-[11px] text-stone-600">
+                  <span className="font-bold uppercase tracking-wider text-stone-700">Estrutura do Custo:</span>
+                  <span className="flex items-center gap-3">
+                    <span className="inline-flex items-center gap-1 font-medium">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> Materiais ({formatPercent(matPct)})
+                    </span>
+                    <span className="inline-flex items-center gap-1 font-medium">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Mão de Obra ({formatPercent(laborPct)})
+                    </span>
+                    <span className="inline-flex items-center gap-1 font-medium">
+                      <span className="w-2.5 h-2.5 rounded-full bg-stone-400" /> Fixos & Outros ({formatPercent(fixPct)})
+                    </span>
+                  </span>
+                </div>
+                <div className="w-full bg-stone-200 rounded-full h-2.5 flex overflow-hidden">
+                  <div style={{ width: `${matPct}%` }} className="bg-blue-500 h-full transition-all" title={`Materiais: ${formatCurrency(product.materialsCost)}`} />
+                  <div style={{ width: `${laborPct}%` }} className="bg-amber-500 h-full transition-all" title={`Mão de obra: ${formatCurrency(product.laborCost)}`} />
+                  <div style={{ width: `${fixPct}%` }} className="bg-stone-400 h-full transition-all" title={`Custos fixos e outros: ${formatCurrency(product.fixedCost + product.otherCosts)}`} />
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Detailed Cost Breakdown Table */}
           <div className="grid grid-cols-2 gap-4 bg-stone-50 p-4 rounded-xl border border-stone-200">

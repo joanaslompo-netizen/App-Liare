@@ -67,21 +67,34 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
 
   // Filtered materials
   const filteredMaterials = useMemo(() => {
-    return materials.filter((m) => {
-      const matchesSearch = 
-        m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (m.supplierName && m.supplierName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        m.category.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchesCategory = selectedCategory === 'all' || m.category === selectedCategory;
-      const matchesLowStock = !onlyLowStock || m.currentStock <= m.minStock;
-      const matchesType = 
-        typeFilter === 'all' || 
-        (typeFilter === 'internal' && (!m.materialType || m.materialType === 'internal')) ||
-        (typeFilter === 'for_sale' && m.materialType === 'for_sale');
+    return materials
+      .filter((m) => {
+        const matchesSearch = 
+          m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (m.supplierName && m.supplierName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          m.category.toLowerCase().includes(searchTerm.toLowerCase());
+        
+        const matchesCategory = selectedCategory === 'all' || m.category === selectedCategory;
+        const matchesLowStock = !onlyLowStock || (m.minStock > 0 && m.currentStock <= m.minStock);
+        const matchesType = 
+          typeFilter === 'all' || 
+          (typeFilter === 'internal' && (!m.materialType || m.materialType === 'internal')) ||
+          (typeFilter === 'for_sale' && m.materialType === 'for_sale');
 
-      return matchesSearch && matchesCategory && matchesLowStock && matchesType;
-    });
+        return matchesSearch && matchesCategory && matchesLowStock && matchesType;
+      })
+      .sort((a, b) => {
+        const aPaused = (a.minStock ?? 0) === 0;
+        const bPaused = (b.minStock ?? 0) === 0;
+
+        // MinStock === 0 goes to the bottom of the list
+        if (aPaused !== bPaused) {
+          return aPaused ? 1 : -1;
+        }
+
+        // Alphabetical sorting A to Z
+        return a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' });
+      });
   }, [materials, searchTerm, selectedCategory, onlyLowStock, typeFilter]);
 
   const handleOpenAdd = () => {
@@ -268,7 +281,8 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredMaterials.map((mat) => {
-            const isLowStock = mat.currentStock <= mat.minStock;
+            const isPaused = (mat.minStock ?? 0) === 0;
+            const isLowStock = !isPaused && mat.currentStock <= mat.minStock;
             const stockPct = mat.minStock > 0 ? Math.min(100, (mat.currentStock / (mat.minStock * 2)) * 100) : 100;
 
             return (
@@ -276,7 +290,11 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                 key={mat.id}
                 id={`material-card-${mat.id}`}
                 className={`bg-white rounded-xl border transition-all hover:shadow-md flex flex-col justify-between overflow-hidden ${
-                  isLowStock ? 'border-amber-300 ring-1 ring-amber-300/60' : 'border-stone-200'
+                  isPaused
+                    ? 'opacity-70 bg-stone-50/60 border-stone-200'
+                    : isLowStock
+                    ? 'border-amber-300 ring-1 ring-amber-300/60'
+                    : 'border-stone-200'
                 }`}
               >
                 <div>
@@ -318,12 +336,17 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                             </span>
                           )}
                         </div>
-                        {isLowStock && (
+                        {isPaused ? (
+                          <span className="text-[10px] font-medium text-stone-600 bg-stone-200/90 border border-stone-300 px-1.5 py-0.5 rounded flex items-center gap-1 shrink-0" title="Estoque mínimo igual a 0 (Inativo/Pausado)">
+                            <span className="w-1.5 h-1.5 rounded-full bg-stone-400" />
+                            Inativo/Pausado
+                          </span>
+                        ) : isLowStock ? (
                           <span className="text-[10px] font-bold text-amber-900 bg-amber-200 px-1.5 py-0.5 rounded flex items-center gap-1 shrink-0">
                             <AlertTriangle className="w-3 h-3 text-amber-700" />
                             Estoque Baixo
                           </span>
-                        )}
+                        ) : null}
                       </div>
                       <h4 className="font-semibold text-stone-900 text-sm leading-snug line-clamp-2" title={mat.name}>
                         {mat.name}
@@ -361,10 +384,10 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                       <span className="text-stone-600 font-medium">
                         Estoque Atual:
                       </span>
-                      <span className={`font-semibold ${isLowStock ? 'text-amber-700' : 'text-stone-800'}`}>
+                      <span className={`font-semibold ${isPaused ? 'text-stone-500' : isLowStock ? 'text-amber-700' : 'text-stone-800'}`}>
                         {formatNumber(mat.currentStock)} {UNIT_SHORT[mat.unit]}
                         <span className="text-stone-400 font-normal ml-1">
-                          (Mín: {formatNumber(mat.minStock)} {UNIT_SHORT[mat.unit]})
+                          {isPaused ? '(Pausado - Mín: 0)' : `(Mín: ${formatNumber(mat.minStock)} ${UNIT_SHORT[mat.unit]})`}
                         </span>
                       </span>
                     </div>
@@ -373,7 +396,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                     <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all ${
-                          isLowStock ? 'bg-amber-500' : 'bg-emerald-500'
+                          isPaused ? 'bg-stone-300' : isLowStock ? 'bg-amber-500' : 'bg-emerald-500'
                         }`}
                         style={{ width: `${Math.min(100, Math.max(8, stockPct))}%` }}
                       />

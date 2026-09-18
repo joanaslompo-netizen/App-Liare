@@ -130,14 +130,14 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         );
       })
       .sort((a, b) => {
-        // If filtering by birthday, sort by day of the month
+        // If filtering by birthday, sort by day of the month, then A-Z
         if (filterType === 'birthdays_month') {
           const dayA = a.birthdate ? parseInt(a.birthdate.split('-')[2] || '0', 10) : 0;
           const dayB = b.birthdate ? parseInt(b.birthdate.split('-')[2] || '0', 10) : 0;
-          return dayA - dayB;
+          if (dayA !== dayB) return dayA - dayB;
         }
-        // Otherwise sort alphabetically
-        return a.name.localeCompare(b.name, 'pt-BR');
+        // Standard rule: sort all customers alphabetically from A to Z
+        return a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' });
       });
   }, [customers, searchTerm, filterType, currentMonthNumber, customerSalesMap]);
 

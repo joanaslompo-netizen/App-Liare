@@ -1326,11 +1326,13 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                       className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900"
                     >
                       <option value="">-- Escolher Cliente da Lista --</option>
-                      {customers.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} {c.phone ? `(${c.phone})` : ''} {c.birthdate ? `🎂 ${formatBirthday(c.birthdate)}` : ''}
-                        </option>
-                      ))}
+                      {[...customers]
+                        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }))
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} {c.phone ? `(${c.phone})` : ''} {c.birthdate ? `🎂 ${formatBirthday(c.birthdate)}` : ''}
+                          </option>
+                        ))}
                     </select>
                   </div>
 

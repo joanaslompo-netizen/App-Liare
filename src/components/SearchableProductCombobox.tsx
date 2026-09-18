@@ -53,14 +53,22 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
 
   // Filtered products based on search term (multi-keyword search)
   const filteredProducts = useMemo(() => {
+    let list = eligibleProducts;
     const trimmed = query.trim().toLowerCase();
-    if (!trimmed) return eligibleProducts;
+    if (trimmed) {
+      const keywords = trimmed.split(/\s+/).filter(Boolean);
+      list = eligibleProducts.filter((p) => {
+        const itemsText = (p.items || []).map((it) => it.name).join(' ');
+        const searchBlob = `${p.name} ${p.category} ${p.description || ''} ${itemsText}`.toLowerCase();
+        return keywords.every((kw) => searchBlob.includes(kw));
+      });
+    }
 
-    const keywords = trimmed.split(/\s+/).filter(Boolean);
-    return eligibleProducts.filter((p) => {
-      const itemsText = (p.items || []).map((it) => it.name).join(' ');
-      const searchBlob = `${p.name} ${p.category} ${p.description || ''} ${itemsText}`.toLowerCase();
-      return keywords.every((kw) => searchBlob.includes(kw));
+    return [...list].sort((a, b) => {
+      const aPaused = (a.minStock ?? 2) === 0;
+      const bPaused = (b.minStock ?? 2) === 0;
+      if (aPaused !== bPaused) return aPaused ? 1 : -1;
+      return a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' });
     });
   }, [eligibleProducts, query]);
 

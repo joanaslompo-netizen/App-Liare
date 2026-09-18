@@ -45,6 +45,10 @@
           "type": "array",
           "description": "List of artisan products, recipes and intermediate components"
         },
+        "productions": {
+          "type": "array",
+          "description": "List of planned and completed production batches"
+        },
         "purchases": {
           "type": "array",
           "description": "List of material purchase invoices and history"
@@ -68,6 +72,10 @@
         "settings": {
           "type": "object",
           "description": "Hourly rate, fixed cost %, profit margin, and atelier branding"
+        },
+        "todos": {
+          "type": "array",
+          "description": "Atelier checklist tasks and reminders"
         },
         "version": {
           "type": "number",

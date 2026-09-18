@@ -9,7 +9,7 @@ import {
   User 
 } from 'firebase/auth';
 import { 
-  getFirestore, 
+  initializeFirestore, 
   doc, 
   getDocFromServer 
 } from 'firebase/firestore';
@@ -32,18 +32,27 @@ googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
 
-// Use named Firestore database if specified in config, otherwise default
-export const db = firebaseConfigJson.firestoreDatabaseId && firebaseConfigJson.firestoreDatabaseId !== '(default)'
-  ? getFirestore(app, firebaseConfigJson.firestoreDatabaseId)
-  : getFirestore(app);
+// Configure Firestore with auto-detect long polling for resilient connection in iframe and sandboxed environments
+export const db = initializeFirestore(
+  app,
+  {
+    experimentalAutoDetectLongPolling: true,
+  },
+  firebaseConfigJson.firestoreDatabaseId && firebaseConfigJson.firestoreDatabaseId !== '(default)'
+    ? firebaseConfigJson.firestoreDatabaseId
+    : undefined
+);
 
-// Critical constraint: Validate connection to Firestore on boot
+// Validate connection to Firestore on boot
 export async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Verifique sua conexão ou configuração do Firebase:', error);
+  } catch (error: any) {
+    if (
+      error?.code === 'unavailable' ||
+      (error instanceof Error && error.message.includes('the client is offline'))
+    ) {
+      console.warn('Conexão inicial com Firestore offline ou em reconexão em segundo plano.');
     }
   }
 }

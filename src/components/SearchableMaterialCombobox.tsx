@@ -42,18 +42,25 @@ export const SearchableMaterialCombobox: React.FC<SearchableMaterialComboboxProp
 
   // Filtered materials matching query
   const filteredMaterials = useMemo(() => {
-    if (!query.trim()) {
-      return materials;
-    }
-    const cleanQuery = normalizeText(query);
-    const tokens = cleanQuery.split(/\s+/).filter(Boolean);
+    let list = materials;
+    if (query.trim()) {
+      const cleanQuery = normalizeText(query);
+      const tokens = cleanQuery.split(/\s+/).filter(Boolean);
 
-    return materials.filter((mat) => {
-      const searchBlob = normalizeText(
-        `${mat.name} ${mat.category} ${mat.supplierName || ''} ${mat.notes || ''}`
-      );
-      // All typed tokens must match
-      return tokens.every((token) => searchBlob.includes(token));
+      list = materials.filter((mat) => {
+        const searchBlob = normalizeText(
+          `${mat.name} ${mat.category} ${mat.supplierName || ''} ${mat.notes || ''}`
+        );
+        // All typed tokens must match
+        return tokens.every((token) => searchBlob.includes(token));
+      });
+    }
+
+    return [...list].sort((a, b) => {
+      const aPaused = (a.minStock ?? 0) === 0;
+      const bPaused = (b.minStock ?? 0) === 0;
+      if (aPaused !== bPaused) return aPaused ? 1 : -1;
+      return a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' });
     });
   }, [materials, query]);
 
