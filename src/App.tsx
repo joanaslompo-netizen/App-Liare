@@ -880,6 +880,7 @@ export default function App() {
             onDuplicateProduct={handleDuplicateProduct}
             onQuickStockChange={handleQuickProductStockChange}
             onOpenProduction={handleOpenProductionFromProduct}
+            onOpenProductionHistory={() => setActiveTab('productions')}
           />
         )}
 
@@ -938,6 +939,7 @@ export default function App() {
             purchases={purchases}
             products={products}
             materials={materials}
+            onOpenPurchaseHistory={() => setActiveTab('purchases')}
           />
         )}
 
