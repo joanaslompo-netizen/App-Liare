@@ -74,7 +74,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
           (m.supplierName && m.supplierName.toLowerCase().includes(searchTerm.toLowerCase())) ||
           m.category.toLowerCase().includes(searchTerm.toLowerCase());
         
-        const matchesCategory = selectedCategory === 'all' || m.category === selectedCategory;
+        const matchesCategory = selectedCategory === 'all' || (selectedCategory === 'paused' ? (m.minStock ?? 0) === 0 : m.category === selectedCategory);
         const matchesLowStock = !onlyLowStock || (m.minStock > 0 && m.currentStock <= m.minStock);
         const matchesType = 
           typeFilter === 'all' || 
@@ -234,6 +234,17 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
             }`}
           >
             Todas ({materials.length})
+          </button>
+          <button
+            id="cat-pill-paused"
+            onClick={() => setSelectedCategory('paused')}
+            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              selectedCategory === 'paused'
+                ? 'bg-stone-900 text-white'
+                : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+            }`}
+          >
+            Pausados ({materials.filter((m) => (m.minStock ?? 0) === 0).length})
           </button>
           {categories.map((cat) => {
             const count = materials.filter((m) => m.category === cat).length;

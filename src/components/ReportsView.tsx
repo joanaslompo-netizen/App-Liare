@@ -27,6 +27,7 @@ interface ReportsViewProps {
   purchases: Purchase[];
   products: Product[];
   materials: Material[];
+  onOpenPurchaseHistory?: () => void;
 }
 
 export const ReportsView: React.FC<ReportsViewProps> = ({
@@ -34,6 +35,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   purchases,
   products,
   materials,
+  onOpenPurchaseHistory,
 }) => {
   // Available months extracted from sales & purchases
   const availableMonths = useMemo(() => {
@@ -185,6 +187,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             </select>
             <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
           </div>
+
+          <button
+            type="button"
+            onClick={onOpenPurchaseHistory}
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-stone-700 hover:text-stone-900 hover:bg-stone-100 bg-white border border-stone-200 rounded-xl transition-colors cursor-pointer"
+          >
+            <ShoppingCart className="w-4 h-4 text-amber-700" />
+            Histórico de Compras
+          </button>
 
           <button
             onClick={() => window.print()}

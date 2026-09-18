@@ -47,6 +47,7 @@ interface ProductsViewProps {
   onQuickStockChange?: (id: string, delta: number) => void;
   onOpenProduction?: (product: Product) => void;
   filterLowStockInitial?: boolean;
+  onOpenProductionHistory?: () => void;
 }
 
 export const ProductsView: React.FC<ProductsViewProps> = ({
@@ -61,6 +62,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   onQuickStockChange,
   onOpenProduction,
   filterLowStockInitial = false,
+  onOpenProductionHistory,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'final' | 'intermediate'>('all');
@@ -107,7 +109,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
   // Automatically reset category filter to 'all' if selected category is not in the current view
   useEffect(() => {
-    if (selectedCategory !== 'all' && !visibleCategories.includes(selectedCategory)) {
+    if (selectedCategory !== 'all' && selectedCategory !== 'paused' && !visibleCategories.includes(selectedCategory)) {
       setSelectedCategory('all');
     }
   }, [selectedCategory, visibleCategories]);
@@ -126,8 +128,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           (typeFilter === 'intermediate' && p.isIntermediate) ||
           (typeFilter === 'final' && !p.isIntermediate);
 
-        const isCategoryValid = selectedCategory === 'all' || visibleCategories.includes(selectedCategory);
-        const matchesCategory = !isCategoryValid || selectedCategory === 'all' || p.category === selectedCategory;
+        const isCategoryValid = selectedCategory === 'all' || selectedCategory === 'paused' || visibleCategories.includes(selectedCategory);
+        const matchesCategory = !isCategoryValid || selectedCategory === 'all' || (selectedCategory === 'paused' ? (p.minStock ?? 2) === 0 : p.category === selectedCategory);
 
         const currentStock = p.currentStock ?? 0;
         const minStock = p.minStock !== undefined ? p.minStock : 2;
@@ -182,6 +184,15 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           </h2>
         </div>
 
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenProductionHistory}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-stone-50 text-stone-800 text-sm font-medium rounded-xl border border-stone-200 transition-colors cursor-pointer whitespace-nowrap"
+          >
+            <Hammer className="w-4 h-4 text-amber-600" />
+            <span>Histórico de Produção</span>
+          </button>
         <button
           id="btn-add-product"
           onClick={handleOpenAdd}
@@ -190,6 +201,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           <Plus className="w-4 h-4 text-amber-400" />
           <span>Nova Peça ou Receita</span>
         </button>
+        </div>
       </div>
 
       {/* Filter and Search Bar */}
@@ -318,7 +330,17 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                   : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
               }`}
             >
-              Todas
+              Todas ({products.filter((p) => typeFilter === 'all' || (typeFilter === 'intermediate' && p.isIntermediate) || (typeFilter === 'final' && !p.isIntermediate)).length})
+            </button>
+            <button
+              onClick={() => setSelectedCategory('paused')}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                selectedCategory === 'paused'
+                  ? 'bg-stone-900 text-white'
+                  : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+              }`}
+            >
+              Pausados ({products.filter((p) => (typeFilter === 'all' || (typeFilter === 'intermediate' && p.isIntermediate) || (typeFilter === 'final' && !p.isIntermediate)) && (p.minStock ?? 2) === 0).length})
             </button>
             {visibleCategories.map((cat) => (
               <button
@@ -330,7 +352,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                     : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
                 }`}
               >
-                {cat}
+                {cat} ({products.filter((p) => (typeFilter === 'all' || (typeFilter === 'intermediate' && p.isIntermediate) || (typeFilter === 'final' && !p.isIntermediate)) && p.category === cat).length})
               </button>
             ))}
           </div>

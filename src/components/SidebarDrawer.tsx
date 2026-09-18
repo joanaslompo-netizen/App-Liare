@@ -114,22 +114,6 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
       badgeColor: lowStockCount > 0 ? 'bg-amber-500 text-stone-950 font-bold' : 'bg-stone-100 text-stone-700',
     },
     {
-      id: 'purchases' as NavTab,
-      label: 'Histórico de Compras',
-      description: 'Notas e reposição de insumos',
-      icon: ShoppingCart,
-      badge: purchasesCount > 0 ? `${purchasesCount}` : null,
-      badgeColor: 'bg-stone-100 text-stone-700',
-    },
-    {
-      id: 'productions' as NavTab,
-      label: 'Histórico de Produção',
-      description: 'Baixa de insumos e entrada no estoque',
-      icon: Hammer,
-      badge: productionsCount > 0 ? `${productionsCount}` : null,
-      badgeColor: 'bg-amber-100 text-amber-900 font-semibold',
-    },
-    {
       id: 'sales' as NavTab,
       label: 'Vendas & Pedidos',
       description: 'Controle de lucro e clientes',
