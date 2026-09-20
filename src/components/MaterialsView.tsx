@@ -781,70 +781,70 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
 
             {/* Name, Category, Classification and Supplier */}
             <div className="flex-1 space-y-3.5 w-full">
-              {/* Classification: Insumo interno vs Produto para venda direta */}
-              <div className="bg-stone-50 border border-stone-200 rounded-xl p-3">
-                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2">
-                  Destino / Classificação do Material:
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <label className={"flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all " + (isMadeInAtelier ? "bg-purple-50/80 border-purple-400 ring-1 ring-purple-400/40" : "bg-white border-stone-200 hover:bg-stone-50")}>
-                    <input type="radio" name="materialOrigin" checked={isMadeInAtelier} onChange={() => { setIsMadeInAtelier(true); setMaterialType('internal'); }} className="mt-0.5 text-purple-600 focus:ring-purple-500" />
-                    <div>
-                      <span className="text-xs font-bold text-stone-900 flex items-center gap-1"><Wand2 className="w-3.5 h-3.5 text-purple-700" />Feito no Ateliê</span>
-                      <p className="text-[11px] text-stone-500 mt-0.5 leading-tight">Material produzido por uma receita própria do ateliê.</p>
-                    </div>
+              {/* Material options: all materials are internal by default */}
+              <div className="bg-stone-50 border border-stone-200 rounded-xl p-3 space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider">
+                    Opções do Material
                   </label>
-                  <label
-                    className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all ${
-                      materialType === 'internal'
-                        ? 'bg-amber-50/80 border-amber-400 ring-1 ring-amber-400/40'
-                        : 'bg-white border-stone-200 hover:bg-stone-50'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="materialType"
-                      value="internal"
-                      checked={materialType === 'internal'}
-                      onChange={() => { setMaterialType('internal'); setIsMadeInAtelier(false); }}
-                      className="mt-0.5 text-amber-600 focus:ring-amber-500"
-                    />
-                    <div>
-                      <span className="text-xs font-bold text-stone-900 flex items-center gap-1">
-                        <Layers className="w-3.5 h-3.5 text-amber-700" />
-                        Insumo Interno (Etiqueta, Cera, Caixa...)
-                      </span>
-                      <p className="text-[11px] text-stone-500 mt-0.5 leading-tight">
-                        Usado na produção/embalagem de outras peças. Não é vendido diretamente ao cliente final.
-                      </p>
-                    </div>
-                  </label>
+                  <p className="text-[11px] text-stone-500 mt-0.5">
+                    Todo material é tratado como insumo interno por padrão.
+                  </p>
+                </div>
 
-                  <label
-                    className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all ${
-                      materialType === 'for_sale'
-                        ? 'bg-emerald-50/80 border-emerald-400 ring-1 ring-emerald-400/40'
-                        : 'bg-white border-stone-200 hover:bg-stone-50'
+                <label className={"flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all " + (isMadeInAtelier ? "bg-purple-50/80 border-purple-400 ring-1 ring-purple-400/40" : "bg-white border-stone-200 hover:bg-stone-50")}>
+                  <input
+                    type="checkbox"
+                    checked={isMadeInAtelier}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setIsMadeInAtelier(checked);
+                      if (checked) setMaterialType('internal');
+                    }}
+                    className="mt-0.5 text-purple-600 focus:ring-purple-500 rounded"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-stone-900 flex items-center gap-1">
+                      <Wand2 className="w-3.5 h-3.5 text-purple-700" />
+                      Feito no Ateliê
+                    </span>
+                    <p className="text-[11px] text-stone-500 mt-0.5 leading-tight">
+                      Ative quando este material for criado a partir de uma receita própria do ateliê.
+                    </p>
+                  </div>
+                </label>
+
+                <div className="flex items-center justify-between gap-4 bg-white border border-stone-200 rounded-lg px-3 py-2.5">
+                  <div className="min-w-0">
+                    <span className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
+                      <ShoppingBag className="w-3.5 h-3.5 text-emerald-700" />
+                      Produto Final / Venda Direta
+                    </span>
+                    <p className="text-[11px] text-stone-500 mt-0.5 leading-tight">
+                      Ative somente se este item puder ser vendido diretamente ao cliente.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={materialType === 'for_sale'}
+                    onClick={() => {
+                      const willBeForSale = materialType !== 'for_sale';
+                      setMaterialType(willBeForSale ? 'for_sale' : 'internal');
+                      if (willBeForSale) setIsMadeInAtelier(false);
+                    }}
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${
+                      materialType === 'for_sale' ? 'bg-emerald-600' : 'bg-stone-300'
                     }`}
+                    title={materialType === 'for_sale' ? 'Venda direta ativada' : 'Venda direta desativada'}
                   >
-                    <input
-                      type="radio"
-                      name="materialType"
-                      value="for_sale"
-                      checked={materialType === 'for_sale'}
-                      onChange={() => { setMaterialType('for_sale'); setIsMadeInAtelier(false); }}
-                      className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
+                    <span
+                      className={`inline-block h-4.5 w-4.5 rounded-full bg-white shadow-sm transition-transform ${
+                        materialType === 'for_sale' ? 'translate-x-6' : 'translate-x-1'
+                      }`}
                     />
-                    <div>
-                      <span className="text-xs font-bold text-stone-900 flex items-center gap-1">
-                        <ShoppingBag className="w-3.5 h-3.5 text-emerald-700" />
-                        Produto Final / Venda Direta
-                      </span>
-                      <p className="text-[11px] text-stone-500 mt-0.5 leading-tight">
-                        Item comprado para revenda direta no ateliê ou produto acabado.
-                      </p>
-                    </div>
-                  </label>
+                  </button>
                 </div>
               </div>
 
