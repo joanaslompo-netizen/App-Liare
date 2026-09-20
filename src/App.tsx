@@ -465,6 +465,59 @@ export default function App() {
     );
   }, []);
 
+  // Produz um lote de um material feito no ateliê: consome os ingredientes
+  // da receita e adiciona o rendimento ao estoque do próprio material.
+  const handleProduceMaterial = useCallback((materialId: string, batchCount: number) => {
+    setMaterials((prev) => {
+      const target = prev.find((m) => m.id === materialId);
+      if (!target?.isMadeInAtelier || !target.recipeItems?.length || !target.batchYield) {
+        alert('Este material não possui uma receita válida de produção no ateliê.');
+        return prev;
+      }
+
+      const ingredientRequirements = target.recipeItems.map((item) => ({
+        ...item,
+        required: item.quantity * batchCount,
+      }));
+
+      const insufficient = ingredientRequirements.find((req) => {
+        const ingredient = prev.find((m) => m.id === req.targetId);
+        return !ingredient || ingredient.currentStock < req.required;
+      });
+
+      if (insufficient) {
+        const ingredient = prev.find((m) => m.id === insufficient.targetId);
+        alert('Estoque insuficiente de "' + (ingredient?.name || insufficient.name) + '". Necessário: ' +
+          insufficient.required + ' ' + insufficient.unit + '. Disponível: ' +
+          (ingredient?.currentStock ?? 0) + ' ' + (ingredient?.unit || insufficient.unit) + '.');
+        return prev;
+      }
+
+      const updated = prev.map((m) => {
+        if (m.id === materialId) {
+          return {
+            ...m,
+            currentStock: Number((m.currentStock + m.batchYield! * batchCount).toFixed(4)),
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+        }
+
+        const req = ingredientRequirements.find((item) => item.targetId === m.id);
+        if (req) {
+          return {
+            ...m,
+            currentStock: Number((m.currentStock - req.required).toFixed(4)),
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+        }
+
+        return m;
+      });
+
+      return updated;
+    });
+  }, []);
+
   // ----------------------------------------------------
   // Product Handlers
   // ----------------------------------------------------
@@ -864,6 +917,7 @@ export default function App() {
             onSaveMaterial={handleSaveMaterial}
             onDeleteMaterial={handleDeleteMaterial}
             onQuickStockChange={handleQuickStockChange}
+            onProduceMaterial={handleProduceMaterial}
             filterLowStockInitial={filterLowStockInitial}
           />
         )}
