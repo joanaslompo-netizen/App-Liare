@@ -93,6 +93,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const monthRevenue = monthSales.reduce((acc, s) => acc + s.totalRevenue, 0);
   const monthProfit = monthSales.reduce((acc, s) => acc + s.totalProfit, 0);
   const monthMargin = monthRevenue > 0 ? (monthProfit / monthRevenue) * 100 : 0;
+  const isMonthLoss = monthProfit < 0;
 
   // Format today's date in Portuguese
   const todayFormatted = new Intl.DateTimeFormat('pt-BR', {
@@ -318,16 +319,16 @@ export const HomeView: React.FC<HomeViewProps> = ({
           className="bg-white p-5 rounded-2xl border border-stone-200 hover:border-amber-400 transition-all shadow-xs cursor-pointer group"
         >
           <div className="flex items-center justify-between text-stone-500 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-800">Lucro Líquido Real</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+            <span className={`text-xs font-semibold uppercase tracking-wider ${isMonthLoss ? 'text-red-700' : 'text-emerald-800'}`}>Lucro Líquido Real</span>
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform ${isMonthLoss ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-emerald-600 tracking-tight">
-            +{formatCurrency(monthProfit)}
+          <div className={`text-2xl font-extrabold tracking-tight ${isMonthLoss ? 'text-red-600' : 'text-emerald-600'}`}>
+            {monthProfit > 0 ? '+' : ''}{formatCurrency(monthProfit)}
           </div>
           <div className="mt-2 flex items-center justify-between text-xs text-stone-500">
-            <span>Margem: <strong>{formatPercent(monthMargin)}</strong></span>
+            <span>Margem: <strong className={isMonthLoss ? 'text-red-600' : undefined}>{formatPercent(monthMargin)}</strong></span>
             <span className="text-amber-700 font-medium group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
               Relatório <ArrowRight className="w-3 h-3" />
             </span>
