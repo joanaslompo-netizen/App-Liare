@@ -939,11 +939,8 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       return;
     }
     const q = Math.max(1, parseInt(qtyToAdd, 10) || 1);
-    const p = parseFloat(priceToAdd) || prod.actualPrice;
-    if (p <= 0) {
-      alert('Informe um valor de venda válido para o item.');
-      return;
-    }
+    const parsedPrice = priceToAdd.trim() === '' ? prod.actualPrice : parseFloat(priceToAdd);
+    const p = Number.isFinite(parsedPrice) ? Math.max(0, parsedPrice) : prod.actualPrice;
     const cost = prod.unitCostFromBatch > 0 ? prod.unitCostFromBatch : prod.totalCost;
 
     // Check if product already exists in items list: if so, increment quantity
@@ -1250,8 +1247,8 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                     <label className="block text-[10px] font-bold text-stone-500 mb-0.5">Preço (R$)</label>
                     <input
                       type="number"
-                      step="0.5"
-                      min="0.01"
+                      step="0.01"
+                      min="0"
                       value={priceToAdd}
                       onChange={(e) => setPriceToAdd(e.target.value)}
                       className="w-full px-2.5 py-2 text-sm font-semibold bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
@@ -1302,7 +1299,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                       <label className="block text-[10px] font-bold text-stone-600 mb-0.5">Preço (opcional)</label>
                       <input
                         type="number"
-                        step="0.5"
+                        step="0.01"
                         min="0"
                         value={customPrice}
                         onChange={(e) => setCustomPrice(e.target.value)}
@@ -1496,8 +1493,8 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                         <span className="text-[11px] text-stone-400 font-medium">R$</span>
                         <input
                           type="number"
-                          step="0.5"
-                          min="0.01"
+                          step="0.01"
+                          min="0"
                           value={item.unitPrice}
                           onChange={(e) => handleUpdateItemPrice(itemId, parseFloat(e.target.value) || 0)}
                           className="w-full py-1 px-1.5 text-xs font-semibold bg-stone-50 border border-stone-200 rounded-md focus:ring-1 focus:ring-amber-500 text-stone-900 text-right"
