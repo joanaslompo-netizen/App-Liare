@@ -888,6 +888,24 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   const [itemTypeToAdd, setItemTypeToAdd] = useState<RecipeItemType>('material');
   const [selectedTargetId, setSelectedTargetId] = useState<string>('');
   const [itemQuantity, setItemQuantity] = useState<string>('1');
+  const [recipeVariableSelections, setRecipeVariableSelections] = useState<Record<string, string>>({});
+
+  const selectedMaterialToAdd = useMemo(
+    () => itemTypeToAdd === 'material'
+      ? allMaterials.find((m) => m.id === selectedTargetId) || null
+      : null,
+    [itemTypeToAdd, selectedTargetId, allMaterials]
+  );
+
+  const selectedVirtualRequirements = useMemo(() => {
+    if (!selectedMaterialToAdd?.isVirtualRecipe || !selectedMaterialToAdd.recipeItems?.length) return [];
+    return selectedMaterialToAdd.recipeItems
+      .filter((item) => item.type === 'material' && item.selectionMode === 'category' && item.targetCategory)
+      .map((item) => ({
+        recipeItemId: item.id,
+        category: item.targetCategory as string,
+      }));
+  }, [selectedMaterialToAdd]);
 
   // Labor & Overhead
   const [productionTimeMinutes, setProductionTimeMinutes] = useState<string>(
@@ -965,7 +983,48 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     if (itemTypeToAdd === 'material') {
       const mat = allMaterials.find((m) => m.id === selectedTargetId);
       if (!mat) return;
-      const total = mat.unitCost * qty;
+
+      let effectiveUnitCost = mat.unitCost;
+      let categorySelections: Record<string, string> | undefined;
+
+      if (mat.isVirtualRecipe && mat.recipeItems?.length) {
+        const selections: Record<string, string> = {};
+
+        for (const recipeItem of mat.recipeItems) {
+          if (recipeItem.type === 'material' && recipeItem.selectionMode === 'category' && recipeItem.targetCategory) {
+            const chosenId = recipeVariableSelections[recipeItem.id];
+            const chosen = allMaterials.find(
+              (m) => m.id === chosenId && !m.isVirtualRecipe && m.category === recipeItem.targetCategory
+            );
+
+            if (!chosen) {
+              alert(`Escolha um material da categoria ${recipeItem.targetCategory} para esta receita.`);
+              return;
+            }
+
+            selections[recipeItem.id] = chosen.id;
+          }
+        }
+
+        const recipeTotalCost = mat.recipeItems.reduce((sum, recipeItem) => {
+          if (recipeItem.type !== 'material') {
+            return sum + (recipeItem.unitCost || 0) * recipeItem.quantity;
+          }
+
+          if (recipeItem.selectionMode === 'category' && recipeItem.targetCategory) {
+            const chosen = allMaterials.find((m) => m.id === selections[recipeItem.id]);
+            return sum + (chosen?.unitCost || recipeItem.unitCost || 0) * recipeItem.quantity;
+          }
+
+          const fixedMaterial = allMaterials.find((m) => m.id === recipeItem.targetId);
+          return sum + (fixedMaterial?.unitCost || recipeItem.unitCost || 0) * recipeItem.quantity;
+        }, 0);
+
+        effectiveUnitCost = recipeTotalCost / Math.max(0.0001, mat.batchYield || 1);
+        categorySelections = selections;
+      }
+
+      const total = effectiveUnitCost * qty;
       const newItem: RecipeItem = {
         id: `ri_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
         type: 'material',
@@ -973,8 +1032,9 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
         name: mat.name,
         quantity: qty,
         unit: UNIT_SHORT[mat.unit],
-        unitCost: mat.unitCost,
+        unitCost: effectiveUnitCost,
         totalCost: total,
+        categorySelections,
       };
       setItems([...items, newItem]);
     } else {
@@ -999,6 +1059,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     // Reset picker
     setSelectedTargetId('');
     setItemQuantity('1');
+    setRecipeVariableSelections({});
   };
 
   const handleRemoveItem = (itemId: string) => {
@@ -1399,6 +1460,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                     onChange={() => {
                       setItemTypeToAdd('product');
                       setSelectedTargetId('');
+                      setRecipeVariableSelections({});
                     }}
                     className="text-amber-600 focus:ring-amber-500"
                   />
@@ -1419,7 +1481,10 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                       <SearchableMaterialCombobox
                         materials={allMaterials}
                         selectedMaterialId={selectedTargetId}
-                        onSelectMaterial={(mat) => setSelectedTargetId(mat ? mat.id : '')}
+                        onSelectMaterial={(mat) => {
+                          setSelectedTargetId(mat ? mat.id : '');
+                          setRecipeVariableSelections({});
+                        }}
                         placeholder="Digite para buscar material (ex: cera coco, essência, pavio)..."
                         id="select-recipe-material-search"
                       />
@@ -1463,6 +1528,47 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {selectedMaterialToAdd?.isVirtualRecipe && selectedVirtualRequirements.length > 0 && (
+                  <div className="rounded-xl border border-purple-200 bg-purple-50/70 p-3 space-y-2">
+                    <div>
+                      <span className="text-[11px] font-bold text-purple-950">
+                        Defina o aroma desta receita
+                      </span>
+                      <p className="text-[10px] text-purple-700 mt-0.5">
+                        Esta escolha ficará salva na receita da peça e será usada automaticamente quando você produzir este produto.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {selectedVirtualRequirements.map((requirement, index) => {
+                        const categoryMaterials = allMaterials.filter(
+                          (m) => !m.isVirtualRecipe && m.category === requirement.category
+                        );
+
+                        return (
+                          <div key={requirement.recipeItemId}>
+                            <label className="block text-[10px] font-bold text-stone-700 mb-1">
+                              {requirement.category} *
+                            </label>
+                            <SearchableMaterialCombobox
+                              materials={categoryMaterials}
+                              selectedMaterialId={recipeVariableSelections[requirement.recipeItemId] || ''}
+                              onSelectMaterial={(mat) => {
+                                setRecipeVariableSelections((prev) => ({
+                                  ...prev,
+                                  [requirement.recipeItemId]: mat?.id || '',
+                                }));
+                              }}
+                              placeholder={`Escolha um material de ${requirement.category}...`}
+                              id={`recipe-virtual-category-${index}`}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1500,7 +1606,21 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                           )}
                         </td>
                         <td className="py-2.5 px-3 font-medium text-stone-900">
-                          {it.name}
+                          <div>{it.name}</div>
+                          {it.categorySelections && Object.keys(it.categorySelections).length > 0 && (
+                            <div className="text-[10px] text-purple-700 mt-0.5 space-x-2">
+                              {Object.entries(it.categorySelections).map(([recipeItemId, materialId]) => {
+                                const virtualMaterial = allMaterials.find((m) => m.id === it.targetId);
+                                const variableItem = virtualMaterial?.recipeItems?.find((ri) => ri.id === recipeItemId);
+                                const chosenMaterial = allMaterials.find((m) => m.id === materialId);
+                                return (
+                                  <span key={recipeItemId}>
+                                    {variableItem?.targetCategory || 'Escolha'}: <strong>{chosenMaterial?.name || 'não encontrado'}</strong>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-right text-stone-700 font-semibold">
                           {formatNumber(it.quantity)} {it.unit}
