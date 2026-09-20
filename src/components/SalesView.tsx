@@ -46,6 +46,11 @@ interface SalesViewProps {
   customers: Customer[];
   paymentMethods: string[];
   onSaveSale: (sale: Sale) => void;
+  onProduceCustomItem: (
+    saleId: string,
+    item: SaleItem,
+    customer?: { id?: string; name?: string }
+  ) => { productId: string; productionId: string; producedQuantity: number; unitCost: number } | null;
   onDeleteSale: (id: string) => void;
   onSaveCustomer: (customer: Customer) => void;
   onAddPaymentMethod: (method: string) => void;
@@ -61,6 +66,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   customers = [],
   paymentMethods = ['offline', 'site'],
   onSaveSale,
+  onProduceCustomItem,
   onDeleteSale,
   onSaveCustomer,
   onAddPaymentMethod,
@@ -652,6 +658,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
           initialCustomer={initialCustomerForNewOrder}
           onSaveCustomer={onSaveCustomer}
           onAddPaymentMethod={onAddPaymentMethod}
+          onProduceCustomItem={onProduceCustomItem}
           onClose={() => {
             setIsModalOpen(false);
             setEditingSale(null);
@@ -683,6 +690,11 @@ interface OrderSaleModalProps {
   initialCustomer?: Customer | null;
   onSaveCustomer: (customer: Customer) => void;
   onAddPaymentMethod: (method: string) => void;
+  onProduceCustomItem: (
+    saleId: string,
+    item: SaleItem,
+    customer?: { id?: string; name?: string }
+  ) => { productId: string; productionId: string; producedQuantity: number; unitCost: number } | null;
   onClose: () => void;
   onSave: (sale: Sale) => void;
 }
@@ -696,6 +708,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   initialCustomer,
   onSaveCustomer,
   onAddPaymentMethod,
+  onProduceCustomItem,
   onClose,
   onSave,
 }) => {
@@ -935,6 +948,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       : null;
 
     const customItem: SaleItem = {
+      ...(existingCustom || {}),
       id: existingCustom?.id || `custom_item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       productId: existingCustom?.productId || `custom_product_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       productName: name,
@@ -967,6 +981,40 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     setCustomMaterialQty('1');
     setCustomVariableSelections({});
     setIsCustomItemMode(true);
+  };
+
+  const handleProduceCustomItemNow = (item: SaleItem) => {
+    if (!existingSale) {
+      alert('Salve o pedido primeiro. Depois abra-o novamente para produzir o item personalizado.');
+      return;
+    }
+    if (!item.customRecipeItems?.length) {
+      alert('Preencha os insumos do item personalizado antes de produzir.');
+      return;
+    }
+
+    const result = onProduceCustomItem(
+      existingSale.id,
+      item,
+      { id: customerId, name: customerName.trim() || undefined }
+    );
+    if (!result) return;
+
+    setItems((prev) =>
+      prev.map((current) =>
+        current.id === item.id
+          ? {
+              ...current,
+              customProductId: result.productId,
+              customProductionId: result.productionId,
+              customProducedQuantity: result.producedQuantity,
+              customProducedAt: new Date().toISOString().split('T')[0],
+              unitCost: result.unitCost,
+              totalCost: result.unitCost * current.quantity,
+            }
+          : current
+      )
+    );
   };
 
   // Delivery settings
@@ -1097,6 +1145,18 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     if (totalRevenue <= 0 && !items.some((item) => item.isCustom)) {
       alert('O valor total do pedido deve ser maior que zero.');
       return;
+    }
+
+    if (deliveryStatus === 'entregue') {
+      const customNotReady = items.find(
+        (item) => item.isCustom && (item.customProducedQuantity || 0) < item.quantity
+      );
+      if (customNotReady) {
+        alert(
+          `Antes de marcar o pedido como entregue, produza todas as unidades de "${customNotReady.productName}". Produzidas: ${customNotReady.customProducedQuantity || 0} de ${customNotReady.quantity}.`
+        );
+        return;
+      }
     }
 
     const today = new Date().toISOString().split('T')[0];
@@ -1578,6 +1638,37 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                               ? 'Custo ainda não preenchido'
                               : `Custo un: ${formatCurrency(item.unitCost)}`}
                           </span>
+
+                          {item.isCustom && (
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => handleProduceCustomItemNow(item)}
+                                disabled={!existingSale || !item.customRecipeItems?.length}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-purple-200 bg-purple-50 text-purple-800 text-[10px] font-bold hover:bg-purple-100 disabled:opacity-45 disabled:cursor-not-allowed transition-colors"
+                                title={
+                                  !existingSale
+                                    ? 'Salve o pedido primeiro para liberar a produção'
+                                    : !item.customRecipeItems?.length
+                                      ? 'Preencha os insumos antes de produzir'
+                                      : 'Produzir uma unidade, baixar insumos e adicionar ao estoque'
+                                }
+                              >
+                                <Package className="w-3 h-3" />
+                                Produzir +1
+                              </button>
+                              {(item.customProducedQuantity || 0) > 0 && (
+                                <span className="text-[10px] font-semibold text-emerald-700">
+                                  Produzido: {item.customProducedQuantity} un
+                                </span>
+                              )}
+                              {!existingSale && (
+                                <span className="text-[10px] text-stone-400">
+                                  salve o pedido para produzir
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
 
