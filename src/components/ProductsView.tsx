@@ -22,7 +22,8 @@ import {
   TrendingUp,
   Percent,
   Hammer,
-  Package
+  Package,
+  Sparkles
 } from 'lucide-react';
 import { Product, Material, RecipeItem, RecipeItemType } from '../types';
 import { 
@@ -65,6 +66,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   onOpenProductionHistory,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [recipeScope, setRecipeScope] = useState<'catalog' | 'custom'>('catalog');
   const [typeFilter, setTypeFilter] = useState<'all' | 'final' | 'intermediate'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'in_stock' | 'low_stock' | 'out_of_stock'>(
@@ -78,14 +80,19 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const [adjustingId, setAdjustingId] = useState<string | null>(null);
   const [adjustDelta, setAdjustDelta] = useState<string>('');
 
+  const scopedProducts = useMemo(
+    () => products.filter((p) => recipeScope === 'custom' ? !!p.isCustomRecipe : !p.isCustomRecipe),
+    [products, recipeScope]
+  );
+
   const lowStockCount = useMemo(() => {
-    return products.filter((p) => (p.currentStock ?? 0) <= (p.minStock ?? 2)).length;
+    return products.filter((p) => !p.isCustomRecipe && (p.currentStock ?? 0) <= (p.minStock ?? 2)).length;
   }, [products]);
 
   // Categories (all registered for modals)
   const categories = useMemo(() => {
     const set = new Set<string>();
-    products.forEach((p) => {
+    products.filter((p) => !p.isCustomRecipe).forEach((p) => {
       if (p.category?.trim()) set.add(p.category.trim());
     });
     return Array.from(set).sort();
@@ -94,7 +101,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   // Dynamic categories based on current typeFilter ('all', 'final', 'intermediate')
   const visibleCategories = useMemo(() => {
     const set = new Set<string>();
-    products.forEach((p) => {
+    scopedProducts.forEach((p) => {
       const matchesType = 
         typeFilter === 'all' || 
         (typeFilter === 'intermediate' && p.isIntermediate) ||
@@ -105,7 +112,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       }
     });
     return Array.from(set).sort();
-  }, [products, typeFilter]);
+  }, [scopedProducts, typeFilter]);
 
   // Automatically reset category filter to 'all' if selected category is not in the current view
   useEffect(() => {
@@ -116,7 +123,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
   // Filtered Products
   const filteredProducts = useMemo(() => {
-    return products
+    return scopedProducts
       .filter((p) => {
         const matchesSearch = 
           p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -153,7 +160,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         // Alphabetical A to Z
         return a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' });
       });
-  }, [products, searchTerm, typeFilter, selectedCategory, stockFilter, visibleCategories]);
+  }, [scopedProducts, searchTerm, typeFilter, selectedCategory, stockFilter, visibleCategories]);
 
   const handleOpenAdd = () => {
     setEditingProduct(null);
@@ -193,15 +200,52 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             <Hammer className="w-4 h-4 text-amber-600" />
             <span>Histórico de Produção</span>
           </button>
-        <button
-          id="btn-add-product"
-          onClick={handleOpenAdd}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-sm font-medium rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap"
-        >
-          <Plus className="w-4 h-4 text-amber-400" />
-          <span>Nova Peça ou Receita</span>
-        </button>
+        {recipeScope === 'catalog' && (
+          <button
+            id="btn-add-product"
+            onClick={handleOpenAdd}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-sm font-medium rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap"
+          >
+            <Plus className="w-4 h-4 text-amber-400" />
+            <span>Nova Peça ou Receita</span>
+          </button>
+        )}
         </div>
+      </div>
+
+      <div className="inline-flex items-center p-1 bg-stone-100 rounded-xl border border-stone-200 w-fit">
+        <button
+          type="button"
+          onClick={() => {
+            setRecipeScope('catalog');
+            setSelectedCategory('all');
+            setStockFilter('all');
+          }}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            recipeScope === 'catalog'
+              ? 'bg-white text-stone-900 shadow-xs'
+              : 'text-stone-500 hover:text-stone-800'
+          }`}
+        >
+          Receitas do Catálogo
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setRecipeScope('custom');
+            setTypeFilter('all');
+            setSelectedCategory('all');
+            setStockFilter('all');
+          }}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+            recipeScope === 'custom'
+              ? 'bg-white text-purple-800 shadow-xs'
+              : 'text-stone-500 hover:text-purple-700'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          Personalizadas ({products.filter((p) => p.isCustomRecipe).length})
+        </button>
       </div>
 
       {/* Filter and Search Bar */}
@@ -237,7 +281,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                 typeFilter === 'all' ? 'bg-white text-stone-900 shadow-xs font-semibold' : 'hover:text-stone-900'
               }`}
             >
-              Todos ({products.length})
+              Todos ({scopedProducts.length})
             </button>
             <button
               id="filter-type-final"
@@ -267,7 +311,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
             <span className="text-stone-500 font-medium flex items-center gap-1 shrink-0">
               <Package className="w-3.5 h-3.5 text-stone-400" />
-              Estoque Pronta-Entrega:
+              {recipeScope === 'custom' ? 'Estoque Personalizados:' : 'Estoque Pronta-Entrega:'}
             </span>
             <button
               onClick={() => setStockFilter('all')}
@@ -330,7 +374,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                   : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
               }`}
             >
-              Todas ({products.filter((p) => typeFilter === 'all' || (typeFilter === 'intermediate' && p.isIntermediate) || (typeFilter === 'final' && !p.isIntermediate)).length})
+              Todas ({scopedProducts.filter((p) => typeFilter === 'all' || (typeFilter === 'intermediate' && p.isIntermediate) || (typeFilter === 'final' && !p.isIntermediate)).length})
             </button>
             <button
               onClick={() => setSelectedCategory('paused')}
@@ -340,7 +384,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                   : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
               }`}
             >
-              Pausados ({products.filter((p) => (typeFilter === 'all' || (typeFilter === 'intermediate' && p.isIntermediate) || (typeFilter === 'final' && !p.isIntermediate)) && (p.minStock ?? 2) === 0).length})
+              Pausados ({scopedProducts.filter((p) => !p.isCustomRecipe && (typeFilter === 'all' || (typeFilter === 'intermediate' && p.isIntermediate) || (typeFilter === 'final' && !p.isIntermediate)) && (p.minStock ?? 2) === 0).length})
             </button>
             {visibleCategories.map((cat) => (
               <button
@@ -352,7 +396,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                     : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
                 }`}
               >
-                {cat} ({products.filter((p) => (typeFilter === 'all' || (typeFilter === 'intermediate' && p.isIntermediate) || (typeFilter === 'final' && !p.isIntermediate)) && p.category === cat).length})
+                {cat} ({scopedProducts.filter((p) => (typeFilter === 'all' || (typeFilter === 'intermediate' && p.isIntermediate) || (typeFilter === 'final' && !p.isIntermediate)) && p.category === cat).length})
               </button>
             ))}
           </div>
@@ -366,18 +410,22 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             <Tag className="w-7 h-7" />
           </div>
           <h3 className="text-base font-semibold text-stone-900">
-            Nenhum produto cadastrado
+            {recipeScope === 'custom' ? 'Nenhuma receita personalizada ainda' : 'Nenhum produto cadastrado'}
           </h3>
           <p className="text-sm text-stone-500 max-w-md mx-auto mt-1 mb-5">
-            Crie fichas técnicas com seus tecidos, linhas e componentes. O sistema calcula a mão de obra e sugere o preço ideal de venda.
+            {recipeScope === 'custom'
+              ? 'As receitas aparecem aqui automaticamente quando você usa “Produzir +1” em um item personalizado de pedido.'
+              : 'Crie fichas técnicas com seus materiais e componentes. O sistema calcula os custos e ajuda no controle de produção.'}
           </p>
-          <button
-            onClick={handleOpenAdd}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-stone-900 text-white text-sm font-medium rounded-xl hover:bg-stone-800 transition-colors"
-          >
-            <Plus className="w-4 h-4 text-amber-400" />
-            <span>Criar Primeira Receita</span>
-          </button>
+          {recipeScope === 'catalog' && (
+            <button
+              onClick={handleOpenAdd}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-stone-900 text-white text-sm font-medium rounded-xl hover:bg-stone-800 transition-colors"
+            >
+              <Plus className="w-4 h-4 text-amber-400" />
+              <span>Criar Primeira Receita</span>
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -386,7 +434,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             const subProductItemsCount = p.items.filter((it) => it.type === 'product').length;
             const hasSubProducts = subProductItemsCount > 0;
 
-            const isPaused = (p.minStock ?? 2) === 0;
+            const isPaused = !p.isCustomRecipe && (p.minStock ?? 2) === 0;
 
             return (
               <div
@@ -425,6 +473,13 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                           {p.category}
                         </span>
 
+                        {p.isCustomRecipe && (
+                          <span className="text-[11px] font-semibold text-purple-800 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                            <Sparkles className="w-3 h-3" />
+                            Personalizada
+                          </span>
+                        )}
+
                         {isPaused && (
                           <span className="text-[11px] font-medium text-stone-600 bg-stone-200/90 border border-stone-300 px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0" title="Estoque mínimo igual a 0 (Inativo/Pausado)">
                             <span className="w-1.5 h-1.5 rounded-full bg-stone-400" />
@@ -453,6 +508,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       <h3 className="text-base font-bold text-stone-900 leading-snug">
                         {p.name}
                       </h3>
+                      {p.isCustomRecipe && p.sourceCustomerName && (
+                        <p className="text-[11px] text-purple-700 mt-0.5">
+                          Criada para {p.sourceCustomerName}
+                        </p>
+                      )}
 
                       {p.description && (
                         <p className="text-xs text-stone-500 mt-1 line-clamp-2">
