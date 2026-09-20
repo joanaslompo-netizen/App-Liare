@@ -110,6 +110,13 @@ export interface Product {
   minStock?: number; // Estoque mínimo de segurança para alerta
   standardStock?: number; // Estoque padrão (meta ideal de peças em pronta-entrega)
   notes?: string; // Notas ou observações da receita/peça
+  /** Receita criada a partir de um item personalizado de pedido; fica fora do catálogo normal. */
+  isCustomRecipe?: boolean;
+  /** Pedido/item que originou esta receita personalizada. */
+  sourceSaleId?: string;
+  sourceSaleItemId?: string;
+  sourceCustomerId?: string;
+  sourceCustomerName?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -166,6 +173,15 @@ export interface SaleItem {
   isCustom?: boolean;
   /** Composição opcional do item personalizado, preenchida quando os insumos forem conhecidos. */
   customRecipeItems?: RecipeItem[];
+  /** Receita personalizada criada quando o item é produzido. */
+  customProductId?: string;
+  /** Quantidade já produzida e colocada em estoque para este item. */
+  customProducedQuantity?: number;
+  /** Última produção gerada a partir deste item personalizado. */
+  customProductionId?: string;
+  customProducedAt?: string;
+  /** Evita baixar o estoque mais de uma vez quando o pedido é marcado como entregue. */
+  customStockConsumed?: boolean;
 }
 
 export interface Sale {
