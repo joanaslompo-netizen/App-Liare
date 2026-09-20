@@ -132,6 +132,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
     .filter((s) => s.paymentStatus !== 'pendente_pagamento')
     .reduce((acc, s) => acc + s.totalRevenue, 0);
   const totalProfit = sales.reduce((acc, s) => acc + s.totalProfit, 0);
+  const isTotalLoss = totalProfit < 0;
   const totalPiecesSold = sales.reduce((acc, s) => acc + s.quantity, 0);
 
   // Quick Action: Mark Delivery as Complete
@@ -209,13 +210,13 @@ export const SalesView: React.FC<SalesViewProps> = ({
         </div>
 
         <div className="bg-white p-4.5 rounded-2xl border border-stone-200 shadow-2xs">
-          <span className="text-xs uppercase tracking-wider text-emerald-800 block font-semibold flex items-center gap-1">
-            <TrendingUp className="w-3.5 h-3.5 text-emerald-600" /> Lucro Líquido Real
+          <span className={`text-xs uppercase tracking-wider block font-semibold flex items-center gap-1 ${isTotalLoss ? 'text-red-700' : 'text-emerald-800'}`}>
+            <TrendingUp className={`w-3.5 h-3.5 ${isTotalLoss ? 'text-red-600' : 'text-emerald-600'}`} /> Lucro Líquido Real
           </span>
-          <span className="text-2xl font-extrabold text-emerald-600 mt-1 block tracking-tight">
-            +{formatCurrency(totalProfit)}
+          <span className={`text-2xl font-extrabold mt-1 block tracking-tight ${isTotalLoss ? 'text-red-600' : 'text-emerald-600'}`}>
+            {totalProfit > 0 ? '+' : ''}{formatCurrency(totalProfit)}
           </span>
-          <span className="text-[11px] text-emerald-700 font-medium mt-0.5 block">
+          <span className={`text-[11px] font-medium mt-0.5 block ${isTotalLoss ? 'text-red-700' : 'text-emerald-700'}`}>
             margem calculada sobre custos
           </span>
         </div>
@@ -596,10 +597,10 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
                       {/* Profit & Margin */}
                       <td className="py-3 px-4 text-right">
-                        <span className="font-bold text-emerald-600 block">
-                          +{formatCurrency(sale.totalProfit)}
+                        <span className={`font-bold block ${sale.totalProfit < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                          {sale.totalProfit > 0 ? '+' : ''}{formatCurrency(sale.totalProfit)}
                         </span>
-                        <span className="text-[10px] text-emerald-700 font-semibold">
+                        <span className={`text-[10px] font-semibold ${sale.totalProfit < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
                           {formatPercent(sale.marginPercent)}
                         </span>
                       </td>
@@ -901,6 +902,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   const totalCost = items.reduce((acc, it) => acc + it.totalCost, 0);
   const totalProfit = totalRevenue - totalCost;
   const marginPercent = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+  const isLoss = totalProfit < 0;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1574,7 +1576,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
           {/* Profit Preview Banner */}
           {items.length > 0 && (
-            <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-4 space-y-2 text-xs">
+            <div className={`border rounded-2xl p-4 space-y-2 text-xs ${isLoss ? 'bg-red-50/80 border-red-200' : 'bg-emerald-50/80 border-emerald-200'}`}>
               <div className="flex justify-between text-stone-600">
                 <span>Receita Total do Pedido ({totalQuantity} peças):</span>
                 <span className="font-bold text-stone-900">{formatCurrency(totalRevenue)}</span>
@@ -1583,13 +1585,13 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                 <span>Custo de Produção Total dos Itens:</span>
                 <span>{formatCurrency(totalCost)}</span>
               </div>
-              <div className="pt-2 border-t border-emerald-200 flex justify-between items-baseline">
-                <span className="font-bold text-emerald-950">Lucro Líquido Real:</span>
+              <div className={`pt-2 border-t flex justify-between items-baseline ${isLoss ? 'border-red-200' : 'border-emerald-200'}`}>
+                <span className={`font-bold ${isLoss ? 'text-red-950' : 'text-emerald-950'}`}>Lucro Líquido Real:</span>
                 <div className="text-right">
-                  <span className="text-lg font-extrabold text-emerald-700">
-                    +{formatCurrency(totalProfit)}
+                  <span className={`text-lg font-extrabold ${isLoss ? 'text-red-700' : 'text-emerald-700'}`}>
+                    {totalProfit > 0 ? '+' : ''}{formatCurrency(totalProfit)}
                   </span>
-                  <span className="text-xs text-emerald-800 ml-1.5 font-semibold">
+                  <span className={`text-xs ml-1.5 font-semibold ${isLoss ? 'text-red-800' : 'text-emerald-800'}`}>
                     ({formatPercent(marginPercent)})
                   </span>
                 </div>
