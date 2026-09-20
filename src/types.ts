@@ -27,6 +27,16 @@ export interface Supplier {
   email?: string;
   website?: string;
   notes?: string;
+  /** True when this material is produced by an atelier recipe rather than purchased ready-made. */
+  isMadeInAtelier?: boolean;
+  /** Recipe/BOM used to produce this material when isMadeInAtelier is true. */
+  recipeItems?: RecipeItem[];
+  /** Quantity of material produced by one recipe batch. */
+  batchYield?: number;
+  /** Total cost of one recipe batch. */
+  recipeTotalCost?: number;
+  /** Calculated cost per base unit produced by the recipe. */
+  unitCostFromBatch?: number;
   createdAt: string;
 }
 
