@@ -29,6 +29,7 @@ interface PurchasesViewProps {
   suppliers: Supplier[];
   onSavePurchase: (purchase: Purchase, updateStock: boolean) => void;
   onDeletePurchase: (id: string) => void;
+  onOpenSuppliers?: () => void;
 }
 
 export const PurchasesView: React.FC<PurchasesViewProps> = ({
@@ -37,6 +38,7 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
   suppliers,
   onSavePurchase,
   onDeletePurchase,
+  onOpenSuppliers,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSupplierFilter, setSelectedSupplierFilter] = useState<string>('all');
@@ -77,14 +79,27 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
           </p>
         </div>
 
-        <button
-          id="btn-add-purchase"
-          onClick={() => setIsModalOpen(true)}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-sm font-medium rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap"
-        >
-          <Plus className="w-4 h-4 text-amber-400" />
-          <span>Registrar Compra / NF</span>
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {onOpenSuppliers && (
+            <button
+              type="button"
+              onClick={onOpenSuppliers}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-stone-50 text-stone-800 text-sm font-medium rounded-xl border border-stone-200 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <Building2 className="w-4 h-4 text-amber-700" />
+              <span>Fornecedores</span>
+            </button>
+          )}
+
+          <button
+            id="btn-add-purchase"
+            onClick={() => setIsModalOpen(true)}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-sm font-medium rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap"
+          >
+            <Plus className="w-4 h-4 text-amber-400" />
+            <span>Registrar Compra / NF</span>
+          </button>
+        </div>
       </div>
 
       {/* Summary banner */}
