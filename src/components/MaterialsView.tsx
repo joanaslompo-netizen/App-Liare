@@ -585,9 +585,9 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
   const [isCustomCategory, setIsCustomCategory] = useState(false);
 
   // Unit configuration
-  const [unit, setUnit] = useState<UnitOfMeasure>(material?.unit || 'cm');
+  const [unit, setUnit] = useState<UnitOfMeasure>(material?.unit || 'g');
   const [packageQuantity, setPackageQuantity] = useState<string>(material ? material.packageQuantity.toString() : '1');
-  const [packageUnit, setPackageUnit] = useState<UnitOfMeasure>(material?.packageUnit || 'm');
+  const [packageUnit, setPackageUnit] = useState<UnitOfMeasure>(material?.packageUnit || 'g');
   const [packagePrice, setPackagePrice] = useState<string>(material ? material.packagePrice.toString() : '0');
 
   // Stock
