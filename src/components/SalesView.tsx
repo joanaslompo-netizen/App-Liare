@@ -1444,14 +1444,15 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                           </div>
                         )}
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="text-xs font-bold text-stone-900 block truncate">
+                          <div className="flex items-start gap-1.5 min-w-0">
+                            <span className="text-xs font-bold text-stone-900 block whitespace-normal break-words">
                               {item.productName}
                             </span>
                             {item.isCustom && (
-                              <span className="shrink-0 text-[9px] font-bold text-purple-800 bg-purple-100 border border-purple-200 rounded px-1.5 py-0.5">
-                                Personalizado
-                              </span>
+                              <Sparkles
+                                className="w-3.5 h-3.5 text-purple-600 shrink-0 mt-px"
+                                aria-label="Item personalizado"
+                              />
                             )}
                           </div>
                           <span className="text-[11px] text-stone-500">
@@ -1514,10 +1515,10 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                         <button
                           type="button"
                           onClick={() => handleEditCustomItem(item)}
-                          className="p-1.5 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                          className="p-1.5 text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer shrink-0"
                           title="Editar item personalizado e composição"
                         >
-                          <Sparkles className="w-3.5 h-3.5" />
+                          <Edit2 className="w-3.5 h-3.5" />
                         </button>
                       )}
 
