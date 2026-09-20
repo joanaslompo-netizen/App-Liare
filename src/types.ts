@@ -27,16 +27,6 @@ export interface Supplier {
   email?: string;
   website?: string;
   notes?: string;
-  /** True when this material is produced by an atelier recipe rather than purchased ready-made. */
-  isMadeInAtelier?: boolean;
-  /** Recipe/BOM used to produce this material when isMadeInAtelier is true. */
-  recipeItems?: RecipeItem[];
-  /** Quantity of material produced by one recipe batch. */
-  batchYield?: number;
-  /** Total cost of one recipe batch. */
-  recipeTotalCost?: number;
-  /** Calculated cost per base unit produced by the recipe. */
-  unitCostFromBatch?: number;
   createdAt: string;
 }
 
@@ -58,6 +48,18 @@ export interface Material {
   supplierName?: string;
   imageUrl?: string;
   notes?: string;
+  /** True when this material is built from an atelier recipe instead of being purchased ready-made. */
+  isMadeInAtelier?: boolean;
+  /** Virtual recipes are prepared on demand and therefore do not keep their own stock. */
+  isVirtualRecipe?: boolean;
+  /** Recipe/BOM used when isMadeInAtelier is true. */
+  recipeItems?: RecipeItem[];
+  /** Quantity produced by one recipe batch, in the material base unit. */
+  batchYield?: number;
+  /** Estimated total cost of one recipe batch. */
+  recipeTotalCost?: number;
+  /** Estimated cost per base unit produced by the recipe. */
+  unitCostFromBatch?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -67,12 +69,16 @@ export type RecipeItemType = 'material' | 'product';
 export interface RecipeItem {
   id: string; // unique item row id
   type: RecipeItemType;
-  targetId: string; // ID of Material or Product
+  targetId: string; // ID of Material/Product, or a synthetic category key for category-choice ingredients
   name: string;
   quantity: number;
   unit: string;
   unitCost: number;
   totalCost: number;
+  /** Fixed item by default; category items are chosen only when the final production is launched. */
+  selectionMode?: 'fixed' | 'category';
+  /** Material category used when selectionMode is "category" (ex: "Essências"). */
+  targetCategory?: string;
 }
 
 export interface Product {
