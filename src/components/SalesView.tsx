@@ -777,6 +777,16 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   const [qtyToAdd, setQtyToAdd] = useState<string>('1');
   const [priceToAdd, setPriceToAdd] = useState<string>('');
 
+  // Item personalizado rápido: pertence somente a este pedido e não entra no catálogo.
+  const [isCustomItemMode, setIsCustomItemMode] = useState(false);
+  const [customEditingItemId, setCustomEditingItemId] = useState<string | null>(null);
+  const [customName, setCustomName] = useState('');
+  const [customQty, setCustomQty] = useState('1');
+  const [customPrice, setCustomPrice] = useState('0');
+  const [customRecipeItems, setCustomRecipeItems] = useState<RecipeItem[]>([]);
+  const [customMaterialId, setCustomMaterialId] = useState('');
+  const [customMaterialQty, setCustomMaterialQty] = useState('1');
+
   // When a product is selected in the combobox, pre-fill its selling price
   const handleSelectProductToAdd = (prod: Product | null) => {
     if (prod) {
@@ -786,6 +796,111 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       setSelectedProductIdToAdd('');
       setPriceToAdd('');
     }
+  };
+
+  const resetCustomItemEditor = () => {
+    setCustomEditingItemId(null);
+    setCustomName('');
+    setCustomQty('1');
+    setCustomPrice('0');
+    setCustomRecipeItems([]);
+    setCustomMaterialId('');
+    setCustomMaterialQty('1');
+  };
+
+  const handleAddCustomMaterial = () => {
+    const material = materials.find((m) => m.id === customMaterialId);
+    const qty = parseFloat(customMaterialQty);
+
+    if (!material) {
+      alert('Selecione um material para adicionar.');
+      return;
+    }
+    if (!qty || qty <= 0) {
+      alert('Informe uma quantidade válida do material.');
+      return;
+    }
+
+    const existingIndex = customRecipeItems.findIndex((item) => item.targetId === material.id);
+    if (existingIndex >= 0) {
+      const updated = [...customRecipeItems];
+      const existing = updated[existingIndex];
+      const newQty = existing.quantity + qty;
+      updated[existingIndex] = {
+        ...existing,
+        quantity: newQty,
+        unit: material.unit,
+        unitCost: material.unitCost,
+        totalCost: newQty * material.unitCost,
+      };
+      setCustomRecipeItems(updated);
+    } else {
+      setCustomRecipeItems((prev) => [
+        ...prev,
+        {
+          id: `custom_recipe_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          type: 'material',
+          targetId: material.id,
+          name: material.name,
+          quantity: qty,
+          unit: material.unit,
+          unitCost: material.unitCost,
+          totalCost: qty * material.unitCost,
+          selectionMode: 'fixed',
+        },
+      ]);
+    }
+
+    setCustomMaterialId('');
+    setCustomMaterialQty('1');
+  };
+
+  const handleSaveCustomItem = () => {
+    const name = customName.trim();
+    if (!name) {
+      alert('Informe um nome para o item personalizado.');
+      return;
+    }
+
+    const quantity = Math.max(1, parseInt(customQty, 10) || 1);
+    const unitPrice = Math.max(0, parseFloat(customPrice) || 0);
+    const unitCost = customRecipeItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
+    const existingCustom = customEditingItemId
+      ? items.find((item) => item.id === customEditingItemId)
+      : null;
+
+    const customItem: SaleItem = {
+      id: existingCustom?.id || `custom_item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      productId: existingCustom?.productId || `custom_product_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      productName: name,
+      quantity,
+      unitPrice,
+      unitCost,
+      subtotal: quantity * unitPrice,
+      totalCost: quantity * unitCost,
+      isCustom: true,
+      customRecipeItems: customRecipeItems,
+    };
+
+    if (customEditingItemId) {
+      setItems((prev) => prev.map((item) => item.id === customEditingItemId ? customItem : item));
+    } else {
+      setItems((prev) => [...prev, customItem]);
+    }
+
+    resetCustomItemEditor();
+    setIsCustomItemMode(false);
+  };
+
+  const handleEditCustomItem = (item: SaleItem) => {
+    setCustomEditingItemId(item.id || null);
+    setCustomName(item.productName);
+    setCustomQty(item.quantity.toString());
+    setCustomPrice(item.unitPrice.toString());
+    setCustomRecipeItems(item.customRecipeItems ? [...item.customRecipeItems] : []);
+    setCustomMaterialId('');
+    setCustomMaterialQty('1');
+    setIsCustomItemMode(true);
   };
 
   // Delivery settings
@@ -916,7 +1031,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       alert('Adicione pelo menos um produto ao pedido.');
       return;
     }
-    if (totalRevenue <= 0) {
+    if (totalRevenue <= 0 && !items.some((item) => item.isCustom)) {
       alert('O valor total do pedido deve ser maior que zero.');
       return;
     }
