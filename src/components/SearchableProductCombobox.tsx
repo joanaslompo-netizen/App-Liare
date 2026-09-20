@@ -42,8 +42,9 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
     if (!filterOnlyFinalForSale) return products;
     // By default for orders/sales, we prioritize products intended for sale (!isIntermediate)
     // If there are no final products, show all
-    const finals = products.filter((p) => !p.isIntermediate);
-    return finals.length > 0 ? finals : products;
+    const catalogProducts = products.filter((p) => !p.isCustomRecipe);
+    const finals = catalogProducts.filter((p) => !p.isIntermediate);
+    return finals.length > 0 ? finals : catalogProducts;
   }, [products, filterOnlyFinalForSale]);
 
   // Currently selected product
