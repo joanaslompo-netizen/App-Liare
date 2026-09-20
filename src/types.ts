@@ -160,6 +160,10 @@ export interface SaleItem {
   subtotal?: number;
   totalCost: number;
   totalProfit?: number;
+  /** Item criado somente para este pedido; não entra no catálogo de produtos. */
+  isCustom?: boolean;
+  /** Composição opcional do item personalizado, preenchida quando os insumos forem conhecidos. */
+  customRecipeItems?: RecipeItem[];
 }
 
 export interface Sale {
