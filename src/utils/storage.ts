@@ -1997,7 +1997,8 @@ export const saveTodos = (todos: TodoItem[]) => {
 export const estimateMaterialUnitCost = (
   material: Material,
   allMaterials: Material[],
-  visited: Set<string> = new Set()
+  visited: Set<string> = new Set(),
+  categorySelections?: Record<string, string>
 ): number => {
   if (!material.isMadeInAtelier || !material.recipeItems?.length || !material.batchYield) {
     return material.unitCost || 0;
@@ -2012,11 +2013,22 @@ export const estimateMaterialUnitCost = (
 
     if (item.type === 'material') {
       if (item.selectionMode === 'category' && item.targetCategory) {
-        const options = allMaterials.filter(
-          (m) => !m.isVirtualRecipe && m.category === item.targetCategory
-        );
-        if (options.length > 0) {
-          unitCost = options.reduce((acc, m) => acc + (m.unitCost || 0), 0) / options.length;
+        const selectedId = categorySelections?.[item.id];
+        const selected = selectedId
+          ? allMaterials.find(
+              (m) => m.id === selectedId && !m.isVirtualRecipe && m.category === item.targetCategory
+            )
+          : undefined;
+
+        if (selected) {
+          unitCost = selected.unitCost || 0;
+        } else {
+          const options = allMaterials.filter(
+            (m) => !m.isVirtualRecipe && m.category === item.targetCategory
+          );
+          if (options.length > 0) {
+            unitCost = options.reduce((acc, m) => acc + (m.unitCost || 0), 0) / options.length;
+          }
         }
       } else {
         const child = allMaterials.find((m) => m.id === item.targetId);
@@ -2048,7 +2060,7 @@ export const recalculateProductPricing = (
     if (item.type === 'material') {
       const mat = allMaterials.find((m) => m.id === item.targetId);
       if (mat) {
-        unitCost = estimateMaterialUnitCost(mat, allMaterials);
+        unitCost = estimateMaterialUnitCost(mat, allMaterials, new Set(), item.categorySelections);
         name = mat.name;
       }
     } else if (item.type === 'product') {
