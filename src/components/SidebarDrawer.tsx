@@ -137,18 +137,19 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
       badge: null,
       badgeColor: '',
     },
-    {
-      id: 'suppliers' as NavTab,
-      label: 'Fornecedores',
-      description: 'Contatos e lojas parceiras',
-      icon: Truck,
-      badge: null,
-      badgeColor: '',
-    },
   ];
 
   // Tab Title helper
-  const currentTabObj = navItems.find((n) => n.id === activeTab) || navItems[0];
+  const currentTabObj = activeTab === 'suppliers'
+    ? {
+        id: 'suppliers' as NavTab,
+        label: 'Fornecedores',
+        description: 'Contatos e lojas parceiras',
+        icon: Truck,
+        badge: null,
+        badgeColor: '',
+      }
+    : navItems.find((n) => n.id === activeTab) || navItems[0];
 
   return (
     <>
