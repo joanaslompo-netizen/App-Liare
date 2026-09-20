@@ -40,11 +40,8 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
   // Eligible products based on filter
   const eligibleProducts = useMemo(() => {
     if (!filterOnlyFinalForSale) return products;
-    // By default for orders/sales, we prioritize products intended for sale (!isIntermediate)
-    // If there are no final products, show all
-    const catalogProducts = products.filter((p) => !p.isCustomRecipe);
-    const finals = catalogProducts.filter((p) => !p.isIntermediate);
-    return finals.length > 0 ? finals : catalogProducts;
+    // Em pedidos/vendas, exibe somente receitas marcadas como Produto Final.
+    return products.filter((p) => !p.isCustomRecipe && !p.isIntermediate);
   }, [products, filterOnlyFinalForSale]);
 
   // Currently selected product
