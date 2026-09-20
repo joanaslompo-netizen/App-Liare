@@ -28,7 +28,7 @@ import {
   UserPlus,
   Sparkles
 } from 'lucide-react';
-import { Sale, Product, OrderType, DeliveryStatus, PaymentStatus, SaleItem, Customer } from '../types';
+import { Sale, Product, Material, RecipeItem, OrderType, DeliveryStatus, PaymentStatus, SaleItem, Customer } from '../types';
 import { 
   formatCurrency, 
   formatPercent, 
@@ -37,10 +37,12 @@ import {
   isBirthdayInMonth
 } from '../utils/formatters';
 import { SearchableProductCombobox } from './SearchableProductCombobox';
+import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
 
 interface SalesViewProps {
   sales: Sale[];
   products: Product[];
+  materials: Material[];
   customers: Customer[];
   paymentMethods: string[];
   onSaveSale: (sale: Sale) => void;
@@ -55,6 +57,7 @@ interface SalesViewProps {
 export const SalesView: React.FC<SalesViewProps> = ({
   sales,
   products,
+  materials,
   customers = [],
   paymentMethods = ['offline', 'site'],
   onSaveSale,
@@ -642,6 +645,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
         <OrderSaleModal
           isOpen={isModalOpen}
           products={products}
+          materials={materials}
           customers={customers}
           paymentMethods={paymentMethods}
           existingSale={editingSale}
@@ -672,6 +676,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 interface OrderSaleModalProps {
   isOpen: boolean;
   products: Product[];
+  materials: Material[];
   customers: Customer[];
   paymentMethods: string[];
   existingSale?: Sale | null;
@@ -684,6 +689,7 @@ interface OrderSaleModalProps {
 
 const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   products,
+  materials,
   customers,
   paymentMethods,
   existingSale,
