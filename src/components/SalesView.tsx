@@ -1415,7 +1415,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
             {/* Items List Table / Cards */}
             {items.length === 0 ? (
               <div className="p-4 rounded-xl bg-white border border-dashed border-stone-300 text-center text-xs text-stone-500">
-                Nenhum produto adicionado ao pedido ainda. Use o campo de busca acima para incluir as peças vendidas.
+                Nenhum item adicionado ao pedido ainda. Busque um produto do catálogo ou marque “Personalizado” para uma encomenda única.
               </div>
             ) : (
               <div className="bg-white rounded-xl border border-stone-200 overflow-hidden divide-y divide-stone-100 shadow-2xs">
@@ -1437,11 +1437,20 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                           </div>
                         )}
                         <div className="min-w-0 flex-1">
-                          <span className="text-xs font-bold text-stone-900 block truncate">
-                            {item.productName}
-                          </span>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs font-bold text-stone-900 block truncate">
+                              {item.productName}
+                            </span>
+                            {item.isCustom && (
+                              <span className="shrink-0 text-[9px] font-bold text-purple-800 bg-purple-100 border border-purple-200 rounded px-1.5 py-0.5">
+                                Personalizado
+                              </span>
+                            )}
+                          </div>
                           <span className="text-[11px] text-stone-500">
-                            Custo un: {formatCurrency(item.unitCost)}
+                            {item.isCustom && (!item.customRecipeItems || item.customRecipeItems.length === 0)
+                              ? 'Custo ainda não preenchido'
+                              : `Custo un: ${formatCurrency(item.unitCost)}`}
                           </span>
                         </div>
                       </div>
@@ -1493,6 +1502,17 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                           {formatCurrency(itemSubtotal)}
                         </span>
                       </div>
+
+                      {item.isCustom && (
+                        <button
+                          type="button"
+                          onClick={() => handleEditCustomItem(item)}
+                          className="p-1.5 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                          title="Editar item personalizado e composição"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                        </button>
+                      )}
 
                       {/* Delete item button */}
                       <button
