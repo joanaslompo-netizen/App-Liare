@@ -589,18 +589,23 @@ export default function App() {
 
     if (updateStock) {
       setMaterials((prevMaterials) => {
-        const updated = prevMaterials.map((mat) => {
-          const itemBought = purchase.items.find((it) => it.materialId === mat.id);
-          if (itemBought) {
-            return {
-              ...mat,
-              currentStock: mat.currentStock + itemBought.quantity,
-              updatedAt: new Date().toISOString().split('T')[0],
-            };
-          }
-          return mat;
+        return prevMaterials.map((mat) => {
+          const purchasedItems = purchase.items.filter((it) => it.materialId === mat.id);
+          if (purchasedItems.length === 0) return mat;
+
+          // A quantidade lançada na compra representa pacotes/lotes comprados.
+          // Cada pacote/lote acrescenta ao estoque a quantidade interna cadastrada no material.
+          const stockToAdd = purchasedItems.reduce(
+            (sum, itemBought) => sum + (itemBought.quantity * (mat.packageQuantity || 1)),
+            0
+          );
+
+          return {
+            ...mat,
+            currentStock: Number((mat.currentStock + stockToAdd).toFixed(4)),
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
         });
-        return updated;
       });
     }
   }, []);
