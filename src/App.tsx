@@ -19,7 +19,9 @@ import {
   Product, 
   Purchase, 
   Production,
-  Sale, 
+  ProductionIngredientDeduction,
+  Sale,
+  SaleItem,
   Customer,
   Supplier, 
   AtelierSettings,
@@ -732,17 +734,398 @@ export default function App() {
   }, []);
 
   // ----------------------------------------------------
+  // Produção de Item Personalizado
+  // Cria/atualiza uma receita separada, registra a produção,
+  // baixa os insumos reais e coloca +1 unidade em estoque.
+  // ----------------------------------------------------
+  const handleProduceCustomItem = useCallback((
+    saleId: string,
+    item: SaleItem,
+    customer?: { id?: string; name?: string }
+  ): { productId: string; productionId: string; producedQuantity: number; unitCost: number } | null => {
+    if (!item.isCustom || !item.id) {
+      alert('Não foi possível identificar este item personalizado.');
+      return null;
+    }
+    if (!item.customRecipeItems?.length) {
+      alert('Preencha os insumos/composição do item antes de produzir.');
+      return null;
+    }
+
+    type PendingDeduction = {
+      id: string;
+      targetId: string;
+      type: 'material' | 'product';
+      name: string;
+      unit: string;
+      quantityTotal: number;
+      unitCost: number;
+    };
+
+    const aggregated = new Map<string, PendingDeduction>();
+
+    const addDeduction = (
+      id: string,
+      targetId: string,
+      type: 'material' | 'product',
+      name: string,
+      unit: string,
+      quantity: number,
+      unitCost: number
+    ) => {
+      const key = `${type}:${targetId}`;
+      const existing = aggregated.get(key);
+      if (existing) {
+        existing.quantityTotal += quantity;
+        return;
+      }
+      aggregated.set(key, {
+        id,
+        targetId,
+        type,
+        name,
+        unit,
+        quantityTotal: quantity,
+        unitCost,
+      });
+    };
+
+    for (const customItem of item.customRecipeItems) {
+      if (customItem.type === 'material') {
+        const mat = materials.find((m) => m.id === customItem.targetId);
+        if (!mat) {
+          alert(`O material "${customItem.name}" não foi encontrado no cadastro.`);
+          return null;
+        }
+
+        if (mat.isVirtualRecipe && mat.recipeItems?.length) {
+          const virtualYield = Math.max(0.0001, mat.batchYield || 1);
+          const scale = customItem.quantity / virtualYield;
+
+          for (const recipeItem of mat.recipeItems) {
+            const required = recipeItem.quantity * scale;
+
+            if (recipeItem.type === 'material' && recipeItem.selectionMode === 'category' && recipeItem.targetCategory) {
+              const chosenId = customItem.categorySelections?.[recipeItem.id];
+              const chosen = materials.find(
+                (m) => m.id === chosenId && !m.isVirtualRecipe && m.category === recipeItem.targetCategory
+              );
+              if (!chosen) {
+                alert(`Escolha qual material da categoria "${recipeItem.targetCategory}" será usado em "${mat.name}" antes de produzir.`);
+                return null;
+              }
+
+              addDeduction(
+                `${customItem.id}_${recipeItem.id}`,
+                chosen.id,
+                'material',
+                chosen.name,
+                chosen.unit,
+                required,
+                chosen.unitCost
+              );
+              continue;
+            }
+
+            if (recipeItem.type === 'material') {
+              const child = materials.find((m) => m.id === recipeItem.targetId);
+              if (!child) {
+                alert(`O ingrediente "${recipeItem.name}" da receita virtual não foi encontrado.`);
+                return null;
+              }
+              addDeduction(
+                `${customItem.id}_${recipeItem.id}`,
+                child.id,
+                'material',
+                child.name,
+                child.unit,
+                required,
+                child.unitCost
+              );
+              continue;
+            }
+
+            const subProduct = products.find((p) => p.id === recipeItem.targetId);
+            if (!subProduct) {
+              alert(`O componente "${recipeItem.name}" da receita virtual não foi encontrado.`);
+              return null;
+            }
+            const subCost = subProduct.unitCostFromBatch > 0 ? subProduct.unitCostFromBatch : subProduct.totalCost;
+            addDeduction(
+              `${customItem.id}_${recipeItem.id}`,
+              subProduct.id,
+              'product',
+              subProduct.name,
+              recipeItem.unit || 'un',
+              required,
+              subCost
+            );
+          }
+          continue;
+        }
+
+        addDeduction(
+          customItem.id,
+          mat.id,
+          'material',
+          mat.name,
+          mat.unit,
+          customItem.quantity,
+          mat.unitCost
+        );
+        continue;
+      }
+
+      const subProduct = products.find((p) => p.id === customItem.targetId);
+      if (!subProduct) {
+        alert(`O componente "${customItem.name}" não foi encontrado no cadastro.`);
+        return null;
+      }
+      const subCost = subProduct.unitCostFromBatch > 0 ? subProduct.unitCostFromBatch : subProduct.totalCost;
+      addDeduction(
+        customItem.id,
+        subProduct.id,
+        'product',
+        subProduct.name,
+        customItem.unit || 'un',
+        customItem.quantity,
+        subCost
+      );
+    }
+
+    const pending = Array.from(aggregated.values());
+
+    for (const deduction of pending) {
+      if (deduction.type === 'material') {
+        const mat = materials.find((m) => m.id === deduction.targetId);
+        if (!mat || mat.currentStock < deduction.quantityTotal) {
+          alert(
+            `Estoque insuficiente de "${deduction.name}". Necessário: ${Number(deduction.quantityTotal.toFixed(4))} ${deduction.unit}. Disponível: ${Number((mat?.currentStock || 0).toFixed(4))} ${deduction.unit}.`
+          );
+          return null;
+        }
+      } else {
+        const prod = products.find((p) => p.id === deduction.targetId);
+        const stock = prod?.currentStock ?? 0;
+        if (!prod || stock < deduction.quantityTotal) {
+          alert(
+            `Estoque insuficiente do componente "${deduction.name}". Necessário: ${Number(deduction.quantityTotal.toFixed(4))}. Disponível: ${Number(stock.toFixed(4))}.`
+          );
+          return null;
+        }
+      }
+    }
+
+    const deductedItems: ProductionIngredientDeduction[] = pending.map((deduction) => {
+      const stockBefore = deduction.type === 'material'
+        ? (materials.find((m) => m.id === deduction.targetId)?.currentStock ?? 0)
+        : (products.find((p) => p.id === deduction.targetId)?.currentStock ?? 0);
+      const stockAfter = Number((stockBefore - deduction.quantityTotal).toFixed(4));
+      return {
+        id: deduction.id,
+        targetId: deduction.targetId,
+        type: deduction.type,
+        name: deduction.name,
+        unit: deduction.unit,
+        quantityPerBatch: deduction.quantityTotal,
+        quantityTotal: deduction.quantityTotal,
+        unitCost: deduction.unitCost,
+        totalCost: deduction.unitCost * deduction.quantityTotal,
+        stockBefore,
+        stockAfter,
+      };
+    });
+
+    const today = new Date().toISOString().split('T')[0];
+    const now = Date.now();
+    const existingCustomProduct = item.customProductId
+      ? products.find((p) => p.id === item.customProductId)
+      : undefined;
+    const productId = existingCustomProduct?.id || `custom_prod_${now}_${Math.random().toString(36).slice(2, 6)}`;
+    const productionId = `production_custom_${now}_${Math.random().toString(36).slice(2, 6)}`;
+    const materialsCost = deductedItems.reduce((sum, d) => sum + d.totalCost, 0);
+    const unitCost = materialsCost;
+
+    const customProduct: Product = {
+      id: productId,
+      name: item.productName,
+      category: 'Personalizadas',
+      description: customer?.name ? `Receita personalizada criada para ${customer.name}.` : 'Receita personalizada criada a partir de um pedido.',
+      imageUrl: item.productImageUrl,
+      isIntermediate: false,
+      items: item.customRecipeItems.map((ri) => ({ ...ri })),
+      materialsCost,
+      productionTimeMinutes: existingCustomProduct?.productionTimeMinutes ?? 0,
+      hourlyRate: existingCustomProduct?.hourlyRate ?? 0,
+      laborCost: existingCustomProduct?.laborCost ?? 0,
+      fixedCostPercent: existingCustomProduct?.fixedCostPercent ?? 0,
+      fixedCost: existingCustomProduct?.fixedCost ?? 0,
+      otherCosts: existingCustomProduct?.otherCosts ?? 0,
+      totalCost: unitCost,
+      profitMarginPercent: existingCustomProduct?.profitMarginPercent ?? 0,
+      suggestedPrice: existingCustomProduct?.suggestedPrice ?? item.unitPrice,
+      actualPrice: item.unitPrice,
+      calculatedMarginPercent: item.unitPrice > 0 ? ((item.unitPrice - unitCost) / item.unitPrice) * 100 : 0,
+      netProfit: item.unitPrice - unitCost,
+      batchYield: 1,
+      unitCostFromBatch: unitCost,
+      currentStock: (existingCustomProduct?.currentStock ?? 0) + 1,
+      minStock: 0,
+      standardStock: 0,
+      notes: existingCustomProduct?.notes,
+      isCustomRecipe: true,
+      sourceSaleId: saleId,
+      sourceSaleItemId: item.id,
+      sourceCustomerId: customer?.id,
+      sourceCustomerName: customer?.name,
+      createdAt: existingCustomProduct?.createdAt || today,
+      updatedAt: today,
+    };
+
+    const production: Production = {
+      id: productionId,
+      date: today,
+      productId,
+      productName: item.productName,
+      productCategory: 'Personalizadas',
+      productImageUrl: item.productImageUrl,
+      isIntermediate: false,
+      batchYield: 1,
+      batchCount: 1,
+      quantityProduced: 1,
+      costPerUnit: unitCost,
+      totalCost: unitCost,
+      deductedItems,
+      notes: customer?.name
+        ? `Item personalizado do pedido de ${customer.name}.`
+        : 'Item personalizado produzido a partir de pedido.',
+      createdAt: today,
+    };
+
+    setMaterials((prev) =>
+      prev.map((mat) => {
+        const deduction = deductedItems.find((d) => d.type === 'material' && d.targetId === mat.id);
+        if (!deduction) return mat;
+        return {
+          ...mat,
+          currentStock: Math.max(0, Number((mat.currentStock - deduction.quantityTotal).toFixed(4))),
+          updatedAt: today,
+        };
+      })
+    );
+
+    setProducts((prev) => {
+      let next = prev.map((prod) => {
+        const componentDeduction = deductedItems.find(
+          (d) => d.type === 'product' && d.targetId === prod.id && prod.id !== productId
+        );
+        if (componentDeduction) {
+          return {
+            ...prod,
+            currentStock: Math.max(0, Number(((prod.currentStock ?? 0) - componentDeduction.quantityTotal).toFixed(4))),
+            updatedAt: today,
+          };
+        }
+        return prod;
+      });
+
+      const idx = next.findIndex((prod) => prod.id === productId);
+      if (idx >= 0) {
+        next = [...next];
+        next[idx] = customProduct;
+        return next;
+      }
+      return [customProduct, ...next];
+    });
+
+    setProductions((prev) => [production, ...prev]);
+
+    const producedQuantity = (item.customProducedQuantity ?? 0) + 1;
+    setSales((prev) =>
+      prev.map((sale) => {
+        if (sale.id !== saleId || !sale.items) return sale;
+        return {
+          ...sale,
+          items: sale.items.map((saleItem) =>
+            saleItem.id === item.id
+              ? {
+                  ...saleItem,
+                  customProductId: productId,
+                  customProductionId: productionId,
+                  customProducedAt: today,
+                  customProducedQuantity: producedQuantity,
+                  unitCost,
+                  totalCost: unitCost * saleItem.quantity,
+                }
+              : saleItem
+          ),
+        };
+      })
+    );
+
+    return { productId, productionId, producedQuantity, unitCost };
+  }, [materials, products]);
+
+  // ----------------------------------------------------
   // Sale Handlers
   // ----------------------------------------------------
   const handleSaveSale = useCallback((sale: Sale) => {
     setSales((prev) => {
+      const previousSale = prev.find((s) => s.id === sale.id);
+      const stockAdjustments = new Map<string, number>();
+
+      const normalizedItems = sale.items?.map((item) => {
+        if (!item.isCustom || !item.customProductId) return item;
+
+        const previousItem = previousSale?.items?.find((prevItem) => prevItem.id === item.id);
+        const wasConsumed = previousItem?.customStockConsumed ?? false;
+        const shouldBeConsumed = sale.deliveryStatus === 'entregue';
+
+        if (shouldBeConsumed && !wasConsumed) {
+          stockAdjustments.set(
+            item.customProductId,
+            (stockAdjustments.get(item.customProductId) || 0) - item.quantity
+          );
+          return { ...item, customStockConsumed: true };
+        }
+
+        if (!shouldBeConsumed && wasConsumed) {
+          stockAdjustments.set(
+            item.customProductId,
+            (stockAdjustments.get(item.customProductId) || 0) + item.quantity
+          );
+          return { ...item, customStockConsumed: false };
+        }
+
+        return { ...item, customStockConsumed: wasConsumed || item.customStockConsumed || false };
+      });
+
+      if (stockAdjustments.size > 0) {
+        setProducts((prevProducts) =>
+          prevProducts.map((product) => {
+            const delta = stockAdjustments.get(product.id);
+            if (!delta) return product;
+            return {
+              ...product,
+              currentStock: Math.max(0, Number(((product.currentStock ?? 0) + delta).toFixed(4))),
+              updatedAt: new Date().toISOString().split('T')[0],
+            };
+          })
+        );
+      }
+
+      const normalizedSale: Sale = {
+        ...sale,
+        items: normalizedItems || sale.items,
+      };
+
       const idx = prev.findIndex((s) => s.id === sale.id);
       if (idx >= 0) {
         const updated = [...prev];
-        updated[idx] = sale;
+        updated[idx] = normalizedSale;
         return updated;
       }
-      return [sale, ...prev];
+      return [normalizedSale, ...prev];
     });
   }, []);
 
@@ -974,6 +1357,7 @@ export default function App() {
             customers={customers}
             paymentMethods={paymentMethods}
             onSaveSale={handleSaveSale}
+            onProduceCustomItem={handleProduceCustomItem}
             onDeleteSale={handleDeleteSale}
             onSaveCustomer={handleSaveCustomer}
             onAddPaymentMethod={handleAddPaymentMethod}
