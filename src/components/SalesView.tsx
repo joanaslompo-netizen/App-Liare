@@ -786,6 +786,22 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   const [customRecipeItems, setCustomRecipeItems] = useState<RecipeItem[]>([]);
   const [customMaterialId, setCustomMaterialId] = useState('');
   const [customMaterialQty, setCustomMaterialQty] = useState('1');
+  const [customVariableSelections, setCustomVariableSelections] = useState<Record<string, string>>({});
+
+  const selectedCustomMaterial = useMemo(
+    () => materials.find((m) => m.id === customMaterialId) || null,
+    [materials, customMaterialId]
+  );
+
+  const customVirtualRequirements = useMemo(() => {
+    if (!selectedCustomMaterial?.isVirtualRecipe || !selectedCustomMaterial.recipeItems?.length) return [];
+    return selectedCustomMaterial.recipeItems
+      .filter((item) => item.type === 'material' && item.selectionMode === 'category' && item.targetCategory)
+      .map((item) => ({
+        recipeItemId: item.id,
+        category: item.targetCategory as string,
+      }));
+  }, [selectedCustomMaterial]);
 
   // When a product is selected in the combobox, pre-fill its selling price
   const handleSelectProductToAdd = (prod: Product | null) => {
@@ -806,6 +822,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     setCustomRecipeItems([]);
     setCustomMaterialId('');
     setCustomMaterialQty('1');
+    setCustomVariableSelections({});
   };
 
   const handleAddCustomMaterial = () => {
@@ -821,7 +838,52 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       return;
     }
 
-    const existingIndex = customRecipeItems.findIndex((item) => item.targetId === material.id);
+    let effectiveUnitCost = material.unitCost;
+    let categorySelections: Record<string, string> | undefined;
+
+    if (material.isVirtualRecipe && material.recipeItems?.length) {
+      const selections: Record<string, string> = {};
+
+      for (const recipeItem of material.recipeItems) {
+        if (recipeItem.type === 'material' && recipeItem.selectionMode === 'category' && recipeItem.targetCategory) {
+          const chosenId = customVariableSelections[recipeItem.id];
+          const chosen = materials.find(
+            (m) => m.id === chosenId && !m.isVirtualRecipe && m.category === recipeItem.targetCategory
+          );
+
+          if (!chosen) {
+            alert(`Escolha um material da categoria ${recipeItem.targetCategory} para usar nesta receita virtual.`);
+            return;
+          }
+
+          selections[recipeItem.id] = chosen.id;
+        }
+      }
+
+      const recipeTotalCost = material.recipeItems.reduce((sum, recipeItem) => {
+        if (recipeItem.type !== 'material') {
+          return sum + (recipeItem.unitCost || 0) * recipeItem.quantity;
+        }
+
+        if (recipeItem.selectionMode === 'category' && recipeItem.targetCategory) {
+          const chosenId = selections[recipeItem.id];
+          const chosen = materials.find((m) => m.id === chosenId);
+          return sum + (chosen?.unitCost || recipeItem.unitCost || 0) * recipeItem.quantity;
+        }
+
+        const fixedMaterial = materials.find((m) => m.id === recipeItem.targetId);
+        return sum + (fixedMaterial?.unitCost || recipeItem.unitCost || 0) * recipeItem.quantity;
+      }, 0);
+
+      effectiveUnitCost = recipeTotalCost / Math.max(0.0001, material.batchYield || 1);
+      categorySelections = selections;
+    }
+
+    const selectionsKey = JSON.stringify(categorySelections || {});
+    const existingIndex = customRecipeItems.findIndex(
+      (item) => item.targetId === material.id && JSON.stringify(item.categorySelections || {}) === selectionsKey
+    );
+
     if (existingIndex >= 0) {
       const updated = [...customRecipeItems];
       const existing = updated[existingIndex];
@@ -830,8 +892,9 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
         ...existing,
         quantity: newQty,
         unit: material.unit,
-        unitCost: material.unitCost,
-        totalCost: newQty * material.unitCost,
+        unitCost: effectiveUnitCost,
+        totalCost: newQty * effectiveUnitCost,
+        categorySelections,
       };
       setCustomRecipeItems(updated);
     } else {
@@ -844,15 +907,17 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
           name: material.name,
           quantity: qty,
           unit: material.unit,
-          unitCost: material.unitCost,
-          totalCost: qty * material.unitCost,
+          unitCost: effectiveUnitCost,
+          totalCost: qty * effectiveUnitCost,
           selectionMode: 'fixed',
+          categorySelections,
         },
       ]);
     }
 
     setCustomMaterialId('');
     setCustomMaterialQty('1');
+    setCustomVariableSelections({});
   };
 
   const handleSaveCustomItem = () => {
@@ -900,6 +965,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     setCustomRecipeItems(item.customRecipeItems ? [...item.customRecipeItems] : []);
     setCustomMaterialId('');
     setCustomMaterialQty('1');
+    setCustomVariableSelections({});
     setIsCustomItemMode(true);
   };
 
@@ -1337,7 +1403,10 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                         <SearchableMaterialCombobox
                           materials={materials}
                           selectedMaterialId={customMaterialId}
-                          onSelectMaterial={(mat) => setCustomMaterialId(mat?.id || '')}
+                          onSelectMaterial={(mat) => {
+                            setCustomMaterialId(mat?.id || '');
+                            setCustomVariableSelections({});
+                          }}
                           placeholder="Buscar material..."
                           id="custom-order-material-search"
                         />
@@ -1366,6 +1435,44 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                       </div>
                     </div>
 
+                    {selectedCustomMaterial?.isVirtualRecipe && customVirtualRequirements.length > 0 && (
+                      <div className="rounded-lg border border-purple-200 bg-white p-3 space-y-2">
+                        <div>
+                          <span className="text-[11px] font-bold text-purple-950">Escolha da receita virtual</span>
+                          <p className="text-[10px] text-purple-700 mt-0.5">
+                            Selecione agora qual material será usado nas categorias variáveis desta receita.
+                          </p>
+                        </div>
+
+                        <div className="space-y-2">
+                          {customVirtualRequirements.map((requirement, index) => {
+                            const categoryMaterials = materials.filter(
+                              (m) => !m.isVirtualRecipe && m.category === requirement.category
+                            );
+                            return (
+                              <div key={requirement.recipeItemId}>
+                                <label className="block text-[10px] font-bold text-stone-600 mb-0.5">
+                                  {requirement.category} *
+                                </label>
+                                <SearchableMaterialCombobox
+                                  materials={categoryMaterials}
+                                  selectedMaterialId={customVariableSelections[requirement.recipeItemId] || ''}
+                                  onSelectMaterial={(mat) => {
+                                    setCustomVariableSelections((prev) => ({
+                                      ...prev,
+                                      [requirement.recipeItemId]: mat?.id || '',
+                                    }));
+                                  }}
+                                  placeholder={`Escolha um material de ${requirement.category}...`}
+                                  id={`custom-virtual-category-${index}`}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {customRecipeItems.length > 0 && (
                       <div className="space-y-1.5">
                         {customRecipeItems.map((recipeItem) => (
@@ -1382,6 +1489,20 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                               <span className="text-[10px] text-stone-500">
                                 {recipeItem.quantity} {recipeItem.unit} × {formatCurrency(recipeItem.unitCost)}
                               </span>
+                              {recipeItem.categorySelections && Object.keys(recipeItem.categorySelections).length > 0 && (
+                                <div className="text-[10px] text-purple-700 mt-0.5">
+                                  {Object.entries(recipeItem.categorySelections).map(([recipeItemId, materialId]) => {
+                                    const virtualMaterial = materials.find((m) => m.id === recipeItem.targetId);
+                                    const categoryItem = virtualMaterial?.recipeItems?.find((item) => item.id === recipeItemId);
+                                    const selectedMaterial = materials.find((m) => m.id === materialId);
+                                    return (
+                                      <span key={recipeItemId} className="mr-2">
+                                        {categoryItem?.targetCategory || 'Escolha'}: <strong>{selectedMaterial?.name || 'não encontrado'}</strong>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               <span className="text-[11px] font-bold text-stone-800">{formatCurrency(recipeItem.totalCost)}</span>
