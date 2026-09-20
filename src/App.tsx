@@ -970,6 +970,7 @@ export default function App() {
           <SalesView
             sales={sales}
             products={products}
+            materials={materials}
             customers={customers}
             paymentMethods={paymentMethods}
             onSaveSale={handleSaveSale}
