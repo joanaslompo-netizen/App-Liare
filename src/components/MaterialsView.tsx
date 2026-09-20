@@ -931,196 +931,194 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                 )}
               </div>
 
-              {isMadeInAtelier && (
-                <div className="bg-purple-50/70 border border-purple-200 rounded-xl p-4 space-y-4">
-                  <div>
-                    <h4 className="text-xs font-bold text-purple-950 uppercase tracking-wider flex items-center gap-1.5">
-                      <Wand2 className="w-3.5 h-3.5 text-purple-700" />
-                      Receita do Material Feito no Ateliê
-                    </h4>
-                    <p className="text-[11px] text-purple-800 mt-1">Monte a fórmula do material. O custo será calculado por unidade de rendimento.</p>
-                  </div>
+            </div>
+          </div>
 
-                  <label className="flex items-start gap-2.5 rounded-lg border border-purple-200 bg-white p-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isVirtualRecipe}
-                      onChange={(e) => {
-                        setIsVirtualRecipe(e.target.checked);
-                        if (!e.target.checked) setRecipeInputMode('material');
-                      }}
-                      className="mt-0.5 text-purple-600 focus:ring-purple-500"
-                    />
-                    <div>
-                      <span className="text-xs font-bold text-stone-900">Receita Virtual — produzir somente na hora</span>
-                      <p className="text-[11px] text-stone-500 mt-0.5">
-                        Não controla estoque próprio. Ao produzir uma vela, o app desmonta esta receita e baixa diretamente os ingredientes reais.
-                      </p>
-                    </div>
-                  </label>
+          {isMadeInAtelier && (
+            <div className="bg-purple-50/70 border border-purple-200 rounded-xl p-4 space-y-4">
+              <div>
+                <h4 className="text-xs font-bold text-purple-950 uppercase tracking-wider flex items-center gap-1.5">
+                  <Wand2 className="w-3.5 h-3.5 text-purple-700" />
+                  Receita do Material Feito no Ateliê
+                </h4>
+                <p className="text-[11px] text-purple-800 mt-1">Monte a fórmula do material. O custo será calculado por unidade de rendimento.</p>
+              </div>
 
-                  {isVirtualRecipe && (
-                    <div className="flex items-center gap-2 bg-purple-100/60 rounded-lg p-1">
-                      <button
-                        type="button"
-                        onClick={() => setRecipeInputMode('material')}
-                        className={`flex-1 px-3 py-1.5 rounded-md text-[11px] font-bold transition-colors ${recipeInputMode === 'material' ? 'bg-white text-stone-900 shadow-xs' : 'text-purple-800 hover:bg-white/60'}`}
-                      >
-                        Material específico
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setRecipeInputMode('category')}
-                        className={`flex-1 px-3 py-1.5 rounded-md text-[11px] font-bold transition-colors ${recipeInputMode === 'category' ? 'bg-white text-stone-900 shadow-xs' : 'text-purple-800 hover:bg-white/60'}`}
-                      >
-                        Categoria variável
-                      </button>
-                    </div>
-                  )}
+              <label className="flex items-start gap-2.5 rounded-lg border border-purple-200 bg-white p-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isVirtualRecipe}
+                  onChange={(e) => {
+                    setIsVirtualRecipe(e.target.checked);
+                    if (!e.target.checked) setRecipeInputMode('material');
+                  }}
+                  className="mt-0.5 text-purple-600 focus:ring-purple-500"
+                />
+                <div>
+                  <span className="text-xs font-bold text-stone-900">Receita Virtual — produzir somente na hora</span>
+                </div>
+              </label>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="sm:col-span-2">
-                      {recipeInputMode === 'category' && isVirtualRecipe ? (
-                        <>
-                          <label className="block text-[11px] font-bold text-stone-700 mb-1">Categoria do Ingrediente</label>
-                          <select
-                            value={recipeCategory}
-                            onChange={(e) => setRecipeCategory(e.target.value)}
-                            className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900"
-                          >
-                            <option value="">Selecione a categoria...</option>
-                            {materialCategoriesForRecipe.map((cat) => (
-                              <option key={cat} value={cat}>{cat}</option>
-                            ))}
-                          </select>
-                          <p className="text-[10px] text-purple-700 mt-1">
-                            Na produção da peça você escolherá qual material desta categoria será usado.
-                          </p>
-                        </>
-                      ) : (
-                        <>
-                          <label className="block text-[11px] font-bold text-stone-700 mb-1">Material / Ingrediente</label>
-                          <SearchableMaterialCombobox
-                            materials={materials.filter(m => m.id !== material?.id && !m.isVirtualRecipe)}
-                            selectedMaterialId={recipeTargetId}
-                            onSelectMaterial={(mat) => setRecipeTargetId(mat ? mat.id : '')}
-                            placeholder="Digite para buscar ingrediente..."
-                            id="select-material-recipe-ingredient"
-                          />
-                        </>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-stone-700 mb-1">Quantidade</label>
-                      <input type="number" min="0.0001" step="any" value={recipeQuantity} onChange={(e) => setRecipeQuantity(e.target.value)} className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900" />
-                    </div>
-                  </div>
-
-                  <button type="button" onClick={() => {
-                    const qty = parseFloat(recipeQuantity);
-                    if (!qty || qty <= 0) { alert('Informe uma quantidade válida.'); return; }
-
-                    if (recipeInputMode === 'category' && isVirtualRecipe) {
-                      if (!recipeCategory) { alert('Selecione uma categoria.'); return; }
-                      const options = materials.filter(m => !m.isVirtualRecipe && m.category === recipeCategory);
-                      if (options.length === 0) { alert('Essa categoria ainda não possui materiais cadastrados.'); return; }
-                      const categoryUnits = Array.from(new Set(options.map(m => m.unit)));
-                      if (categoryUnits.length !== 1) {
-                        alert('Os materiais dessa categoria usam unidades diferentes. Para usar a categoria na receita, cadastre todos com a mesma unidade de medida.');
-                        return;
-                      }
-                      const avgUnitCost = options.reduce((sum, m) => sum + m.unitCost, 0) / options.length;
-                      setRecipeItems(prev => [...prev, {
-                        id: 'mri_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-                        type: 'material',
-                        targetId: 'category:' + recipeCategory,
-                        name: 'Categoria: ' + recipeCategory,
-                        quantity: qty,
-                        unit: UNIT_SHORT[categoryUnits[0]],
-                        unitCost: avgUnitCost,
-                        totalCost: avgUnitCost * qty,
-                        selectionMode: 'category',
-                        targetCategory: recipeCategory,
-                      }]);
-                      setRecipeCategory('');
-                    } else {
-                      const target = materials.find(m => m.id === recipeTargetId);
-                      if (!target) { alert('Selecione um ingrediente.'); return; }
-                      setRecipeItems(prev => [...prev, {
-                        id: 'mri_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-                        type: 'material',
-                        targetId: target.id,
-                        name: target.name,
-                        quantity: qty,
-                        unit: UNIT_SHORT[target.unit],
-                        unitCost: target.unitCost,
-                        totalCost: target.unitCost * qty,
-                        selectionMode: 'fixed',
-                      }]);
-                      setRecipeTargetId('');
-                    }
-                    setRecipeQuantity('1');
-                  }} className="w-full py-2 px-3 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1">
-                    <Plus className="w-3.5 h-3.5 text-amber-400" />Adicionar ingrediente
+              {isVirtualRecipe && (
+                <div className="flex items-center gap-2 bg-purple-100/60 rounded-lg p-1">
+                  <button
+                    type="button"
+                    onClick={() => setRecipeInputMode('material')}
+                    className={`flex-1 px-3 py-1.5 rounded-md text-[11px] font-bold transition-colors ${recipeInputMode === 'material' ? 'bg-white text-stone-900 shadow-xs' : 'text-purple-800 hover:bg-white/60'}`}
+                  >
+                    Material específico
                   </button>
-
-                  <div className="space-y-2">
-                    {normalizedRecipeItems.map(item => (
-                      <div key={item.id} className="flex items-center justify-between gap-3 bg-white border border-purple-100 rounded-lg p-2.5">
-                        <div className="min-w-0">
-                          <div className="text-xs font-semibold text-stone-900 truncate flex items-center gap-1.5">
-                            {item.name}
-                            {item.selectionMode === 'category' && (
-                              <span className="text-[9px] font-bold bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">escolher na produção</span>
-                            )}
-                          </div>
-                          <div className="text-[11px] text-stone-500">
-                            {formatNumber(item.quantity)} {item.unit} × {formatCurrency(item.unitCost)}
-                            {item.selectionMode === 'category' ? ' (custo médio estimado)' : ''}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs font-bold text-stone-900">{formatCurrency(item.totalCost)}</span>
-                          <button type="button" onClick={() => setRecipeItems(prev => prev.filter(i => i.id !== item.id))} className="p-1 text-stone-400 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      </div>
-                    ))}
-                    {recipeItems.length === 0 && <div className="text-[11px] text-stone-500 bg-white border border-dashed border-purple-200 rounded-lg p-3 text-center">Nenhum ingrediente adicionado.</div>}
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-stone-700 mb-1">Rendimento por lote ({UNIT_SHORT[unit]})</label>
-                      <input type="number" min="0.0001" step="any" value={recipeBatchYield} onChange={e => setRecipeBatchYield(e.target.value)} className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900" />
-                    </div>
-                    <div className="bg-white border border-purple-200 rounded-lg p-3 flex items-center justify-between">
-                      <span className="text-[11px] text-stone-600">{recipeItems.some(i => i.selectionMode === 'category') ? 'Custo estimado por unidade' : 'Custo por unidade'}</span>
-                      <span className="font-extrabold text-stone-900">{formatCurrency(recipeUnitCost)} / {UNIT_SHORT[unit]}</span>
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRecipeInputMode('category')}
+                    className={`flex-1 px-3 py-1.5 rounded-md text-[11px] font-bold transition-colors ${recipeInputMode === 'category' ? 'bg-white text-stone-900 shadow-xs' : 'text-purple-800 hover:bg-white/60'}`}
+                  >
+                    Categoria variável
+                  </button>
                 </div>
               )}
 
-              {/* Supplier */}
-              <div>
-                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                  Fornecedor
-                </label>
-                <select
-                  id="select-material-supplier"
-                  value={supplierId}
-                  onChange={(e) => setSupplierId(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none text-stone-900"
-                >
-                  <option value="">Selecione um fornecedor (opcional)</option>
-                  {suppliers.map((sup) => (
-                    <option key={sup.id} value={sup.id}>
-                      {sup.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  {recipeInputMode === 'category' && isVirtualRecipe ? (
+                    <>
+                      <label className="block text-[11px] font-bold text-stone-700 mb-1">Categoria do Ingrediente</label>
+                      <select
+                        value={recipeCategory}
+                        onChange={(e) => setRecipeCategory(e.target.value)}
+                        className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900"
+                      >
+                        <option value="">Selecione a categoria...</option>
+                        {materialCategoriesForRecipe.map((cat) => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                      <p className="text-[10px] text-purple-700 mt-1">
+                        Na produção da peça você escolherá qual material desta categoria será usado.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <label className="block text-[11px] font-bold text-stone-700 mb-1">Material / Ingrediente</label>
+                      <SearchableMaterialCombobox
+                        materials={materials.filter(m => m.id !== material?.id && !m.isVirtualRecipe)}
+                        selectedMaterialId={recipeTargetId}
+                        onSelectMaterial={(mat) => setRecipeTargetId(mat ? mat.id : '')}
+                        placeholder="Digite para buscar ingrediente..."
+                        id="select-material-recipe-ingredient"
+                      />
+                    </>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-stone-700 mb-1">Quantidade</label>
+                  <input type="number" min="0.0001" step="any" value={recipeQuantity} onChange={(e) => setRecipeQuantity(e.target.value)} className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900" />
+                </div>
+              </div>
+
+              <button type="button" onClick={() => {
+                const qty = parseFloat(recipeQuantity);
+                if (!qty || qty <= 0) { alert('Informe uma quantidade válida.'); return; }
+
+                if (recipeInputMode === 'category' && isVirtualRecipe) {
+                  if (!recipeCategory) { alert('Selecione uma categoria.'); return; }
+                  const options = materials.filter(m => !m.isVirtualRecipe && m.category === recipeCategory);
+                  if (options.length === 0) { alert('Essa categoria ainda não possui materiais cadastrados.'); return; }
+                  const categoryUnits = Array.from(new Set(options.map(m => m.unit)));
+                  if (categoryUnits.length !== 1) {
+                    alert('Os materiais dessa categoria usam unidades diferentes. Para usar a categoria na receita, cadastre todos com a mesma unidade de medida.');
+                    return;
+                  }
+                  const avgUnitCost = options.reduce((sum, m) => sum + m.unitCost, 0) / options.length;
+                  setRecipeItems(prev => [...prev, {
+                    id: 'mri_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                    type: 'material',
+                    targetId: 'category:' + recipeCategory,
+                    name: 'Categoria: ' + recipeCategory,
+                    quantity: qty,
+                    unit: UNIT_SHORT[categoryUnits[0]],
+                    unitCost: avgUnitCost,
+                    totalCost: avgUnitCost * qty,
+                    selectionMode: 'category',
+                    targetCategory: recipeCategory,
+                  }]);
+                  setRecipeCategory('');
+                } else {
+                  const target = materials.find(m => m.id === recipeTargetId);
+                  if (!target) { alert('Selecione um ingrediente.'); return; }
+                  setRecipeItems(prev => [...prev, {
+                    id: 'mri_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                    type: 'material',
+                    targetId: target.id,
+                    name: target.name,
+                    quantity: qty,
+                    unit: UNIT_SHORT[target.unit],
+                    unitCost: target.unitCost,
+                    totalCost: target.unitCost * qty,
+                    selectionMode: 'fixed',
+                  }]);
+                  setRecipeTargetId('');
+                }
+                setRecipeQuantity('1');
+              }} className="w-full py-2 px-3 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1">
+                <Plus className="w-3.5 h-3.5 text-amber-400" />Adicionar ingrediente
+              </button>
+
+              <div className="space-y-2">
+                {normalizedRecipeItems.map(item => (
+                  <div key={item.id} className="flex items-center justify-between gap-3 bg-white border border-purple-100 rounded-lg p-2.5">
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-stone-900 truncate flex items-center gap-1.5">
+                        {item.name}
+                        {item.selectionMode === 'category' && (
+                          <span className="text-[9px] font-bold bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">escolher na produção</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-stone-500">
+                        {formatNumber(item.quantity)} {item.unit} × {formatCurrency(item.unitCost)}
+                        {item.selectionMode === 'category' ? ' (custo médio estimado)' : ''}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs font-bold text-stone-900">{formatCurrency(item.totalCost)}</span>
+                      <button type="button" onClick={() => setRecipeItems(prev => prev.filter(i => i.id !== item.id))} className="p-1 text-stone-400 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  </div>
+                ))}
+                {recipeItems.length === 0 && <div className="text-[11px] text-stone-500 bg-white border border-dashed border-purple-200 rounded-lg p-3 text-center">Nenhum ingrediente adicionado.</div>}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-stone-700 mb-1">Rendimento por lote ({UNIT_SHORT[unit]})</label>
+                  <input type="number" min="0.0001" step="any" value={recipeBatchYield} onChange={e => setRecipeBatchYield(e.target.value)} className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900" />
+                </div>
+                <div className="bg-white border border-purple-200 rounded-lg p-3 flex items-center justify-between">
+                  <span className="text-[11px] text-stone-600">{recipeItems.some(i => i.selectionMode === 'category') ? 'Custo estimado por unidade' : 'Custo por unidade'}</span>
+                  <span className="font-extrabold text-stone-900">{formatCurrency(recipeUnitCost)} / {UNIT_SHORT[unit]}</span>
+                </div>
               </div>
             </div>
+          )}
+
+          {/* Supplier */}
+          <div>
+            <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+              Fornecedor
+            </label>
+            <select
+              id="select-material-supplier"
+              value={supplierId}
+              onChange={(e) => setSupplierId(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none text-stone-900"
+            >
+              <option value="">Selecione um fornecedor (opcional)</option>
+              {suppliers.map((sup) => (
+                <option key={sup.id} value={sup.id}>
+                  {sup.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Pricing & Unit Calculation Box */}
