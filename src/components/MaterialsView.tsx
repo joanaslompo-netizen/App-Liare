@@ -17,6 +17,7 @@ import {
   ExternalLink,
   Layers,
   ShoppingBag,
+  ShoppingCart,
   Wand2
 } from 'lucide-react';
 import { Material, Supplier, UnitOfMeasure, MaterialType } from '../types';
@@ -37,6 +38,7 @@ interface MaterialsViewProps {
   onDeleteMaterial: (id: string) => void;
   onQuickStockChange: (id: string, delta: number) => void;
   onProduceMaterial?: (materialId: string, batchCount: number) => void;
+  onOpenPurchaseHistory?: () => void;
   filterLowStockInitial?: boolean;
 }
 
@@ -47,6 +49,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
   onDeleteMaterial,
   onQuickStockChange,
   onProduceMaterial,
+  onOpenPurchaseHistory,
   filterLowStockInitial = false,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -133,14 +136,27 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
           </p>
         </div>
 
-        <button
-          id="btn-add-material"
-          onClick={handleOpenAdd}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-sm font-medium rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap"
-        >
-          <Plus className="w-4 h-4 text-amber-400" />
-          <span>Novo Material</span>
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {onOpenPurchaseHistory && (
+            <button
+              type="button"
+              onClick={onOpenPurchaseHistory}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-stone-50 text-stone-800 text-sm font-medium rounded-xl border border-stone-200 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <ShoppingCart className="w-4 h-4 text-amber-700" />
+              <span>Compras de Materiais</span>
+            </button>
+          )}
+
+          <button
+            id="btn-add-material"
+            onClick={handleOpenAdd}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-sm font-medium rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap"
+          >
+            <Plus className="w-4 h-4 text-amber-400" />
+            <span>Novo Material</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter and Search controls */}
