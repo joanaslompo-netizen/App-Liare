@@ -1493,6 +1493,7 @@ export default function App() {
             suppliers={suppliers}
             onSavePurchase={handleSavePurchase}
             onDeletePurchase={handleDeletePurchase}
+            onOpenSuppliers={() => setActiveTab('suppliers')}
           />
         )}
 
