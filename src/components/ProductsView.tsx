@@ -290,7 +290,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                 typeFilter === 'final' ? 'bg-white text-stone-900 shadow-xs font-semibold' : 'hover:text-stone-900'
               }`}
             >
-              Peças Finais
+              Produtos Finais
             </button>
             <button
               id="filter-type-intermediate"
@@ -298,10 +298,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
               className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1 ${
                 typeFilter === 'intermediate' ? 'bg-white text-amber-900 shadow-xs font-semibold' : 'hover:text-stone-900'
               }`}
-              title="Componentes intermediários que podem ser usados como insumos em outras receitas (Ex: Etiquetas, Tags)"
+              title="Receitas que não aparecem em pedidos. Todas as receitas podem ser usadas como sub-produto em outras receitas."
             >
               <Layers className="w-3 h-3 text-amber-600" />
-              <span>Componentes & Insumos</span>
+              <span>Receitas Internas</span>
             </button>
           </div>
         </div>
@@ -488,9 +488,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                         )}
 
                         {p.isIntermediate ? (
-                          <span className="text-[11px] font-semibold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md flex items-center gap-1" title="Pode ser usado como insumo em outras receitas">
+                          <span className="text-[11px] font-semibold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md flex items-center gap-1" title="Disponível como sub-produto, mas não aparece em pedidos">
                             <Layers className="w-3 h-3 text-amber-700" />
-                            Componente / Sub-produto
+                            Receita Interna
                           </span>
                         ) : (
                           <span className="text-[11px] font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md">
@@ -928,7 +928,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
 
   const [description, setDescription] = useState(product?.description || '');
   const [imageUrl, setImageUrl] = useState(product?.imageUrl || '');
-  const [isIntermediate, setIsIntermediate] = useState(product?.isIntermediate || false);
+  const [isFinalProduct, setIsFinalProduct] = useState(product ? !product.isIntermediate : false);
   const [batchYield, setBatchYield] = useState<string>(product?.batchYield ? product.batchYield.toString() : '1');
   const [currentStock, setCurrentStock] = useState<string>(
     product?.currentStock !== undefined ? product.currentStock.toString() : '0'
@@ -1171,7 +1171,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       category: (finalCategory || 'Acessórios & Bolsas').trim(),
       description: description.trim() || undefined,
       imageUrl: imageUrl || undefined,
-      isIntermediate,
+      isIntermediate: !isFinalProduct,
       items,
       materialsCost,
       productionTimeMinutes: parsedMinutes,
@@ -1370,22 +1370,22 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                 </div>
               </div>
 
-              {/* Sub-product toggle - CRITICAL REQUIREMENT */}
-              <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3 flex items-start gap-3">
+              {/* Todas as receitas podem ser usadas como sub-produto; este toggle controla apenas a venda */}
+              <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3 flex items-start gap-3">
                 <input
-                  id="chk-is-intermediate"
+                  id="chk-is-final-product"
                   type="checkbox"
-                  checked={isIntermediate}
-                  onChange={(e) => setIsIntermediate(e.target.checked)}
-                  className="mt-1 w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-stone-300 cursor-pointer"
+                  checked={isFinalProduct}
+                  onChange={(e) => setIsFinalProduct(e.target.checked)}
+                  className="mt-1 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-stone-300 cursor-pointer"
                 />
                 <div>
-                  <label htmlFor="chk-is-intermediate" className="text-xs font-bold text-amber-950 cursor-pointer flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-amber-700" />
-                    Este item é um Componente / Sub-produto? (Ex: Etiqueta, Tag, Laço)
+                  <label htmlFor="chk-is-final-product" className="text-xs font-bold text-emerald-950 cursor-pointer flex items-center gap-1.5">
+                    <ShoppingBag className="w-3.5 h-3.5 text-emerald-700" />
+                    Produto Final
                   </label>
-                  <p className="text-[11px] text-amber-800 mt-0.5">
-                    Marque esta opção para permitir que esta peça seja adicionada como um insumo no custo de outros produtos (ex: aplicar a etiqueta produzida nesta receita dentro do custo de uma bolsa ou necessaire).
+                  <p className="text-[11px] text-emerald-800 mt-0.5">
+                    Marque apenas quando esta receita também for um produto vendido ao cliente. Todas as receitas ficam disponíveis automaticamente para uso como sub-produto em outras receitas.
                   </p>
                 </div>
               </div>
