@@ -180,7 +180,11 @@ export interface SaleItem {
   /** Última produção gerada a partir deste item personalizado. */
   customProductionId?: string;
   customProducedAt?: string;
-  /** Evita baixar o estoque mais de uma vez quando o pedido é marcado como entregue. */
+  /** Quantidade fisicamente separada no ateliê e vinculada a este pedido. */
+  reservedQuantity?: number;
+  /** Quantidade já baixada do estoque físico por entrega/venda concluída. */
+  stockConsumedQuantity?: number;
+  /** Compatibilidade com itens personalizados criados antes do controle geral de reservas. */
   customStockConsumed?: boolean;
 }
 
