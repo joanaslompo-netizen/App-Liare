@@ -1989,6 +1989,50 @@ export const saveTodos = (todos: TodoItem[]) => {
 };
 
 /**
+ * Estimates the unit cost of a material.
+ * Virtual atelier recipes are expanded so product pricing keeps following
+ * the current cost of their real ingredients. Category ingredients use the
+ * average current cost of the materials in that category as a planning estimate.
+ */
+export const estimateMaterialUnitCost = (
+  material: Material,
+  allMaterials: Material[],
+  visited: Set<string> = new Set()
+): number => {
+  if (!material.isMadeInAtelier || !material.recipeItems?.length || !material.batchYield) {
+    return material.unitCost || 0;
+  }
+
+  if (visited.has(material.id)) return material.unitCost || 0;
+  const nextVisited = new Set(visited);
+  nextVisited.add(material.id);
+
+  const recipeCost = material.recipeItems.reduce((sum, item) => {
+    let unitCost = item.unitCost || 0;
+
+    if (item.type === 'material') {
+      if (item.selectionMode === 'category' && item.targetCategory) {
+        const options = allMaterials.filter(
+          (m) => !m.isVirtualRecipe && m.category === item.targetCategory
+        );
+        if (options.length > 0) {
+          unitCost = options.reduce((acc, m) => acc + (m.unitCost || 0), 0) / options.length;
+        }
+      } else {
+        const child = allMaterials.find((m) => m.id === item.targetId);
+        if (child) {
+          unitCost = estimateMaterialUnitCost(child, allMaterials, nextVisited);
+        }
+      }
+    }
+
+    return sum + unitCost * item.quantity;
+  }, 0);
+
+  return recipeCost / Math.max(0.0001, material.batchYield);
+};
+
+/**
  * Recalculates product total cost, labor cost, suggested price and margins.
  */
 export const recalculateProductPricing = (
@@ -2004,7 +2048,7 @@ export const recalculateProductPricing = (
     if (item.type === 'material') {
       const mat = allMaterials.find((m) => m.id === item.targetId);
       if (mat) {
-        unitCost = mat.unitCost;
+        unitCost = estimateMaterialUnitCost(mat, allMaterials);
         name = mat.name;
       }
     } else if (item.type === 'product') {
