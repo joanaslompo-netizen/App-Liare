@@ -88,8 +88,8 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
         return matchesSearch && matchesCategory && matchesLowStock && matchesType;
       })
       .sort((a, b) => {
-        const aPaused = (a.minStock ?? 0) === 0;
-        const bPaused = (b.minStock ?? 0) === 0;
+        const aPaused = !a.isVirtualRecipe && (a.minStock ?? 0) === 0;
+        const bPaused = !b.isVirtualRecipe && (b.minStock ?? 0) === 0;
 
         // MinStock === 0 goes to the bottom of the list
         if (aPaused !== bPaused) {
