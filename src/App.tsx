@@ -1044,21 +1044,33 @@ export default function App() {
     setSales((prev) =>
       prev.map((sale) => {
         if (sale.id !== saleId || !sale.items) return sale;
+
+        const updatedItems = sale.items.map((saleItem) =>
+          saleItem.id === item.id
+            ? {
+                ...saleItem,
+                customProductId: productId,
+                customProductionId: productionId,
+                customProducedAt: today,
+                customProducedQuantity: producedQuantity,
+                unitCost,
+                totalCost: unitCost * saleItem.quantity,
+              }
+            : saleItem
+        );
+        const saleRevenue = updatedItems.reduce(
+          (sum, saleItem) => sum + (saleItem.subtotal ?? saleItem.quantity * saleItem.unitPrice),
+          0
+        );
+        const saleCost = updatedItems.reduce((sum, saleItem) => sum + saleItem.totalCost, 0);
+        const saleProfit = saleRevenue - saleCost;
+
         return {
           ...sale,
-          items: sale.items.map((saleItem) =>
-            saleItem.id === item.id
-              ? {
-                  ...saleItem,
-                  customProductId: productId,
-                  customProductionId: productionId,
-                  customProducedAt: today,
-                  customProducedQuantity: producedQuantity,
-                  unitCost,
-                  totalCost: unitCost * saleItem.quantity,
-                }
-              : saleItem
-          ),
+          items: updatedItems,
+          totalCost: saleCost,
+          totalProfit: saleProfit,
+          marginPercent: saleRevenue > 0 ? (saleProfit / saleRevenue) * 100 : 0,
         };
       })
     );
@@ -1081,23 +1093,27 @@ export default function App() {
         const wasConsumed = previousItem?.customStockConsumed ?? false;
         const shouldBeConsumed = sale.deliveryStatus === 'entregue';
 
-        if (shouldBeConsumed && !wasConsumed) {
-          stockAdjustments.set(
-            item.customProductId,
-            (stockAdjustments.get(item.customProductId) || 0) - item.quantity
-          );
+        if (shouldBeConsumed) {
+          const previouslyConsumedQty = wasConsumed ? (previousItem?.quantity || 0) : 0;
+          const deltaToConsume = item.quantity - previouslyConsumedQty;
+          if (deltaToConsume !== 0) {
+            stockAdjustments.set(
+              item.customProductId,
+              (stockAdjustments.get(item.customProductId) || 0) - deltaToConsume
+            );
+          }
           return { ...item, customStockConsumed: true };
         }
 
-        if (!shouldBeConsumed && wasConsumed) {
+        if (wasConsumed) {
           stockAdjustments.set(
             item.customProductId,
-            (stockAdjustments.get(item.customProductId) || 0) + item.quantity
+            (stockAdjustments.get(item.customProductId) || 0) + (previousItem?.quantity || item.quantity)
           );
           return { ...item, customStockConsumed: false };
         }
 
-        return { ...item, customStockConsumed: wasConsumed || item.customStockConsumed || false };
+        return { ...item, customStockConsumed: false };
       });
 
       if (stockAdjustments.size > 0) {
