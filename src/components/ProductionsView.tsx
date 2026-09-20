@@ -562,7 +562,13 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
       const scalePerProductBatch = productItem.quantity / virtualYield;
 
       return virtualMaterial.recipeItems
-        .filter((recipeItem) => recipeItem.type === 'material' && recipeItem.selectionMode === 'category' && recipeItem.targetCategory)
+        .filter(
+          (recipeItem) =>
+            recipeItem.type === 'material' &&
+            recipeItem.selectionMode === 'category' &&
+            recipeItem.targetCategory &&
+            !productItem.categorySelections?.[recipeItem.id]
+        )
         .map((recipeItem) => ({
           key: makeVariableKey(productItem.id, virtualMaterial.id, recipeItem.id),
           virtualMaterialId: virtualMaterial.id,
@@ -625,7 +631,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
 
             if (recipeItem.type === 'material' && recipeItem.selectionMode === 'category' && recipeItem.targetCategory) {
               const selectionKey = makeVariableKey(item.id, mat.id, recipeItem.id);
-              const chosenId = variableSelections[selectionKey];
+              const chosenId = item.categorySelections?.[recipeItem.id] || variableSelections[selectionKey];
               const chosen = materials.find(
                 (m) => m.id === chosenId && !m.isVirtualRecipe && m.category === recipeItem.targetCategory
               );
