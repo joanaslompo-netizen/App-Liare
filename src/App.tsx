@@ -1460,6 +1460,7 @@ export default function App() {
             onDeleteMaterial={handleDeleteMaterial}
             onQuickStockChange={handleQuickStockChange}
             onProduceMaterial={handleProduceMaterial}
+            onOpenPurchaseHistory={() => setActiveTab('purchases')}
             filterLowStockInitial={filterLowStockInitial}
           />
         )}
