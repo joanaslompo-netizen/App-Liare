@@ -1427,8 +1427,8 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                   const itemId = item.id || `item_${idx}_${item.productId}`;
                   const itemSubtotal = item.subtotal ?? (item.quantity * item.unitPrice);
                   return (
-                    <div key={itemId} className="p-3 flex items-center justify-between gap-3 hover:bg-stone-50/50 transition-colors">
-                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div key={itemId} className="p-3 flex flex-wrap sm:flex-nowrap items-center gap-2.5 hover:bg-stone-50/50 transition-colors">
+                      <div className="flex items-center gap-2.5 min-w-0 flex-[1_1_240px]">
                         {item.productImageUrl ? (
                           <img
                             src={item.productImageUrl}
@@ -1441,16 +1441,16 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                           </div>
                         )}
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-start gap-1.5 min-w-0">
-                            <span className="text-xs font-bold text-stone-900 block whitespace-normal break-words">
-                              {item.productName}
-                            </span>
+                          <div className="flex items-center gap-1.5 min-w-0">
                             {item.isCustom && (
                               <Sparkles
-                                className="w-3.5 h-3.5 text-purple-600 shrink-0 mt-px"
+                                className="w-3.5 h-3.5 text-purple-600 shrink-0"
                                 aria-label="Item personalizado"
                               />
                             )}
+                            <span className="text-xs font-bold text-stone-900 block whitespace-nowrap">
+                              {item.productName}
+                            </span>
                           </div>
                           <span className="text-[11px] text-stone-500">
                             {item.isCustom && (!item.customRecipeItems || item.customRecipeItems.length === 0)
@@ -1461,7 +1461,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                       </div>
 
                       {/* Quantity Selector with +/- buttons */}
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-1.5 shrink-0 sm:ml-auto">
                         <button
                           type="button"
                           onClick={() => handleUpdateItemQty(itemId, item.quantity - 1)}
