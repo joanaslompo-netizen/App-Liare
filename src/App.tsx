@@ -1053,6 +1053,10 @@ export default function App() {
                 customProductionId: productionId,
                 customProducedAt: today,
                 customProducedQuantity: producedQuantity,
+                reservedQuantity: Math.min(
+                  saleItem.quantity,
+                  (saleItem.reservedQuantity || 0) + 1
+                ),
                 unitCost,
                 totalCost: unitCost * saleItem.quantity,
               }
@@ -1079,62 +1083,196 @@ export default function App() {
   }, [materials, products]);
 
   // ----------------------------------------------------
+  // Reservas de estoque para pedidos
+  // A reserva não altera o estoque físico: apenas separa a peça para um pedido.
+  // ----------------------------------------------------
+  const handleReserveSaleItem = useCallback((saleId: string, itemId: string): number | null => {
+    const sale = sales.find((s) => s.id === saleId);
+    const item = sale?.items?.find((saleItem) => saleItem.id === itemId);
+    if (!sale || !item) return null;
+
+    if (sale.deliveryStatus === 'entregue') {
+      alert('Este pedido já foi entregue.');
+      return null;
+    }
+
+    const stockProductId = item.isCustom ? item.customProductId : item.productId;
+    if (!stockProductId) {
+      alert('Este item ainda não possui uma peça produzida em estoque para reservar.');
+      return null;
+    }
+
+    const stockProduct = products.find((p) => p.id === stockProductId);
+    if (!stockProduct) {
+      alert('Não foi possível localizar este produto no estoque.');
+      return null;
+    }
+
+    const reservedAcrossOrders = sales.reduce((total, currentSale) => {
+      if (currentSale.deliveryStatus === 'entregue' || !currentSale.items) return total;
+      return total + currentSale.items.reduce((sum, currentItem) => {
+        const currentStockProductId = currentItem.isCustom ? currentItem.customProductId : currentItem.productId;
+        if (currentStockProductId !== stockProductId) return sum;
+        return sum + (currentItem.reservedQuantity || 0);
+      }, 0);
+    }, 0);
+
+    const physicalStock = stockProduct.currentStock ?? 0;
+    const available = Math.max(0, physicalStock - reservedAcrossOrders);
+    const alreadyReserved = item.reservedQuantity || 0;
+    const missing = Math.max(0, item.quantity - alreadyReserved);
+    const amountToReserve = Math.min(missing, available);
+
+    if (amountToReserve <= 0) {
+      if (missing <= 0) {
+        alert('Este item já está totalmente reservado para o pedido.');
+      } else {
+        alert('Não há unidades disponíveis para reservar no momento.');
+      }
+      return alreadyReserved;
+    }
+
+    const newReserved = alreadyReserved + amountToReserve;
+    setSales((prev) =>
+      prev.map((currentSale) => {
+        if (currentSale.id !== saleId || !currentSale.items) return currentSale;
+        return {
+          ...currentSale,
+          items: currentSale.items.map((currentItem) =>
+            currentItem.id === itemId
+              ? { ...currentItem, reservedQuantity: newReserved }
+              : currentItem
+          ),
+        };
+      })
+    );
+
+    return newReserved;
+  }, [sales, products]);
+
+  const handleReleaseSaleItemReservation = useCallback((saleId: string, itemId: string): number | null => {
+    const sale = sales.find((s) => s.id === saleId);
+    const item = sale?.items?.find((saleItem) => saleItem.id === itemId);
+    if (!sale || !item) return null;
+
+    if (sale.deliveryStatus === 'entregue') {
+      alert('Não é possível liberar uma reserva de um pedido já entregue.');
+      return null;
+    }
+
+    setSales((prev) =>
+      prev.map((currentSale) => {
+        if (currentSale.id !== saleId || !currentSale.items) return currentSale;
+        return {
+          ...currentSale,
+          items: currentSale.items.map((currentItem) =>
+            currentItem.id === itemId
+              ? { ...currentItem, reservedQuantity: 0 }
+              : currentItem
+          ),
+        };
+      })
+    );
+
+    return 0;
+  }, [sales]);
+
+  // ----------------------------------------------------
   // Sale Handlers
   // ----------------------------------------------------
   const handleSaveSale = useCallback((sale: Sale) => {
-    setSales((prev) => {
-      const previousSale = prev.find((s) => s.id === sale.id);
-      const stockAdjustments = new Map<string, number>();
+    const previousSale = sales.find((s) => s.id === sale.id);
+    const stockAdjustments = new Map<string, number>();
+    let blockedMessage = '';
 
-      const normalizedItems = sale.items?.map((item) => {
-        if (!item.isCustom || !item.customProductId) return item;
+    const normalizedItems = sale.items?.map((item) => {
+      const previousItem = previousSale?.items?.find((prevItem) => prevItem.id === item.id);
+      const stockProductId = item.isCustom ? item.customProductId : item.productId;
 
-        const previousItem = previousSale?.items?.find((prevItem) => prevItem.id === item.id);
-        const wasConsumed = previousItem?.customStockConsumed ?? false;
-        const shouldBeConsumed = sale.deliveryStatus === 'entregue';
+      const legacyConsumed = previousItem?.customStockConsumed ? (previousItem.quantity || 0) : 0;
+      const previousConsumed = previousItem?.stockConsumedQuantity ?? legacyConsumed;
+      const targetConsumed = sale.deliveryStatus === 'entregue' ? item.quantity : 0;
+      const deltaToConsume = targetConsumed - previousConsumed;
 
-        if (shouldBeConsumed) {
-          const previouslyConsumedQty = wasConsumed ? (previousItem?.quantity || 0) : 0;
-          const deltaToConsume = item.quantity - previouslyConsumedQty;
-          if (deltaToConsume !== 0) {
-            stockAdjustments.set(
-              item.customProductId,
-              (stockAdjustments.get(item.customProductId) || 0) - deltaToConsume
-            );
-          }
-          return { ...item, customStockConsumed: true };
+      if (!stockProductId) {
+        if (targetConsumed > 0 && item.isCustom) {
+          blockedMessage = `Produza "${item.productName}" antes de marcar o pedido como entregue.`;
+        }
+        return {
+          ...item,
+          stockConsumedQuantity: targetConsumed > 0 ? previousConsumed : 0,
+          customStockConsumed: targetConsumed > 0 ? previousConsumed > 0 : false,
+        };
+      }
+
+      if (deltaToConsume > 0) {
+        const stockProduct = products.find((p) => p.id === stockProductId);
+        const physicalStock = stockProduct?.currentStock ?? 0;
+
+        const reservedByOtherOrders = sales.reduce((total, currentSale) => {
+          if (currentSale.id === sale.id || currentSale.deliveryStatus === 'entregue' || !currentSale.items) return total;
+          return total + currentSale.items.reduce((sum, currentItem) => {
+            const currentStockProductId = currentItem.isCustom ? currentItem.customProductId : currentItem.productId;
+            return currentStockProductId === stockProductId
+              ? sum + (currentItem.reservedQuantity || 0)
+              : sum;
+          }, 0);
+        }, 0);
+
+        const usableForThisSale = Math.max(0, physicalStock - reservedByOtherOrders);
+        if (!stockProduct || usableForThisSale < deltaToConsume) {
+          blockedMessage = `Estoque insuficiente de "${item.productName}" para concluir a entrega. Disponível para este pedido: ${usableForThisSale} un.`;
+          return item;
         }
 
-        if (wasConsumed) {
-          stockAdjustments.set(
-            item.customProductId,
-            (stockAdjustments.get(item.customProductId) || 0) + (previousItem?.quantity || item.quantity)
-          );
-          return { ...item, customStockConsumed: false };
-        }
-
-        return { ...item, customStockConsumed: false };
-      });
-
-      if (stockAdjustments.size > 0) {
-        setProducts((prevProducts) =>
-          prevProducts.map((product) => {
-            const delta = stockAdjustments.get(product.id);
-            if (!delta) return product;
-            return {
-              ...product,
-              currentStock: Math.max(0, Number(((product.currentStock ?? 0) + delta).toFixed(4))),
-              updatedAt: new Date().toISOString().split('T')[0],
-            };
-          })
+        stockAdjustments.set(
+          stockProductId,
+          (stockAdjustments.get(stockProductId) || 0) - deltaToConsume
+        );
+      } else if (deltaToConsume < 0) {
+        stockAdjustments.set(
+          stockProductId,
+          (stockAdjustments.get(stockProductId) || 0) + Math.abs(deltaToConsume)
         );
       }
 
-      const normalizedSale: Sale = {
-        ...sale,
-        items: normalizedItems || sale.items,
-      };
+      const restoredReservation = sale.deliveryStatus === 'pendente_entrega' && previousConsumed > 0
+        ? Math.min(item.quantity, previousConsumed)
+        : (item.reservedQuantity || 0);
 
+      return {
+        ...item,
+        reservedQuantity: sale.deliveryStatus === 'entregue' ? 0 : restoredReservation,
+        stockConsumedQuantity: targetConsumed,
+        customStockConsumed: item.isCustom ? targetConsumed > 0 : item.customStockConsumed,
+      };
+    });
+
+    if (blockedMessage) {
+      alert(blockedMessage);
+      return;
+    }
+
+    if (stockAdjustments.size > 0) {
+      setProducts((prevProducts) =>
+        prevProducts.map((product) => {
+          const delta = stockAdjustments.get(product.id);
+          if (!delta) return product;
+          return {
+            ...product,
+            currentStock: Math.max(0, Number(((product.currentStock ?? 0) + delta).toFixed(4))),
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+        })
+      );
+    }
+
+    const normalizedSale: Sale = {
+      ...sale,
+      items: normalizedItems || sale.items,
+    };
+
+    setSales((prev) => {
       const idx = prev.findIndex((s) => s.id === sale.id);
       if (idx >= 0) {
         const updated = [...prev];
@@ -1143,7 +1281,7 @@ export default function App() {
       }
       return [normalizedSale, ...prev];
     });
-  }, []);
+  }, [sales, products]);
 
   const handleDeleteSale = useCallback((id: string) => {
     setSales((prev) => prev.filter((s) => s.id !== id));
@@ -1373,6 +1511,8 @@ export default function App() {
             customers={customers}
             paymentMethods={paymentMethods}
             onSaveSale={handleSaveSale}
+            onReserveSaleItem={handleReserveSaleItem}
+            onReleaseSaleItemReservation={handleReleaseSaleItemReservation}
             onProduceCustomItem={handleProduceCustomItem}
             onDeleteSale={handleDeleteSale}
             onSaveCustomer={handleSaveCustomer}
