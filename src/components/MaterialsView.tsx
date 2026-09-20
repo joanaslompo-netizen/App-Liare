@@ -115,10 +115,19 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
   };
 
   const handleConfirmAdjust = (id: string) => {
-    const val = parseFloat(adjustDelta);
-    if (!isNaN(val) && val !== 0) {
-      onQuickStockChange(id, val);
+    const newStock = parseFloat(adjustDelta);
+    const material = materials.find((m) => m.id === id);
+
+    if (!material || isNaN(newStock) || newStock < 0) {
+      alert('Informe um valor de estoque válido, igual ou maior que zero.');
+      return;
     }
+
+    const delta = newStock - material.currentStock;
+    if (delta !== 0) {
+      onQuickStockChange(id, delta);
+    }
+
     setAdjustingId(null);
     setAdjustDelta('');
   };
@@ -459,7 +468,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                           <input
                             type="number"
                             step="any"
-                            placeholder="+10 ou -5"
+                            placeholder="Novo estoque"
                             value={adjustDelta}
                             onChange={(e) => setAdjustDelta(e.target.value)}
                             className="w-24 text-xs px-2 py-1 bg-white border border-stone-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-500 text-stone-900"
@@ -486,7 +495,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                           <button
                             onClick={() => {
                               setAdjustingId(mat.id);
-                              setAdjustDelta('');
+                              setAdjustDelta(String(mat.currentStock));
                             }}
                             className="text-[11px] text-amber-800 hover:text-amber-900 font-medium underline cursor-pointer"
                           >
