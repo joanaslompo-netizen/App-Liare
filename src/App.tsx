@@ -408,7 +408,7 @@ export default function App() {
   };
 
   // Low stock counter
-  const lowStockCount = materials.filter((m) => m.currentStock <= m.minStock).length;
+  const lowStockCount = materials.filter((m) => !m.isVirtualRecipe && m.currentStock <= m.minStock).length;
 
   // Birthday customers count for this month
   const birthdayCustomersCount = useMemo(() => {
@@ -472,6 +472,11 @@ export default function App() {
       const target = prev.find((m) => m.id === materialId);
       if (!target?.isMadeInAtelier || !target.recipeItems?.length || !target.batchYield) {
         alert('Este material não possui uma receita válida de produção no ateliê.');
+        return prev;
+      }
+
+      if (target.isVirtualRecipe) {
+        alert('Esta é uma receita virtual: ela é preparada automaticamente durante a produção da peça e não possui estoque próprio.');
         return prev;
       }
 
