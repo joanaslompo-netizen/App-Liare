@@ -572,7 +572,6 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
   const [isMadeInAtelier, setIsMadeInAtelier] = useState(material?.isMadeInAtelier || false);
   const [isVirtualRecipe, setIsVirtualRecipe] = useState(material ? !!material.isVirtualRecipe : true);
   const [recipeItems, setRecipeItems] = useState<import('../types').RecipeItem[]>(material?.recipeItems || []);
-  const [recipeBatchYield, setRecipeBatchYield] = useState<string>(material?.batchYield?.toString() || '1');
   const [recipeTargetId, setRecipeTargetId] = useState('');
   const [recipeQuantity, setRecipeQuantity] = useState('1');
   const [recipeInputMode, setRecipeInputMode] = useState<'material' | 'category'>('material');
@@ -632,6 +631,16 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
       : { unitCost: item.unitCost || 0, unit: item.unit };
   };
 
+  const getRecipeItemUnitOfMeasure = (item: import('../types').RecipeItem): UnitOfMeasure | null => {
+    if (item.selectionMode === 'category' && item.targetCategory) {
+      const options = materials.filter((m) => !m.isVirtualRecipe && m.category === item.targetCategory);
+      const units = Array.from(new Set(options.map((m) => m.unit)));
+      return units.length === 1 ? units[0] : null;
+    }
+
+    return materials.find((m) => m.id === item.targetId)?.unit || null;
+  };
+
   const normalizedRecipeItems = recipeItems.map((item) => {
     const current = getRecipeItemCurrentCost(item);
     return {
@@ -642,8 +651,20 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
     };
   });
 
+  const recipeUnits = Array.from(
+    new Set(
+      recipeItems
+        .map((item) => getRecipeItemUnitOfMeasure(item))
+        .filter((value): value is UnitOfMeasure => !!value)
+    )
+  );
+  const inferredRecipeUnit: UnitOfMeasure = recipeUnits.length === 1
+    ? recipeUnits[0]
+    : unit;
+  const hasMixedRecipeUnits = recipeItems.length > 0 && recipeUnits.length !== 1;
+  const automaticRecipeYield = recipeItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+  const parsedRecipeYield = Math.max(0.0001, automaticRecipeYield || 1);
   const recipeTotalCost = normalizedRecipeItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
-  const parsedRecipeYield = Math.max(0.0001, parseFloat(recipeBatchYield) || 1);
   const recipeUnitCost = recipeTotalCost / parsedRecipeYield;
 
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -677,16 +698,22 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
       alert('Ingredientes por categoria só podem ser usados em Receita Virtual, pois a escolha acontece na produção da peça.');
       return;
     }
+    if (isMadeInAtelier && hasMixedRecipeUnits) {
+      alert('Todos os ingredientes da receita precisam usar a mesma unidade de medida.');
+      return;
+    }
+
+    const finalUnit = isMadeInAtelier ? inferredRecipeUnit : unit;
 
     const newOrUpdated: Material = {
       id: material?.id || `mat_${Date.now()}`,
       name: name.trim(),
       category: finalCategory,
       materialType,
-      unit,
-      packageQuantity: isVirtualRecipe && isMadeInAtelier ? 1 : parsedPkgQty,
-      packageUnit: isVirtualRecipe && isMadeInAtelier ? unit : packageUnit,
-      packagePrice: isVirtualRecipe && isMadeInAtelier ? 0 : parsedPrice,
+      unit: finalUnit,
+      packageQuantity: isMadeInAtelier ? parsedRecipeYield : parsedPkgQty,
+      packageUnit: isMadeInAtelier ? finalUnit : packageUnit,
+      packagePrice: isMadeInAtelier ? 0 : parsedPrice,
       unitCost: isMadeInAtelier ? recipeUnitCost : calculatedUnitCostPreview,
       isMadeInAtelier,
       isVirtualRecipe: isMadeInAtelier ? isVirtualRecipe : false,
@@ -696,8 +723,8 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
       unitCostFromBatch: isMadeInAtelier ? recipeUnitCost : undefined,
       currentStock: isMadeInAtelier && isVirtualRecipe ? 0 : (parseFloat(currentStock) || 0),
       minStock: isMadeInAtelier && isVirtualRecipe ? 0 : (parseFloat(minStock) || 0),
-      supplierId: supplierId || undefined,
-      supplierName: selectedSupplier ? selectedSupplier.name : undefined,
+      supplierId: isMadeInAtelier ? undefined : (supplierId || undefined),
+      supplierName: isMadeInAtelier ? undefined : (selectedSupplier ? selectedSupplier.name : undefined),
       imageUrl: imageUrl || undefined,
       notes: notes.trim() || undefined,
       createdAt: material?.createdAt || new Date().toISOString().split('T')[0],
@@ -1089,46 +1116,59 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-stone-700 mb-1">Rendimento por lote ({UNIT_SHORT[unit]})</label>
-                  <input type="number" min="0.0001" step="any" value={recipeBatchYield} onChange={e => setRecipeBatchYield(e.target.value)} className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900" />
+                <div className="bg-white border border-purple-200 rounded-lg p-3 flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-stone-700 block">Rendimento automático</span>
+                    <span className="text-[10px] text-stone-500">Soma dos ingredientes da receita</span>
+                  </div>
+                  <span className="font-extrabold text-stone-900">
+                    {formatNumber(automaticRecipeYield)} {UNIT_SHORT[inferredRecipeUnit]}
+                  </span>
                 </div>
                 <div className="bg-white border border-purple-200 rounded-lg p-3 flex items-center justify-between">
                   <span className="text-[11px] text-stone-600">{recipeItems.some(i => i.selectionMode === 'category') ? 'Custo estimado por unidade' : 'Custo por unidade'}</span>
-                  <span className="font-extrabold text-stone-900">{formatCurrency(recipeUnitCost)} / {UNIT_SHORT[unit]}</span>
+                  <span className="font-extrabold text-stone-900">{formatCurrency(recipeUnitCost)} / {UNIT_SHORT[inferredRecipeUnit]}</span>
                 </div>
               </div>
+
+              {hasMixedRecipeUnits && (
+                <div className="text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+                  Os ingredientes precisam usar a mesma unidade para calcular o rendimento automaticamente.
+                </div>
+              )}
             </div>
           )}
 
-          {/* Supplier */}
-          <div>
-            <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-              Fornecedor
-            </label>
-            <select
-              id="select-material-supplier"
-              value={supplierId}
-              onChange={(e) => setSupplierId(e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none text-stone-900"
-            >
-              <option value="">Selecione um fornecedor (opcional)</option>
-              {suppliers.map((sup) => (
-                <option key={sup.id} value={sup.id}>
-                  {sup.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Supplier: only for purchased materials */}
+          {!isMadeInAtelier && (
+            <div>
+              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                Fornecedor
+              </label>
+              <select
+                id="select-material-supplier"
+                value={supplierId}
+                onChange={(e) => setSupplierId(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none text-stone-900"
+              >
+                <option value="">Selecione um fornecedor (opcional)</option>
+                {suppliers.map((sup) => (
+                  <option key={sup.id} value={sup.id}>
+                    {sup.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
-          {/* Pricing & Unit Calculation Box */}
+          {/* Pricing & Unit Calculation Box: only for purchased materials */}
+          {!isMadeInAtelier && (
           <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-4 space-y-4">
             <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
               <DollarSign className="w-3.5 h-3.5 text-amber-700" />
-              {isMadeInAtelier && isVirtualRecipe ? 'Unidade & Custo Estimado da Receita Virtual' : 'Preço de Compra & Cálculo do Custo Unitário'}
+              Preço de Compra & Cálculo do Custo Unitário
             </h4>
 
-            {!(isMadeInAtelier && isVirtualRecipe) && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* How bought: quantity */}
               <div>
@@ -1187,7 +1227,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                 />
               </div>
             </div>
-            )}
+
 
             {/* Base unit for recipes */}
             <div className="pt-2 border-t border-amber-200/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -1224,13 +1264,14 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                 Custo unitário calculado automaticamente:
               </span>
               <span className="text-base font-extrabold text-stone-900">
-                {formatCurrency(isMadeInAtelier ? recipeUnitCost : calculatedUnitCostPreview)}
+                {formatCurrency(calculatedUnitCostPreview)}
                 <span className="text-xs font-normal text-stone-500 ml-1">
-                  por {UNIT_SHORT[unit]}{isMadeInAtelier && recipeItems.some(i => i.selectionMode === 'category') ? ' (estimado)' : ''}
+                  por {UNIT_SHORT[unit]}
                 </span>
               </span>
             </div>
           </div>
+          )}
 
           {/* Stock Levels */}
           {!(isMadeInAtelier && isVirtualRecipe) ? (
