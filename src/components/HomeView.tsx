@@ -61,7 +61,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   // Low stock materials
   const lowStockMaterials = useMemo(
-    () => materials.filter((m) => m.currentStock <= m.minStock),
+    () => materials.filter((m) => !m.isVirtualRecipe && m.currentStock <= m.minStock),
     [materials]
   );
 
