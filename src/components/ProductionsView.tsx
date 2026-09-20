@@ -29,6 +29,7 @@ import {
   UNIT_SHORT 
 } from '../utils/formatters';
 import { SearchableProductCombobox } from './SearchableProductCombobox';
+import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
 
 interface ProductionsViewProps {
   productions: Production[];
@@ -524,12 +525,17 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
   const [batchCount, setBatchCount] = useState<string>('1');
   const [notes, setNotes] = useState<string>('');
   const [updateStock, setUpdateStock] = useState<boolean>(true);
+  const [variableSelections, setVariableSelections] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (presetProduct) {
       setSelectedProductId(presetProduct.id);
     }
   }, [presetProduct]);
+
+  useEffect(() => {
+    setVariableSelections({});
+  }, [selectedProductId]);
 
   const selectedProduct = useMemo(() => {
     return products.find((p) => p.id === selectedProductId) || null;
@@ -539,49 +545,218 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
   const batchYield = selectedProduct?.batchYield && selectedProduct.batchYield > 0 ? selectedProduct.batchYield : 1;
   const quantityProduced = parsedBatchCount * batchYield;
 
-  // Calculate deductions and check stock sufficiency
-  const { deductions, hasStockShortage } = useMemo(() => {
-    if (!selectedProduct) return { deductions: [], hasStockShortage: false };
+  const makeVariableKey = (productItemId: string, virtualMaterialId: string, recipeItemId: string) =>
+    `${productItemId}::${virtualMaterialId}::${recipeItemId}`;
+
+  // Finds every "choose from category" ingredient hidden inside a virtual material
+  // used by the selected product. Example: Cera Aromatizada -> Categoria Essências.
+  const variableRequirements = useMemo(() => {
+    if (!selectedProduct) return [];
+
+    return selectedProduct.items.flatMap((productItem) => {
+      if (productItem.type !== 'material') return [];
+      const virtualMaterial = materials.find((m) => m.id === productItem.targetId);
+      if (!virtualMaterial?.isVirtualRecipe || !virtualMaterial.recipeItems?.length) return [];
+
+      const virtualYield = Math.max(0.0001, virtualMaterial.batchYield || 1);
+      const scalePerProductBatch = productItem.quantity / virtualYield;
+
+      return virtualMaterial.recipeItems
+        .filter((recipeItem) => recipeItem.type === 'material' && recipeItem.selectionMode === 'category' && recipeItem.targetCategory)
+        .map((recipeItem) => ({
+          key: makeVariableKey(productItem.id, virtualMaterial.id, recipeItem.id),
+          virtualMaterialId: virtualMaterial.id,
+          virtualMaterialName: virtualMaterial.name,
+          category: recipeItem.targetCategory as string,
+          quantityPerBatch: recipeItem.quantity * scalePerProductBatch,
+          unit: recipeItem.unit,
+        }));
+    });
+  }, [selectedProduct, materials]);
+
+  // Expand virtual materials proportionally and calculate the real stock deductions.
+  const { deductions, hasStockShortage, hasMissingVariableSelection } = useMemo(() => {
+    if (!selectedProduct) {
+      return { deductions: [], hasStockShortage: false, hasMissingVariableSelection: false };
+    }
 
     let shortage = false;
+    let missingVariable = false;
 
-    const list: ProductionIngredientDeduction[] = selectedProduct.items.map((item) => {
-      const quantityTotal = item.quantity * parsedBatchCount;
-      let stockBefore = 0;
-      let unit = item.unit;
+    type PendingDeduction = Omit<ProductionIngredientDeduction, 'quantityTotal' | 'totalCost' | 'stockBefore' | 'stockAfter'>;
+    const aggregated = new Map<string, PendingDeduction>();
 
+    const addIngredient = (
+      id: string,
+      targetId: string,
+      type: 'material' | 'product',
+      name: string,
+      unit: string,
+      quantityPerBatch: number,
+      unitCost: number
+    ) => {
+      const key = `${type}:${targetId}`;
+      const existing = aggregated.get(key);
+      if (existing) {
+        existing.quantityPerBatch += quantityPerBatch;
+        return;
+      }
+      aggregated.set(key, {
+        id,
+        targetId,
+        type,
+        name,
+        unit,
+        quantityPerBatch,
+        unitCost,
+      });
+    };
+
+    selectedProduct.items.forEach((item) => {
       if (item.type === 'material') {
         const mat = materials.find((m) => m.id === item.targetId);
-        stockBefore = mat ? mat.currentStock : 0;
-        if (mat) unit = UNIT_SHORT[mat.unit] || item.unit;
-      } else if (item.type === 'product') {
-        const subProd = products.find((p) => p.id === item.targetId);
-        stockBefore = subProd ? subProd.currentStock : 0;
+
+        if (mat?.isVirtualRecipe && mat.recipeItems?.length) {
+          const virtualYield = Math.max(0.0001, mat.batchYield || 1);
+          const scalePerProductBatch = item.quantity / virtualYield;
+
+          mat.recipeItems.forEach((recipeItem) => {
+            const expandedQuantityPerBatch = recipeItem.quantity * scalePerProductBatch;
+
+            if (recipeItem.type === 'material' && recipeItem.selectionMode === 'category' && recipeItem.targetCategory) {
+              const selectionKey = makeVariableKey(item.id, mat.id, recipeItem.id);
+              const chosenId = variableSelections[selectionKey];
+              const chosen = materials.find(
+                (m) => m.id === chosenId && !m.isVirtualRecipe && m.category === recipeItem.targetCategory
+              );
+
+              if (!chosen) {
+                missingVariable = true;
+                return;
+              }
+
+              addIngredient(
+                `${item.id}_${recipeItem.id}`,
+                chosen.id,
+                'material',
+                chosen.name,
+                UNIT_SHORT[chosen.unit] || recipeItem.unit,
+                expandedQuantityPerBatch,
+                chosen.unitCost
+              );
+              return;
+            }
+
+            if (recipeItem.type === 'material') {
+              const childMat = materials.find((m) => m.id === recipeItem.targetId);
+              if (childMat) {
+                addIngredient(
+                  `${item.id}_${recipeItem.id}`,
+                  childMat.id,
+                  'material',
+                  childMat.name,
+                  UNIT_SHORT[childMat.unit] || recipeItem.unit,
+                  expandedQuantityPerBatch,
+                  childMat.unitCost
+                );
+              } else {
+                addIngredient(
+                  `${item.id}_${recipeItem.id}`,
+                  recipeItem.targetId,
+                  'material',
+                  recipeItem.name,
+                  recipeItem.unit,
+                  expandedQuantityPerBatch,
+                  recipeItem.unitCost
+                );
+              }
+              return;
+            }
+
+            const childProduct = products.find((p) => p.id === recipeItem.targetId);
+            const childUnitCost = childProduct
+              ? (childProduct.unitCostFromBatch > 0 ? childProduct.unitCostFromBatch : childProduct.totalCost)
+              : recipeItem.unitCost;
+            addIngredient(
+              `${item.id}_${recipeItem.id}`,
+              recipeItem.targetId,
+              'product',
+              childProduct?.name || recipeItem.name,
+              recipeItem.unit,
+              expandedQuantityPerBatch,
+              childUnitCost
+            );
+          });
+
+          return;
+        }
+
+        addIngredient(
+          item.id,
+          item.targetId,
+          'material',
+          mat?.name || item.name,
+          mat ? (UNIT_SHORT[mat.unit] || item.unit) : item.unit,
+          item.quantity,
+          mat?.unitCost ?? item.unitCost
+        );
+        return;
+      }
+
+      const subProd = products.find((p) => p.id === item.targetId);
+      const subUnitCost = subProd
+        ? (subProd.unitCostFromBatch > 0 ? subProd.unitCostFromBatch : subProd.totalCost)
+        : item.unitCost;
+      addIngredient(
+        item.id,
+        item.targetId,
+        'product',
+        subProd?.name || item.name,
+        item.unit,
+        item.quantity,
+        subUnitCost
+      );
+    });
+
+    const list: ProductionIngredientDeduction[] = Array.from(aggregated.values()).map((item) => {
+      const quantityTotal = item.quantityPerBatch * parsedBatchCount;
+      let stockBefore = 0;
+
+      if (item.type === 'material') {
+        stockBefore = materials.find((m) => m.id === item.targetId)?.currentStock ?? 0;
+      } else {
+        stockBefore = products.find((p) => p.id === item.targetId)?.currentStock ?? 0;
       }
 
       const stockAfter = stockBefore - quantityTotal;
       if (stockAfter < 0) shortage = true;
 
       return {
-        id: item.id,
-        targetId: item.targetId,
-        type: item.type,
-        name: item.name,
-        unit: unit,
-        quantityPerBatch: item.quantity,
-        quantityTotal: quantityTotal,
-        unitCost: item.unitCost,
+        ...item,
+        quantityTotal,
         totalCost: item.unitCost * quantityTotal,
         stockBefore,
         stockAfter,
       };
     });
 
-    return { deductions: list, hasStockShortage: shortage };
-  }, [selectedProduct, parsedBatchCount, materials, products]);
+    return {
+      deductions: list,
+      hasStockShortage: shortage,
+      hasMissingVariableSelection: missingVariable,
+    };
+  }, [selectedProduct, parsedBatchCount, materials, products, variableSelections]);
 
-  const unitCost = selectedProduct ? (selectedProduct.unitCostFromBatch > 0 ? selectedProduct.unitCostFromBatch : selectedProduct.totalCost) : 0;
-  const totalCost = unitCost * quantityProduced;
+  // Product overhead (labor/fixed/other costs) stays the same, while ingredient
+  // cost is recalculated from the actual essence/material selected for this production.
+  const ingredientCost = deductions.reduce((sum, item) => sum + item.totalCost, 0);
+  const nonIngredientCostPerBatch = selectedProduct
+    ? Math.max(0, selectedProduct.totalCost - selectedProduct.materialsCost)
+    : 0;
+  const totalCost = selectedProduct
+    ? ingredientCost + nonIngredientCostPerBatch * parsedBatchCount
+    : 0;
+  const unitCost = quantityProduced > 0 ? totalCost / quantityProduced : 0;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -592,6 +767,11 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
 
     if (parsedBatchCount <= 0) {
       alert('Informe uma quantidade de bateladas válida maior que zero.');
+      return;
+    }
+
+    if (hasMissingVariableSelection) {
+      alert('Escolha o material de cada categoria variável antes de lançar a produção.');
       return;
     }
 
@@ -752,6 +932,72 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
                   </span>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Escolhas dos ingredientes variáveis das receitas virtuais */}
+          {selectedProduct && variableRequirements.length > 0 && (
+            <div className="rounded-xl border border-purple-200 bg-purple-50/70 p-4 space-y-3">
+              <div>
+                <h4 className="text-xs font-bold text-purple-950 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-purple-700" />
+                  Escolhas desta produção
+                </h4>
+                <p className="text-[11px] text-purple-700 mt-1">
+                  Esta receita usa um material virtual. Escolha agora qual ingrediente real será usado em cada categoria.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                {variableRequirements.map((requirement, index) => {
+                  const categoryMaterials = materials.filter(
+                    (m) => !m.isVirtualRecipe && m.category === requirement.category
+                  );
+                  return (
+                    <div key={requirement.key} className="bg-white border border-purple-200 rounded-lg p-3">
+                      <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                        <div className="flex-1 min-w-0">
+                          <label className="block text-[11px] font-bold text-stone-800 mb-1">
+                            {requirement.category} para {requirement.virtualMaterialName} *
+                          </label>
+                          <SearchableMaterialCombobox
+                            materials={categoryMaterials}
+                            selectedMaterialId={variableSelections[requirement.key] || ''}
+                            onSelectMaterial={(mat) => {
+                              setVariableSelections((prev) => ({
+                                ...prev,
+                                [requirement.key]: mat?.id || '',
+                              }));
+                            }}
+                            placeholder={`Escolha um material da categoria ${requirement.category}...`}
+                            id={`select-variable-ingredient-${index}`}
+                          />
+                        </div>
+                        <div className="text-left sm:text-right shrink-0">
+                          <span className="block text-[10px] uppercase font-bold tracking-wider text-stone-500">
+                            Proporção por batelada
+                          </span>
+                          <span className="text-sm font-extrabold text-purple-800">
+                            {formatNumber(requirement.quantityPerBatch)} {requirement.unit}
+                          </span>
+                        </div>
+                      </div>
+                      {categoryMaterials.length === 0 && (
+                        <p className="text-[10px] text-rose-700 mt-2">
+                          Nenhum material cadastrado na categoria {requirement.category}.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {hasMissingVariableSelection && (
+                <div className="text-[11px] font-semibold text-purple-800 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Escolha todas as opções acima para o app calcular a baixa e o custo real.
+                </div>
+              )}
             </div>
           )}
 
