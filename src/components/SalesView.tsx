@@ -1338,7 +1338,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                       <div className="sm:col-span-7">
                         <label className="block text-[10px] font-bold text-stone-500 mb-0.5">Material</label>
                         <SearchableMaterialCombobox
-                          materials={materials.filter((m) => !m.isVirtualRecipe)}
+                          materials={materials}
                           selectedMaterialId={customMaterialId}
                           onSelectMaterial={(mat) => setCustomMaterialId(mat?.id || '')}
                           placeholder="Buscar material..."
@@ -1374,7 +1374,14 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                         {customRecipeItems.map((recipeItem) => (
                           <div key={recipeItem.id} className="flex items-center justify-between gap-2 bg-white rounded-lg border border-purple-100 px-2.5 py-2">
                             <div className="min-w-0">
-                              <span className="text-[11px] font-bold text-stone-800 block truncate">{recipeItem.name}</span>
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="text-[11px] font-bold text-stone-800 block truncate">{recipeItem.name}</span>
+                                {materials.find((m) => m.id === recipeItem.targetId)?.isVirtualRecipe && (
+                                  <span className="shrink-0 text-[9px] font-bold text-purple-800 bg-purple-100 border border-purple-200 rounded px-1.5 py-0.5">
+                                    Receita virtual
+                                  </span>
+                                )}
+                              </div>
                               <span className="text-[10px] text-stone-500">
                                 {recipeItem.quantity} {recipeItem.unit} × {formatCurrency(recipeItem.unitCost)}
                               </span>
