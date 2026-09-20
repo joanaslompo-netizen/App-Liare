@@ -792,19 +792,24 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                   </p>
                 </div>
 
-                <label className={"flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all " + (isMadeInAtelier ? "bg-purple-50/80 border-purple-400 ring-1 ring-purple-400/40" : "bg-white border-stone-200 hover:bg-stone-50")}>
-                  <input
-                    type="checkbox"
-                    checked={isMadeInAtelier}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setIsMadeInAtelier(checked);
-                      if (checked) setMaterialType('internal');
-                    }}
-                    className="mt-0.5 text-purple-600 focus:ring-purple-500 rounded"
-                  />
-                  <div>
-                    <span className="text-xs font-bold text-stone-900 flex items-center gap-1">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={isMadeInAtelier}
+                  onClick={() => {
+                    const willBeMadeInAtelier = !isMadeInAtelier;
+                    setIsMadeInAtelier(willBeMadeInAtelier);
+                    if (willBeMadeInAtelier) setMaterialType('internal');
+                  }}
+                  className={`w-full flex items-center justify-between gap-4 rounded-lg border px-3 py-2.5 text-left cursor-pointer transition-all focus:outline-none focus:ring-2 focus:ring-purple-500/30 ${
+                    isMadeInAtelier
+                      ? 'bg-purple-50/80 border-purple-400 ring-1 ring-purple-400/40'
+                      : 'bg-white border-stone-200 hover:bg-stone-50'
+                  }`}
+                  title={isMadeInAtelier ? 'Feito no Ateliê ativado' : 'Feito no Ateliê desativado'}
+                >
+                  <div className="min-w-0">
+                    <span className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
                       <Wand2 className="w-3.5 h-3.5 text-purple-700" />
                       Feito no Ateliê
                     </span>
@@ -812,9 +817,36 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                       Ative quando este material for criado a partir de uma receita própria do ateliê.
                     </p>
                   </div>
-                </label>
+                  <span
+                    aria-hidden="true"
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                      isMadeInAtelier ? 'bg-purple-600' : 'bg-stone-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4.5 w-4.5 rounded-full bg-white shadow-sm transition-transform ${
+                        isMadeInAtelier ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </span>
+                </button>
 
-                <div className="flex items-center justify-between gap-4 bg-white border border-stone-200 rounded-lg px-3 py-2.5">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={materialType === 'for_sale'}
+                  onClick={() => {
+                    const willBeForSale = materialType !== 'for_sale';
+                    setMaterialType(willBeForSale ? 'for_sale' : 'internal');
+                    if (willBeForSale) setIsMadeInAtelier(false);
+                  }}
+                  className={`w-full flex items-center justify-between gap-4 rounded-lg border px-3 py-2.5 text-left cursor-pointer transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${
+                    materialType === 'for_sale'
+                      ? 'bg-emerald-50/80 border-emerald-400 ring-1 ring-emerald-400/40'
+                      : 'bg-white border-stone-200 hover:bg-stone-50'
+                  }`}
+                  title={materialType === 'for_sale' ? 'Venda direta ativada' : 'Venda direta desativada'}
+                >
                   <div className="min-w-0">
                     <span className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
                       <ShoppingBag className="w-3.5 h-3.5 text-emerald-700" />
@@ -824,28 +856,19 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                       Ative somente se este item puder ser vendido diretamente ao cliente.
                     </p>
                   </div>
-
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={materialType === 'for_sale'}
-                    onClick={() => {
-                      const willBeForSale = materialType !== 'for_sale';
-                      setMaterialType(willBeForSale ? 'for_sale' : 'internal');
-                      if (willBeForSale) setIsMadeInAtelier(false);
-                    }}
-                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${
+                  <span
+                    aria-hidden="true"
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
                       materialType === 'for_sale' ? 'bg-emerald-600' : 'bg-stone-300'
                     }`}
-                    title={materialType === 'for_sale' ? 'Venda direta ativada' : 'Venda direta desativada'}
                   >
                     <span
                       className={`inline-block h-4.5 w-4.5 rounded-full bg-white shadow-sm transition-transform ${
                         materialType === 'for_sale' ? 'translate-x-6' : 'translate-x-1'
                       }`}
                     />
-                  </button>
-                </div>
+                  </span>
+                </button>
               </div>
 
               <div>
