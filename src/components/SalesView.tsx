@@ -46,6 +46,8 @@ interface SalesViewProps {
   customers: Customer[];
   paymentMethods: string[];
   onSaveSale: (sale: Sale) => void;
+  onReserveSaleItem: (saleId: string, itemId: string) => number | null;
+  onReleaseSaleItemReservation: (saleId: string, itemId: string) => number | null;
   onProduceCustomItem: (
     saleId: string,
     item: SaleItem,
@@ -66,6 +68,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
   customers = [],
   paymentMethods = ['offline', 'site'],
   onSaveSale,
+  onReserveSaleItem,
+  onReleaseSaleItemReservation,
   onProduceCustomItem,
   onDeleteSale,
   onSaveCustomer,
@@ -85,6 +89,49 @@ export const SalesView: React.FC<SalesViewProps> = ({
       setIsModalOpen(true);
     }
   }, [initialCustomerForNewOrder]);
+
+  const getStockProductId = (item: SaleItem) =>
+    item.isCustom ? item.customProductId : item.productId;
+
+  const getReservedAcrossOrders = (stockProductId: string) =>
+    sales.reduce((total, sale) => {
+      if (sale.deliveryStatus === 'entregue' || !sale.items) return total;
+      return total + sale.items.reduce((sum, item) => {
+        return getStockProductId(item) === stockProductId
+          ? sum + (item.reservedQuantity || 0)
+          : sum;
+      }, 0);
+    }, 0);
+
+  const getStockInfo = (item: SaleItem) => {
+    const stockProductId = getStockProductId(item);
+    const stockProduct = stockProductId ? products.find((p) => p.id === stockProductId) : null;
+    const physical = stockProduct?.currentStock ?? 0;
+    const reservedThis = item.reservedQuantity || 0;
+    const reservedAll = stockProductId ? getReservedAcrossOrders(stockProductId) : 0;
+    const reservedOther = Math.max(0, reservedAll - reservedThis);
+    const available = Math.max(0, physical - reservedAll);
+    const missing = Math.max(0, item.quantity - reservedThis);
+
+    return {
+      stockProductId,
+      physical,
+      reservedThis,
+      reservedOther,
+      available,
+      missing,
+    };
+  };
+
+  const handleReserveFromList = (sale: Sale, item: SaleItem) => {
+    if (!item.id) return;
+    onReserveSaleItem(sale.id, item.id);
+  };
+
+  const handleReleaseFromList = (sale: Sale, item: SaleItem) => {
+    if (!item.id) return;
+    onReleaseSaleItemReservation(sale.id, item.id);
+  };
 
   // Quick stats
   const pendingDeliveryList = useMemo(() => sales.filter((s) => s.deliveryStatus === 'pendente_entrega'), [sales]);
@@ -454,7 +501,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                               <Tag className="w-4 h-4" />
                             </div>
                           )}
-                          <div className="flex flex-col min-w-0 max-w-xs">
+                          <div className="flex flex-col min-w-0 max-w-sm">
                             <span className="truncate font-semibold text-stone-900 text-xs">
                               {sale.productName}
                             </span>
@@ -470,6 +517,51 @@ export const SalesView: React.FC<SalesViewProps> = ({
                                 </span>
                               )}
                             </div>
+
+                            {sale.deliveryStatus === 'pendente_entrega' && sale.items && (
+                              <div className="mt-1.5 space-y-1.5">
+                                {sale.items.map((item, itemIndex) => {
+                                  const info = getStockInfo(item);
+                                  const itemKey = item.id || `${sale.id}_stock_${itemIndex}`;
+                                  return (
+                                    <div key={itemKey} className="rounded-lg border border-stone-200 bg-stone-50 px-2 py-1.5">
+                                      {sale.items!.length > 1 && (
+                                        <div className="text-[10px] font-bold text-stone-700 truncate mb-0.5">
+                                          {item.productName}
+                                        </div>
+                                      )}
+                                      <div className="flex items-center gap-x-2 gap-y-0.5 flex-wrap text-[9px] text-stone-500">
+                                        <span>Estoque: <strong className="text-stone-700">{info.physical}</strong></span>
+                                        <span>Reservado: <strong className="text-stone-700">{info.reservedThis}</strong></span>
+                                        <span className={info.missing > 0 ? 'text-amber-800 font-bold' : 'text-emerald-700 font-bold'}>
+                                          {info.missing > 0 ? `Faltam ${info.missing}` : 'Pedido coberto'}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                        {info.missing > 0 && info.available > 0 && item.id && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleReserveFromList(sale, item)}
+                                            className="px-2 py-0.5 rounded-md bg-stone-900 text-white text-[9px] font-bold hover:bg-stone-800"
+                                          >
+                                            Reservar
+                                          </button>
+                                        )}
+                                        {info.reservedThis > 0 && item.id && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleReleaseFromList(sale, item)}
+                                            className="px-2 py-0.5 rounded-md border border-stone-300 bg-white text-stone-600 text-[9px] font-semibold hover:bg-stone-100"
+                                          >
+                                            Liberar
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -654,10 +746,13 @@ export const SalesView: React.FC<SalesViewProps> = ({
           materials={materials}
           customers={customers}
           paymentMethods={paymentMethods}
+          sales={sales}
           existingSale={editingSale}
           initialCustomer={initialCustomerForNewOrder}
           onSaveCustomer={onSaveCustomer}
           onAddPaymentMethod={onAddPaymentMethod}
+          onReserveSaleItem={onReserveSaleItem}
+          onReleaseSaleItemReservation={onReleaseSaleItemReservation}
           onProduceCustomItem={onProduceCustomItem}
           onClose={() => {
             setIsModalOpen(false);
@@ -686,10 +781,13 @@ interface OrderSaleModalProps {
   materials: Material[];
   customers: Customer[];
   paymentMethods: string[];
+  sales: Sale[];
   existingSale?: Sale | null;
   initialCustomer?: Customer | null;
   onSaveCustomer: (customer: Customer) => void;
   onAddPaymentMethod: (method: string) => void;
+  onReserveSaleItem: (saleId: string, itemId: string) => number | null;
+  onReleaseSaleItemReservation: (saleId: string, itemId: string) => number | null;
   onProduceCustomItem: (
     saleId: string,
     item: SaleItem,
@@ -704,10 +802,13 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   materials,
   customers,
   paymentMethods,
+  sales,
   existingSale,
   initialCustomer,
   onSaveCustomer,
   onAddPaymentMethod,
+  onReserveSaleItem,
+  onReleaseSaleItemReservation,
   onProduceCustomItem,
   onClose,
   onSave,
@@ -815,6 +916,77 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
         category: item.targetCategory as string,
       }));
   }, [selectedCustomMaterial]);
+
+  const getModalStockProductId = (item: SaleItem) =>
+    item.isCustom ? item.customProductId : item.productId;
+
+  const getModalStockInfo = (item: SaleItem) => {
+    const stockProductId = getModalStockProductId(item);
+    const stockProduct = stockProductId ? products.find((p) => p.id === stockProductId) : null;
+    const physical = stockProduct?.currentStock ?? 0;
+    const reservedThis = item.reservedQuantity || 0;
+    const reservedAll = stockProductId
+      ? sales.reduce((total, sale) => {
+          if (sale.deliveryStatus === 'entregue' || !sale.items) return total;
+          return total + sale.items.reduce((sum, saleItem) => {
+            const saleItemStockId = saleItem.isCustom ? saleItem.customProductId : saleItem.productId;
+            return saleItemStockId === stockProductId
+              ? sum + (saleItem.reservedQuantity || 0)
+              : sum;
+          }, 0);
+        }, 0)
+      : 0;
+
+    const persistedThisReservation = existingSale?.items?.find((saved) => saved.id === item.id)?.reservedQuantity || 0;
+    const reservedOther = Math.max(0, reservedAll - persistedThisReservation);
+    const available = Math.max(0, physical - reservedOther - reservedThis);
+    const missing = Math.max(0, item.quantity - reservedThis);
+
+    return {
+      physical,
+      reservedThis,
+      reservedOther,
+      available,
+      missing,
+      stockProductId,
+    };
+  };
+
+  const handleReserveItemInModal = (item: SaleItem) => {
+    if (!existingSale || !item.id) {
+      alert('Salve o pedido primeiro para poder reservar uma peça.');
+      return;
+    }
+
+    const savedItem = existingSale.items?.find((saved) => saved.id === item.id);
+    if (!savedItem) {
+      alert('Salve as alterações do pedido antes de reservar este novo item.');
+      return;
+    }
+    if (savedItem.quantity !== item.quantity) {
+      alert('Salve a nova quantidade do pedido antes de atualizar a reserva.');
+      return;
+    }
+
+    const newReserved = onReserveSaleItem(existingSale.id, item.id);
+    if (newReserved === null) return;
+    setItems((prev) =>
+      prev.map((current) =>
+        current.id === item.id ? { ...current, reservedQuantity: newReserved } : current
+      )
+    );
+  };
+
+  const handleReleaseItemInModal = (item: SaleItem) => {
+    if (!existingSale || !item.id) return;
+    const newReserved = onReleaseSaleItemReservation(existingSale.id, item.id);
+    if (newReserved === null) return;
+    setItems((prev) =>
+      prev.map((current) =>
+        current.id === item.id ? { ...current, reservedQuantity: newReserved } : current
+      )
+    );
+  };
 
   // When a product is selected in the combobox, pre-fill its selling price
   const handleSelectProductToAdd = (prod: Product | null) => {
@@ -1009,6 +1181,10 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
               customProductionId: result.productionId,
               customProducedQuantity: result.producedQuantity,
               customProducedAt: new Date().toISOString().split('T')[0],
+              reservedQuantity: Math.min(
+                current.quantity,
+                (current.reservedQuantity || 0) + 1
+              ),
               unitCost: result.unitCost,
               totalCost: result.unitCost * current.quantity,
             }
@@ -1106,6 +1282,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
         return {
           ...it,
           quantity: validQty,
+          reservedQuantity: Math.min(it.reservedQuantity || 0, validQty),
           subtotal: validQty * it.unitPrice,
           totalCost: validQty * it.unitCost,
         };
@@ -1638,6 +1815,56 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                               ? 'Custo ainda não preenchido'
                               : `Custo un: ${formatCurrency(item.unitCost)}`}
                           </span>
+
+                          {(() => {
+                            const stockInfo = getModalStockInfo(item);
+                            return (
+                              <div className="mt-1.5">
+                                <div className="flex items-center gap-x-2 gap-y-0.5 flex-wrap text-[10px]">
+                                  <span className="text-stone-500">
+                                    Estoque físico: <strong className="text-stone-700">{stockInfo.physical}</strong>
+                                  </span>
+                                  <span className="text-stone-500">
+                                    Reservado aqui: <strong className="text-stone-700">{stockInfo.reservedThis}</strong>
+                                  </span>
+                                  <span className="text-stone-500">
+                                    Outros pedidos: <strong className="text-stone-700">{stockInfo.reservedOther}</strong>
+                                  </span>
+                                  <span className="text-stone-500">
+                                    Disponível: <strong className="text-stone-700">{stockInfo.available}</strong>
+                                  </span>
+                                  <span className={stockInfo.missing > 0 ? 'text-amber-800 font-bold' : 'text-emerald-700 font-bold'}>
+                                    {stockInfo.missing > 0 ? `Faltam ${stockInfo.missing}` : 'Pedido coberto'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                  {stockInfo.missing > 0 && stockInfo.available > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleReserveItemInModal(item)}
+                                      className="px-2 py-1 rounded-md bg-stone-900 text-white text-[10px] font-bold hover:bg-stone-800"
+                                    >
+                                      Reservar
+                                    </button>
+                                  )}
+                                  {stockInfo.reservedThis > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleReleaseItemInModal(item)}
+                                      className="px-2 py-1 rounded-md border border-stone-300 bg-white text-stone-600 text-[10px] font-semibold hover:bg-stone-100"
+                                    >
+                                      Liberar reserva
+                                    </button>
+                                  )}
+                                  {!existingSale && (
+                                    <span className="text-[9px] text-stone-400">
+                                      salve o pedido para reservar
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
 
                           {item.isCustom && (
                             <div className="flex items-center gap-2 mt-1 flex-wrap">
