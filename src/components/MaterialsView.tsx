@@ -16,7 +16,8 @@ import {
   ArrowUpDown,
   ExternalLink,
   Layers,
-  ShoppingBag
+  ShoppingBag,
+  Wand2
 } from 'lucide-react';
 import { Material, Supplier, UnitOfMeasure, MaterialType } from '../types';
 import { 
@@ -27,6 +28,7 @@ import {
   calculateUnitCost 
 } from '../utils/formatters';
 import { processImageFile } from '../utils/imageHelper';
+import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
 
 interface MaterialsViewProps {
   materials: Material[];
@@ -34,6 +36,7 @@ interface MaterialsViewProps {
   onSaveMaterial: (material: Material) => void;
   onDeleteMaterial: (id: string) => void;
   onQuickStockChange: (id: string, delta: number) => void;
+  onProduceMaterial?: (materialId: string, batchCount: number) => void;
   filterLowStockInitial?: boolean;
 }
 
@@ -43,6 +46,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
   onSaveMaterial,
   onDeleteMaterial,
   onQuickStockChange,
+  onProduceMaterial,
   filterLowStockInitial = false,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -335,6 +339,9 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                           <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 truncate">
                             {mat.category}
                           </span>
+                          {mat.isMadeInAtelier && (
+                            <span className="text-[10px] font-bold text-purple-800 bg-purple-50 px-1.5 py-0.5 rounded-md border border-purple-200 shrink-0 flex items-center gap-0.5" title="Material produzido no ateliê"><Wand2 className="w-2.5 h-2.5 text-purple-600" />Feito no Ateliê</span>
+                          )}
                           {mat.materialType === 'for_sale' ? (
                             <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-200 shrink-0 flex items-center gap-0.5" title="Produto final para venda direta">
                               <ShoppingBag className="w-2.5 h-2.5 text-emerald-600" />
@@ -463,8 +470,22 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                     ID: {mat.id}
                   </span>
                   <div className="flex items-center gap-1">
+                    {mat.isMadeInAtelier && onProduceMaterial && (
+                      <button type="button" onClick={() => {
+                        const raw = prompt("Quantos lotes de \"" + mat.name + "\" deseja produzir?", "1");
+                        if (raw === null) return;
+                        const count = parseInt(raw, 10);
+                        if (!Number.isInteger(count) || count <= 0) {
+                          alert("Informe uma quantidade inteira de lotes maior que zero.");
+                          return;
+                        }
+                        onProduceMaterial(mat.id, count);
+                      }} className="p-1.5 text-purple-700 hover:text-purple-900 hover:bg-purple-100 rounded-md" title="Produzir lote">
+                        <Wand2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button
-                      id={`btn-edit-material-${mat.id}`}
+                      id={"btn-edit-material-" + mat.id}
                       onClick={() => handleOpenEdit(mat)}
                       className="p-1.5 text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 rounded-md transition-colors"
                       title="Editar material"
@@ -499,6 +520,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
           existingCategories={categories}
           suppliers={suppliers}
           onClose={() => setIsModalOpen(false)}
+          materials={materials}
           onSave={(saved) => {
             onSaveMaterial(saved);
             setIsModalOpen(false);
@@ -514,6 +536,7 @@ interface MaterialModalProps {
   material: Material | null;
   existingCategories: string[];
   suppliers: Supplier[];
+  materials: Material[];
   onClose: () => void;
   onSave: (mat: Material) => void;
 }
@@ -522,10 +545,17 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
   material,
   existingCategories,
   suppliers,
+  materials,
   onClose,
   onSave,
 }) => {
   const isEditing = !!material;
+
+  const [isMadeInAtelier, setIsMadeInAtelier] = useState(material?.isMadeInAtelier || false);
+  const [recipeItems, setRecipeItems] = useState<import('../types').RecipeItem[]>(material?.recipeItems || []);
+  const [recipeBatchYield, setRecipeBatchYield] = useState<string>(material?.batchYield?.toString() || '1');
+  const [recipeTargetId, setRecipeTargetId] = useState('');
+  const [recipeQuantity, setRecipeQuantity] = useState('1');
 
   const [name, setName] = useState(material?.name || '');
   const [materialType, setMaterialType] = useState<MaterialType>(material?.materialType || 'internal');
@@ -558,6 +588,9 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
   const parsedPrice = parseFloat(packagePrice) || 0;
   const parsedPkgQty = parseFloat(packageQuantity) || 1;
   const calculatedUnitCostPreview = calculateUnitCost(parsedPrice, parsedPkgQty, packageUnit, unit);
+  const recipeTotalCost = recipeItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
+  const parsedRecipeYield = Math.max(1, parseFloat(recipeBatchYield) || 1);
+  const recipeUnitCost = recipeTotalCost / parsedRecipeYield;
 
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -582,6 +615,10 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
 
     const finalCategory = isCustomCategory ? (newCategoryInput.trim() || 'Geral') : category;
     const selectedSupplier = suppliers.find((s) => s.id === supplierId);
+    if (isMadeInAtelier && recipeItems.length === 0) {
+      alert('Adicione pelo menos um ingrediente à receita do material feito no ateliê.');
+      return;
+    }
 
     const newOrUpdated: Material = {
       id: material?.id || `mat_${Date.now()}`,
@@ -592,7 +629,12 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
       packageQuantity: parsedPkgQty,
       packageUnit,
       packagePrice: parsedPrice,
-      unitCost: calculatedUnitCostPreview,
+      unitCost: isMadeInAtelier ? recipeUnitCost : calculatedUnitCostPreview,
+      isMadeInAtelier,
+      recipeItems: isMadeInAtelier ? recipeItems : undefined,
+      batchYield: isMadeInAtelier ? parsedRecipeYield : undefined,
+      recipeTotalCost: isMadeInAtelier ? recipeTotalCost : undefined,
+      unitCostFromBatch: isMadeInAtelier ? recipeUnitCost : undefined,
       currentStock: parseFloat(currentStock) || 0,
       minStock: parseFloat(minStock) || 0,
       supplierId: supplierId || undefined,
@@ -686,6 +728,13 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                   Destino / Classificação do Material:
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <label className={"flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all " + (isMadeInAtelier ? "bg-purple-50/80 border-purple-400 ring-1 ring-purple-400/40" : "bg-white border-stone-200 hover:bg-stone-50")}>
+                    <input type="radio" name="materialOrigin" checked={isMadeInAtelier} onChange={() => setIsMadeInAtelier(true)} className="mt-0.5 text-purple-600 focus:ring-purple-500" />
+                    <div>
+                      <span className="text-xs font-bold text-stone-900 flex items-center gap-1"><Wand2 className="w-3.5 h-3.5 text-purple-700" />Feito no Ateliê</span>
+                      <p className="text-[11px] text-stone-500 mt-0.5 leading-tight">Material produzido por uma receita própria do ateliê.</p>
+                    </div>
+                  </label>
                   <label
                     className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all ${
                       materialType === 'internal'
@@ -698,7 +747,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                       name="materialType"
                       value="internal"
                       checked={materialType === 'internal'}
-                      onChange={() => setMaterialType('internal')}
+                      onChange={() => { setMaterialType('internal'); setIsMadeInAtelier(false); }}
                       className="mt-0.5 text-amber-600 focus:ring-amber-500"
                     />
                     <div>
@@ -724,7 +773,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                       name="materialType"
                       value="for_sale"
                       checked={materialType === 'for_sale'}
-                      onChange={() => setMaterialType('for_sale')}
+                      onChange={() => { setMaterialType('for_sale'); setIsMadeInAtelier(false); }}
                       className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
                     />
                     <div>
@@ -799,6 +848,47 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                   </div>
                 )}
               </div>
+
+              {isMadeInAtelier && (
+                <div className="bg-purple-50/70 border border-purple-200 rounded-xl p-4 space-y-4">
+                  <h4 className="text-xs font-bold text-purple-950 uppercase tracking-wider flex items-center gap-1.5"><Wand2 className="w-3.5 h-3.5 text-purple-700" />Receita do Material Feito no Ateliê</h4>
+                  <p className="text-[11px] text-purple-800">Monte a fórmula do material. O custo será calculado por unidade de rendimento.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-bold text-stone-700 mb-1">Material / Ingrediente</label>
+                      <SearchableMaterialCombobox materials={materials.filter(m => m.id !== material?.id)} selectedMaterialId={recipeTargetId} onSelectMaterial={(mat) => setRecipeTargetId(mat ? mat.id : '')} placeholder="Digite para buscar ingrediente..." id="select-material-recipe-ingredient" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-stone-700 mb-1">Quantidade</label>
+                      <input type="number" min="0.0001" step="any" value={recipeQuantity} onChange={(e) => setRecipeQuantity(e.target.value)} className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900" />
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => {
+                    const target = materials.find(m => m.id === recipeTargetId);
+                    const qty = parseFloat(recipeQuantity);
+                    if (!target) { alert('Selecione um ingrediente.'); return; }
+                    if (!qty || qty <= 0) { alert('Informe uma quantidade válida.'); return; }
+                    setRecipeItems(prev => [...prev, { id: 'mri_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), type: 'material', targetId: target.id, name: target.name, quantity: qty, unit: UNIT_SHORT[target.unit], unitCost: target.unitCost, totalCost: target.unitCost * qty }]);
+                    setRecipeTargetId('');
+                    setRecipeQuantity('1');
+                  }} className="w-full py-2 px-3 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1">
+                    <Plus className="w-3.5 h-3.5 text-amber-400" />Adicionar ingrediente
+                  </button>
+                  <div className="space-y-2">
+                    {recipeItems.map(item => (
+                      <div key={item.id} className="flex items-center justify-between gap-3 bg-white border border-purple-100 rounded-lg p-2.5">
+                        <div className="min-w-0"><div className="text-xs font-semibold text-stone-900 truncate">{item.name}</div><div className="text-[11px] text-stone-500">{formatNumber(item.quantity)} {item.unit} × {formatCurrency(item.unitCost)}</div></div>
+                        <div className="flex items-center gap-2 shrink-0"><span className="text-xs font-bold text-stone-900">{formatCurrency(item.totalCost)}</span><button type="button" onClick={() => setRecipeItems(prev => prev.filter(i => i.id !== item.id))} className="p-1 text-stone-400 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button></div>
+                      </div>
+                    ))}
+                    {recipeItems.length === 0 && <div className="text-[11px] text-stone-500 bg-white border border-dashed border-purple-200 rounded-lg p-3 text-center">Nenhum ingrediente adicionado.</div>}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div><label className="block text-[11px] font-bold text-stone-700 mb-1">Rendimento por lote</label><input type="number" min="1" step="any" value={recipeBatchYield} onChange={e => setRecipeBatchYield(e.target.value)} className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900" /></div>
+                    <div className="bg-white border border-purple-200 rounded-lg p-3 flex items-center justify-between"><span className="text-[11px] text-stone-600">Custo por unidade</span><span className="font-extrabold text-stone-900">{formatCurrency(recipeUnitCost)} / {UNIT_SHORT[unit]}</span></div>
+                  </div>
+                </div>
+              )}
 
               {/* Supplier */}
               <div>
