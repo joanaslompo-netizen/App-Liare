@@ -78,8 +78,8 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
           (m.supplierName && m.supplierName.toLowerCase().includes(searchTerm.toLowerCase())) ||
           m.category.toLowerCase().includes(searchTerm.toLowerCase());
         
-        const matchesCategory = selectedCategory === 'all' || (selectedCategory === 'paused' ? (m.minStock ?? 0) === 0 : m.category === selectedCategory);
-        const matchesLowStock = !onlyLowStock || (m.minStock > 0 && m.currentStock <= m.minStock);
+        const matchesCategory = selectedCategory === 'all' || (selectedCategory === 'paused' ? (!m.isVirtualRecipe && (m.minStock ?? 0) === 0) : m.category === selectedCategory);
+        const matchesLowStock = !onlyLowStock || (!m.isVirtualRecipe && m.minStock > 0 && m.currentStock <= m.minStock);
         const matchesType = 
           typeFilter === 'all' || 
           (typeFilter === 'internal' && (!m.materialType || m.materialType === 'internal')) ||
@@ -248,7 +248,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                 : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
             }`}
           >
-            Pausados ({materials.filter((m) => (m.minStock ?? 0) === 0).length})
+            Pausados ({materials.filter((m) => !m.isVirtualRecipe && (m.minStock ?? 0) === 0).length})
           </button>
           {categories.map((cat) => {
             const count = materials.filter((m) => m.category === cat).length;
@@ -296,9 +296,10 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredMaterials.map((mat) => {
-            const isPaused = (mat.minStock ?? 0) === 0;
-            const isLowStock = !isPaused && mat.currentStock <= mat.minStock;
-            const stockPct = mat.minStock > 0 ? Math.min(100, (mat.currentStock / (mat.minStock * 2)) * 100) : 100;
+            const isVirtual = !!mat.isVirtualRecipe;
+            const isPaused = !isVirtual && (mat.minStock ?? 0) === 0;
+            const isLowStock = !isVirtual && !isPaused && mat.currentStock <= mat.minStock;
+            const stockPct = !isVirtual && mat.minStock > 0 ? Math.min(100, (mat.currentStock / (mat.minStock * 2)) * 100) : 100;
 
             return (
               <div
@@ -340,7 +341,10 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                             {mat.category}
                           </span>
                           {mat.isMadeInAtelier && (
-                            <span className="text-[10px] font-bold text-purple-800 bg-purple-50 px-1.5 py-0.5 rounded-md border border-purple-200 shrink-0 flex items-center gap-0.5" title="Material produzido no ateliê"><Wand2 className="w-2.5 h-2.5 text-purple-600" />Feito no Ateliê</span>
+                            <span className="text-[10px] font-bold text-purple-800 bg-purple-50 px-1.5 py-0.5 rounded-md border border-purple-200 shrink-0 flex items-center gap-0.5" title={mat.isVirtualRecipe ? 'Receita virtual preparada somente na hora da produção' : 'Material produzido no ateliê'}>
+                              <Wand2 className="w-2.5 h-2.5 text-purple-600" />
+                              {mat.isVirtualRecipe ? 'Receita Virtual' : 'Feito no Ateliê'}
+                            </span>
                           )}
                           {mat.materialType === 'for_sale' ? (
                             <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-200 shrink-0 flex items-center gap-0.5" title="Produto final para venda direta">
@@ -389,79 +393,93 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                     </div>
 
                     <div className="text-right">
-                      <span className="text-[11px] text-stone-500 block">Compra de origem</span>
+                      <span className="text-[11px] text-stone-500 block">{isVirtual ? 'Tipo de custo' : 'Compra de origem'}</span>
                       <span className="text-stone-700 font-medium">
-                        {formatCurrency(mat.packagePrice)} por {formatNumber(mat.packageQuantity)} {UNIT_SHORT[mat.packageUnit]}
+                        {isVirtual
+                          ? 'Estimado pela receita'
+                          : `${formatCurrency(mat.packagePrice)} por ${formatNumber(mat.packageQuantity)} ${UNIT_SHORT[mat.packageUnit]}`}
                       </span>
                     </div>
                   </div>
 
                   {/* Stock Level Bar & Adjuster */}
-                  <div className="p-4 pt-3 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-stone-600 font-medium">
-                        Estoque Atual:
-                      </span>
-                      <span className={`font-semibold ${isPaused ? 'text-stone-500' : isLowStock ? 'text-amber-700' : 'text-stone-800'}`}>
-                        {formatNumber(mat.currentStock)} {UNIT_SHORT[mat.unit]}
-                        <span className="text-stone-400 font-normal ml-1">
-                          {isPaused ? '(Pausado - Mín: 0)' : `(Mín: ${formatNumber(mat.minStock)} ${UNIT_SHORT[mat.unit]})`}
+                  {isVirtual ? (
+                    <div className="p-4 pt-3">
+                      <div className="rounded-lg border border-purple-200 bg-purple-50/70 px-3 py-2.5">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-purple-900">
+                          <Wand2 className="w-3.5 h-3.5" />
+                          Produção sob demanda
+                        </div>
+                        <p className="text-[11px] text-purple-700 mt-1">
+                          Esta receita não possui estoque próprio. Os ingredientes reais são baixados quando você lança a produção da peça.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-4 pt-3 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-stone-600 font-medium">
+                          Estoque Atual:
                         </span>
-                      </span>
-                    </div>
+                        <span className={`font-semibold ${isPaused ? 'text-stone-500' : isLowStock ? 'text-amber-700' : 'text-stone-800'}`}>
+                          {formatNumber(mat.currentStock)} {UNIT_SHORT[mat.unit]}
+                          <span className="text-stone-400 font-normal ml-1">
+                            {isPaused ? '(Pausado - Mín: 0)' : `(Mín: ${formatNumber(mat.minStock)} ${UNIT_SHORT[mat.unit]})`}
+                          </span>
+                        </span>
+                      </div>
 
-                    {/* Visual bar */}
-                    <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          isPaused ? 'bg-stone-300' : isLowStock ? 'bg-amber-500' : 'bg-emerald-500'
-                        }`}
-                        style={{ width: `${Math.min(100, Math.max(8, stockPct))}%` }}
-                      />
-                    </div>
-
-                    {/* Inline Quick stock adjust */}
-                    {adjustingId === mat.id ? (
-                      <div className="flex items-center gap-1.5 pt-1">
-                        <input
-                          type="number"
-                          step="any"
-                          placeholder="+10 ou -5"
-                          value={adjustDelta}
-                          onChange={(e) => setAdjustDelta(e.target.value)}
-                          className="w-24 text-xs px-2 py-1 bg-white border border-stone-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-500 text-stone-900"
-                          autoFocus
+                      <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            isPaused ? 'bg-stone-300' : isLowStock ? 'bg-amber-500' : 'bg-emerald-500'
+                          }`}
+                          style={{ width: `${Math.min(100, Math.max(8, stockPct))}%` }}
                         />
-                        <button
-                          onClick={() => handleConfirmAdjust(mat.id)}
-                          className="p-1 bg-stone-900 text-white rounded hover:bg-stone-800 text-xs font-medium px-2"
-                        >
-                          Ok
-                        </button>
-                        <button
-                          onClick={() => setAdjustingId(null)}
-                          className="p-1 text-stone-500 hover:text-stone-700 text-xs"
-                        >
-                          Cancelar
-                        </button>
                       </div>
-                    ) : (
-                      <div className="flex items-center justify-between pt-1">
-                        <span className="text-[11px] text-stone-400">
-                          Valor total em estoque: {formatCurrency(mat.currentStock * mat.unitCost)}
-                        </span>
-                        <button
-                          onClick={() => {
-                            setAdjustingId(mat.id);
-                            setAdjustDelta('');
-                          }}
-                          className="text-[11px] text-amber-800 hover:text-amber-900 font-medium underline cursor-pointer"
-                        >
-                          Ajustar Estoque
-                        </button>
-                      </div>
-                    )}
-                  </div>
+
+                      {adjustingId === mat.id ? (
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <input
+                            type="number"
+                            step="any"
+                            placeholder="+10 ou -5"
+                            value={adjustDelta}
+                            onChange={(e) => setAdjustDelta(e.target.value)}
+                            className="w-24 text-xs px-2 py-1 bg-white border border-stone-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-500 text-stone-900"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleConfirmAdjust(mat.id)}
+                            className="p-1 bg-stone-900 text-white rounded hover:bg-stone-800 text-xs font-medium px-2"
+                          >
+                            Ok
+                          </button>
+                          <button
+                            onClick={() => setAdjustingId(null)}
+                            className="p-1 text-stone-500 hover:text-stone-700 text-xs"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between pt-1">
+                          <span className="text-[11px] text-stone-400">
+                            Valor total em estoque: {formatCurrency(mat.currentStock * mat.unitCost)}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setAdjustingId(mat.id);
+                              setAdjustDelta('');
+                            }}
+                            className="text-[11px] text-amber-800 hover:text-amber-900 font-medium underline cursor-pointer"
+                          >
+                            Ajustar Estoque
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Footer Actions */}
@@ -470,7 +488,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                     ID: {mat.id}
                   </span>
                   <div className="flex items-center gap-1">
-                    {mat.isMadeInAtelier && onProduceMaterial && (
+                    {mat.isMadeInAtelier && !mat.isVirtualRecipe && onProduceMaterial && (
                       <button type="button" onClick={() => {
                         const raw = prompt("Quantos lotes de \"" + mat.name + "\" deseja produzir?", "1");
                         if (raw === null) return;
@@ -552,10 +570,13 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
   const isEditing = !!material;
 
   const [isMadeInAtelier, setIsMadeInAtelier] = useState(material?.isMadeInAtelier || false);
+  const [isVirtualRecipe, setIsVirtualRecipe] = useState(material ? !!material.isVirtualRecipe : true);
   const [recipeItems, setRecipeItems] = useState<import('../types').RecipeItem[]>(material?.recipeItems || []);
   const [recipeBatchYield, setRecipeBatchYield] = useState<string>(material?.batchYield?.toString() || '1');
   const [recipeTargetId, setRecipeTargetId] = useState('');
   const [recipeQuantity, setRecipeQuantity] = useState('1');
+  const [recipeInputMode, setRecipeInputMode] = useState<'material' | 'category'>('material');
+  const [recipeCategory, setRecipeCategory] = useState<string>('');
 
   const [name, setName] = useState(material?.name || '');
   const [materialType, setMaterialType] = useState<MaterialType>(material?.materialType || 'internal');
@@ -588,8 +609,41 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
   const parsedPrice = parseFloat(packagePrice) || 0;
   const parsedPkgQty = parseFloat(packageQuantity) || 1;
   const calculatedUnitCostPreview = calculateUnitCost(parsedPrice, parsedPkgQty, packageUnit, unit);
-  const recipeTotalCost = recipeItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
-  const parsedRecipeYield = Math.max(1, parseFloat(recipeBatchYield) || 1);
+
+  const materialCategoriesForRecipe = useMemo(
+    () => existingCategories.filter((cat) =>
+      materials.some((m) => m.id !== material?.id && !m.isVirtualRecipe && m.category === cat)
+    ),
+    [existingCategories, materials, material?.id]
+  );
+
+  const getRecipeItemCurrentCost = (item: import('../types').RecipeItem) => {
+    if (item.selectionMode === 'category' && item.targetCategory) {
+      const options = materials.filter((m) => !m.isVirtualRecipe && m.category === item.targetCategory);
+      if (options.length === 0) return { unitCost: item.unitCost || 0, unit: item.unit };
+      const avg = options.reduce((sum, m) => sum + m.unitCost, 0) / options.length;
+      const units = Array.from(new Set(options.map((m) => m.unit)));
+      return { unitCost: avg, unit: units.length === 1 ? UNIT_SHORT[units[0]] : item.unit };
+    }
+
+    const fixed = materials.find((m) => m.id === item.targetId);
+    return fixed
+      ? { unitCost: fixed.unitCost, unit: UNIT_SHORT[fixed.unit] }
+      : { unitCost: item.unitCost || 0, unit: item.unit };
+  };
+
+  const normalizedRecipeItems = recipeItems.map((item) => {
+    const current = getRecipeItemCurrentCost(item);
+    return {
+      ...item,
+      unit: current.unit,
+      unitCost: current.unitCost,
+      totalCost: current.unitCost * item.quantity,
+    };
+  });
+
+  const recipeTotalCost = normalizedRecipeItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
+  const parsedRecipeYield = Math.max(0.0001, parseFloat(recipeBatchYield) || 1);
   const recipeUnitCost = recipeTotalCost / parsedRecipeYield;
 
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -619,6 +673,10 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
       alert('Adicione pelo menos um ingrediente à receita do material feito no ateliê.');
       return;
     }
+    if (isMadeInAtelier && !isVirtualRecipe && recipeItems.some((item) => item.selectionMode === 'category')) {
+      alert('Ingredientes por categoria só podem ser usados em Receita Virtual, pois a escolha acontece na produção da peça.');
+      return;
+    }
 
     const newOrUpdated: Material = {
       id: material?.id || `mat_${Date.now()}`,
@@ -626,17 +684,18 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
       category: finalCategory,
       materialType,
       unit,
-      packageQuantity: parsedPkgQty,
-      packageUnit,
-      packagePrice: parsedPrice,
+      packageQuantity: isVirtualRecipe && isMadeInAtelier ? 1 : parsedPkgQty,
+      packageUnit: isVirtualRecipe && isMadeInAtelier ? unit : packageUnit,
+      packagePrice: isVirtualRecipe && isMadeInAtelier ? 0 : parsedPrice,
       unitCost: isMadeInAtelier ? recipeUnitCost : calculatedUnitCostPreview,
       isMadeInAtelier,
-      recipeItems: isMadeInAtelier ? recipeItems : undefined,
+      isVirtualRecipe: isMadeInAtelier ? isVirtualRecipe : false,
+      recipeItems: isMadeInAtelier ? normalizedRecipeItems : undefined,
       batchYield: isMadeInAtelier ? parsedRecipeYield : undefined,
       recipeTotalCost: isMadeInAtelier ? recipeTotalCost : undefined,
       unitCostFromBatch: isMadeInAtelier ? recipeUnitCost : undefined,
-      currentStock: parseFloat(currentStock) || 0,
-      minStock: parseFloat(minStock) || 0,
+      currentStock: isMadeInAtelier && isVirtualRecipe ? 0 : (parseFloat(currentStock) || 0),
+      minStock: isMadeInAtelier && isVirtualRecipe ? 0 : (parseFloat(minStock) || 0),
       supplierId: supplierId || undefined,
       supplierName: selectedSupplier ? selectedSupplier.name : undefined,
       imageUrl: imageUrl || undefined,
@@ -729,7 +788,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <label className={"flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all " + (isMadeInAtelier ? "bg-purple-50/80 border-purple-400 ring-1 ring-purple-400/40" : "bg-white border-stone-200 hover:bg-stone-50")}>
-                    <input type="radio" name="materialOrigin" checked={isMadeInAtelier} onChange={() => setIsMadeInAtelier(true)} className="mt-0.5 text-purple-600 focus:ring-purple-500" />
+                    <input type="radio" name="materialOrigin" checked={isMadeInAtelier} onChange={() => { setIsMadeInAtelier(true); setMaterialType('internal'); }} className="mt-0.5 text-purple-600 focus:ring-purple-500" />
                     <div>
                       <span className="text-xs font-bold text-stone-900 flex items-center gap-1"><Wand2 className="w-3.5 h-3.5 text-purple-700" />Feito no Ateliê</span>
                       <p className="text-[11px] text-stone-500 mt-0.5 leading-tight">Material produzido por uma receita própria do ateliê.</p>
@@ -851,41 +910,170 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
 
               {isMadeInAtelier && (
                 <div className="bg-purple-50/70 border border-purple-200 rounded-xl p-4 space-y-4">
-                  <h4 className="text-xs font-bold text-purple-950 uppercase tracking-wider flex items-center gap-1.5"><Wand2 className="w-3.5 h-3.5 text-purple-700" />Receita do Material Feito no Ateliê</h4>
-                  <p className="text-[11px] text-purple-800">Monte a fórmula do material. O custo será calculado por unidade de rendimento.</p>
+                  <div>
+                    <h4 className="text-xs font-bold text-purple-950 uppercase tracking-wider flex items-center gap-1.5">
+                      <Wand2 className="w-3.5 h-3.5 text-purple-700" />
+                      Receita do Material Feito no Ateliê
+                    </h4>
+                    <p className="text-[11px] text-purple-800 mt-1">Monte a fórmula do material. O custo será calculado por unidade de rendimento.</p>
+                  </div>
+
+                  <label className="flex items-start gap-2.5 rounded-lg border border-purple-200 bg-white p-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isVirtualRecipe}
+                      onChange={(e) => {
+                        setIsVirtualRecipe(e.target.checked);
+                        if (!e.target.checked) setRecipeInputMode('material');
+                      }}
+                      className="mt-0.5 text-purple-600 focus:ring-purple-500"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-stone-900">Receita Virtual — produzir somente na hora</span>
+                      <p className="text-[11px] text-stone-500 mt-0.5">
+                        Não controla estoque próprio. Ao produzir uma vela, o app desmonta esta receita e baixa diretamente os ingredientes reais.
+                      </p>
+                    </div>
+                  </label>
+
+                  {isVirtualRecipe && (
+                    <div className="flex items-center gap-2 bg-purple-100/60 rounded-lg p-1">
+                      <button
+                        type="button"
+                        onClick={() => setRecipeInputMode('material')}
+                        className={`flex-1 px-3 py-1.5 rounded-md text-[11px] font-bold transition-colors ${recipeInputMode === 'material' ? 'bg-white text-stone-900 shadow-xs' : 'text-purple-800 hover:bg-white/60'}`}
+                      >
+                        Material específico
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRecipeInputMode('category')}
+                        className={`flex-1 px-3 py-1.5 rounded-md text-[11px] font-bold transition-colors ${recipeInputMode === 'category' ? 'bg-white text-stone-900 shadow-xs' : 'text-purple-800 hover:bg-white/60'}`}
+                      >
+                        Categoria variável
+                      </button>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="sm:col-span-2">
-                      <label className="block text-[11px] font-bold text-stone-700 mb-1">Material / Ingrediente</label>
-                      <SearchableMaterialCombobox materials={materials.filter(m => m.id !== material?.id)} selectedMaterialId={recipeTargetId} onSelectMaterial={(mat) => setRecipeTargetId(mat ? mat.id : '')} placeholder="Digite para buscar ingrediente..." id="select-material-recipe-ingredient" />
+                      {recipeInputMode === 'category' && isVirtualRecipe ? (
+                        <>
+                          <label className="block text-[11px] font-bold text-stone-700 mb-1">Categoria do Ingrediente</label>
+                          <select
+                            value={recipeCategory}
+                            onChange={(e) => setRecipeCategory(e.target.value)}
+                            className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900"
+                          >
+                            <option value="">Selecione a categoria...</option>
+                            {materialCategoriesForRecipe.map((cat) => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                          </select>
+                          <p className="text-[10px] text-purple-700 mt-1">
+                            Na produção da peça você escolherá qual material desta categoria será usado.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <label className="block text-[11px] font-bold text-stone-700 mb-1">Material / Ingrediente</label>
+                          <SearchableMaterialCombobox
+                            materials={materials.filter(m => m.id !== material?.id && !m.isVirtualRecipe)}
+                            selectedMaterialId={recipeTargetId}
+                            onSelectMaterial={(mat) => setRecipeTargetId(mat ? mat.id : '')}
+                            placeholder="Digite para buscar ingrediente..."
+                            id="select-material-recipe-ingredient"
+                          />
+                        </>
+                      )}
                     </div>
                     <div>
                       <label className="block text-[11px] font-bold text-stone-700 mb-1">Quantidade</label>
                       <input type="number" min="0.0001" step="any" value={recipeQuantity} onChange={(e) => setRecipeQuantity(e.target.value)} className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900" />
                     </div>
                   </div>
+
                   <button type="button" onClick={() => {
-                    const target = materials.find(m => m.id === recipeTargetId);
                     const qty = parseFloat(recipeQuantity);
-                    if (!target) { alert('Selecione um ingrediente.'); return; }
                     if (!qty || qty <= 0) { alert('Informe uma quantidade válida.'); return; }
-                    setRecipeItems(prev => [...prev, { id: 'mri_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), type: 'material', targetId: target.id, name: target.name, quantity: qty, unit: UNIT_SHORT[target.unit], unitCost: target.unitCost, totalCost: target.unitCost * qty }]);
-                    setRecipeTargetId('');
+
+                    if (recipeInputMode === 'category' && isVirtualRecipe) {
+                      if (!recipeCategory) { alert('Selecione uma categoria.'); return; }
+                      const options = materials.filter(m => !m.isVirtualRecipe && m.category === recipeCategory);
+                      if (options.length === 0) { alert('Essa categoria ainda não possui materiais cadastrados.'); return; }
+                      const categoryUnits = Array.from(new Set(options.map(m => m.unit)));
+                      if (categoryUnits.length !== 1) {
+                        alert('Os materiais dessa categoria usam unidades diferentes. Para usar a categoria na receita, cadastre todos com a mesma unidade de medida.');
+                        return;
+                      }
+                      const avgUnitCost = options.reduce((sum, m) => sum + m.unitCost, 0) / options.length;
+                      setRecipeItems(prev => [...prev, {
+                        id: 'mri_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                        type: 'material',
+                        targetId: 'category:' + recipeCategory,
+                        name: 'Categoria: ' + recipeCategory,
+                        quantity: qty,
+                        unit: UNIT_SHORT[categoryUnits[0]],
+                        unitCost: avgUnitCost,
+                        totalCost: avgUnitCost * qty,
+                        selectionMode: 'category',
+                        targetCategory: recipeCategory,
+                      }]);
+                      setRecipeCategory('');
+                    } else {
+                      const target = materials.find(m => m.id === recipeTargetId);
+                      if (!target) { alert('Selecione um ingrediente.'); return; }
+                      setRecipeItems(prev => [...prev, {
+                        id: 'mri_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                        type: 'material',
+                        targetId: target.id,
+                        name: target.name,
+                        quantity: qty,
+                        unit: UNIT_SHORT[target.unit],
+                        unitCost: target.unitCost,
+                        totalCost: target.unitCost * qty,
+                        selectionMode: 'fixed',
+                      }]);
+                      setRecipeTargetId('');
+                    }
                     setRecipeQuantity('1');
                   }} className="w-full py-2 px-3 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1">
                     <Plus className="w-3.5 h-3.5 text-amber-400" />Adicionar ingrediente
                   </button>
+
                   <div className="space-y-2">
-                    {recipeItems.map(item => (
+                    {normalizedRecipeItems.map(item => (
                       <div key={item.id} className="flex items-center justify-between gap-3 bg-white border border-purple-100 rounded-lg p-2.5">
-                        <div className="min-w-0"><div className="text-xs font-semibold text-stone-900 truncate">{item.name}</div><div className="text-[11px] text-stone-500">{formatNumber(item.quantity)} {item.unit} × {formatCurrency(item.unitCost)}</div></div>
-                        <div className="flex items-center gap-2 shrink-0"><span className="text-xs font-bold text-stone-900">{formatCurrency(item.totalCost)}</span><button type="button" onClick={() => setRecipeItems(prev => prev.filter(i => i.id !== item.id))} className="p-1 text-stone-400 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button></div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-stone-900 truncate flex items-center gap-1.5">
+                            {item.name}
+                            {item.selectionMode === 'category' && (
+                              <span className="text-[9px] font-bold bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">escolher na produção</span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-stone-500">
+                            {formatNumber(item.quantity)} {item.unit} × {formatCurrency(item.unitCost)}
+                            {item.selectionMode === 'category' ? ' (custo médio estimado)' : ''}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs font-bold text-stone-900">{formatCurrency(item.totalCost)}</span>
+                          <button type="button" onClick={() => setRecipeItems(prev => prev.filter(i => i.id !== item.id))} className="p-1 text-stone-400 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
                       </div>
                     ))}
                     {recipeItems.length === 0 && <div className="text-[11px] text-stone-500 bg-white border border-dashed border-purple-200 rounded-lg p-3 text-center">Nenhum ingrediente adicionado.</div>}
                   </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div><label className="block text-[11px] font-bold text-stone-700 mb-1">Rendimento por lote</label><input type="number" min="1" step="any" value={recipeBatchYield} onChange={e => setRecipeBatchYield(e.target.value)} className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900" /></div>
-                    <div className="bg-white border border-purple-200 rounded-lg p-3 flex items-center justify-between"><span className="text-[11px] text-stone-600">Custo por unidade</span><span className="font-extrabold text-stone-900">{formatCurrency(recipeUnitCost)} / {UNIT_SHORT[unit]}</span></div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-stone-700 mb-1">Rendimento por lote ({UNIT_SHORT[unit]})</label>
+                      <input type="number" min="0.0001" step="any" value={recipeBatchYield} onChange={e => setRecipeBatchYield(e.target.value)} className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900" />
+                    </div>
+                    <div className="bg-white border border-purple-200 rounded-lg p-3 flex items-center justify-between">
+                      <span className="text-[11px] text-stone-600">{recipeItems.some(i => i.selectionMode === 'category') ? 'Custo estimado por unidade' : 'Custo por unidade'}</span>
+                      <span className="font-extrabold text-stone-900">{formatCurrency(recipeUnitCost)} / {UNIT_SHORT[unit]}</span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -916,9 +1104,10 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
           <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-4 space-y-4">
             <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
               <DollarSign className="w-3.5 h-3.5 text-amber-700" />
-              Preço de Compra & Cálculo do Custo Unitário
+              {isMadeInAtelier && isVirtualRecipe ? 'Unidade & Custo Estimado da Receita Virtual' : 'Preço de Compra & Cálculo do Custo Unitário'}
             </h4>
 
+            {!(isMadeInAtelier && isVirtualRecipe) && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* How bought: quantity */}
               <div>
@@ -977,6 +1166,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                 />
               </div>
             </div>
+            )}
 
             {/* Base unit for recipes */}
             <div className="pt-2 border-t border-amber-200/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -1013,45 +1203,51 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                 Custo unitário calculado automaticamente:
               </span>
               <span className="text-base font-extrabold text-stone-900">
-                {formatCurrency(calculatedUnitCostPreview)}
+                {formatCurrency(isMadeInAtelier ? recipeUnitCost : calculatedUnitCostPreview)}
                 <span className="text-xs font-normal text-stone-500 ml-1">
-                  por {UNIT_SHORT[unit]}
+                  por {UNIT_SHORT[unit]}{isMadeInAtelier && recipeItems.some(i => i.selectionMode === 'category') ? ' (estimado)' : ''}
                 </span>
               </span>
             </div>
           </div>
 
           {/* Stock Levels */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                Estoque Atual ({UNIT_SHORT[unit]})
-              </label>
-              <input
-                type="number"
-                step="any"
-                min="0"
-                value={currentStock}
-                onChange={(e) => setCurrentStock(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
-              />
-            </div>
+          {!(isMadeInAtelier && isVirtualRecipe) ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                  Estoque Atual ({UNIT_SHORT[unit]})
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={currentStock}
+                  onChange={(e) => setCurrentStock(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
+                />
+              </div>
 
-            <div>
-              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1 flex items-center gap-1">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                Estoque Mínimo para Alerta ({UNIT_SHORT[unit]})
-              </label>
-              <input
-                type="number"
-                step="any"
-                min="0"
-                value={minStock}
-                onChange={(e) => setMinStock(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
-              />
+              <div>
+                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                  Estoque Mínimo para Alerta ({UNIT_SHORT[unit]})
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={minStock}
+                  onChange={(e) => setMinStock(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
+                />
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="rounded-xl border border-purple-200 bg-purple-50/70 p-3 text-xs text-purple-800">
+              <strong>Sem controle de estoque próprio.</strong> Esta receita será calculada proporcionalmente e seus ingredientes serão descontados apenas quando você produzir a peça final.
+            </div>
+          )}
 
           {/* Notes */}
           <div>
