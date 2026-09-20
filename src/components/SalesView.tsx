@@ -925,9 +925,14 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     const stockProduct = stockProductId ? products.find((p) => p.id === stockProductId) : null;
     const physical = stockProduct?.currentStock ?? 0;
     const reservedThis = item.reservedQuantity || 0;
-    const reservedAll = stockProductId
+    const reservedOther = stockProductId
       ? sales.reduce((total, sale) => {
-          if (sale.deliveryStatus === 'entregue' || !sale.items) return total;
+          if (
+            sale.id === existingSale?.id ||
+            sale.deliveryStatus === 'entregue' ||
+            !sale.items
+          ) return total;
+
           return total + sale.items.reduce((sum, saleItem) => {
             const saleItemStockId = saleItem.isCustom ? saleItem.customProductId : saleItem.productId;
             return saleItemStockId === stockProductId
@@ -937,8 +942,6 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
         }, 0)
       : 0;
 
-    const persistedThisReservation = existingSale?.items?.find((saved) => saved.id === item.id)?.reservedQuantity || 0;
-    const reservedOther = Math.max(0, reservedAll - persistedThisReservation);
     const available = Math.max(0, physical - reservedOther - reservedThis);
     const missing = Math.max(0, item.quantity - reservedThis);
 
