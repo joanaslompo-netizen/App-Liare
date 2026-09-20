@@ -79,6 +79,8 @@ export interface RecipeItem {
   selectionMode?: 'fixed' | 'category';
   /** Material category used when selectionMode is "category" (ex: "Essências"). */
   targetCategory?: string;
+  /** Choices made for category-based ingredients when a virtual recipe is used inside a one-off/custom item. */
+  categorySelections?: Record<string, string>;
 }
 
 export interface Product {
