@@ -20,9 +20,10 @@ import {
   CreditCard,
   Layers,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  Percent
 } from 'lucide-react';
-import { Customer, Sale, Product } from '../types';
+import { Customer, Sale, Product, DiscountCode } from '../types';
 import { 
   formatCurrency, 
   formatDate, 
@@ -34,6 +35,7 @@ interface CustomersViewProps {
   customers: Customer[];
   sales: Sale[];
   products: Product[];
+  discountCodes: DiscountCode[];
   onSaveCustomer: (customer: Customer) => void;
   onDeleteCustomer: (id: string) => void;
   onNavigateToNewOrderWithCustomer?: (customer: Customer) => void;
@@ -43,6 +45,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   customers,
   sales,
   products,
+  discountCodes,
   onSaveCustomer,
   onDeleteCustomer,
   onNavigateToNewOrderWithCustomer,
@@ -418,6 +421,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                         {customer.name.substring(0, 2).toUpperCase()}
                       </div>
                       <div className="min-w-0">
+
                         <h3 className="font-bold text-stone-900 text-sm truncate">
                           {customer.name}
                         </h3>
@@ -550,6 +554,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         <CustomerFormModal
           isOpen={isCustomerModalOpen}
           existingCustomer={editingCustomer}
+          discountCodes={discountCodes}
           onClose={() => {
             setIsCustomerModalOpen(false);
             setEditingCustomer(null);
@@ -588,6 +593,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 interface CustomerFormModalProps {
   isOpen: boolean;
   existingCustomer?: Customer | null;
+  discountCodes: DiscountCode[];
   onClose: () => void;
   onSave: (customer: Customer) => void;
 }
@@ -595,6 +601,7 @@ interface CustomerFormModalProps {
 export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   isOpen,
   existingCustomer,
+  discountCodes,
   onClose,
   onSave,
 }) => {
@@ -602,6 +609,16 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   const [phone, setPhone] = useState(existingCustomer?.phone || '');
   const [birthdate, setBirthdate] = useState(existingCustomer?.birthdate || '');
   const [email, setEmail] = useState(existingCustomer?.email || '');
+  const initialDiscountMode = existingCustomer?.defaultDiscountCodeId
+    ? 'code'
+    : (existingCustomer?.defaultDiscountPercent || 0) > 0
+      ? 'percentage'
+      : 'none';
+  const [discountMode, setDiscountMode] = useState<'none' | 'code' | 'percentage'>(initialDiscountMode);
+  const [defaultDiscountCodeId, setDefaultDiscountCodeId] = useState(existingCustomer?.defaultDiscountCodeId || '');
+  const [defaultDiscountPercent, setDefaultDiscountPercent] = useState(
+    existingCustomer?.defaultDiscountPercent?.toString() || ''
+  );
   const [notes, setNotes] = useState(existingCustomer?.notes || '');
 
   if (!isOpen) return null;
@@ -624,6 +641,11 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
       phone: phone.trim(),
       birthdate: birthdate.trim() || undefined,
       email: email.trim() || undefined,
+      defaultDiscountCodeId: discountMode === 'code' && defaultDiscountCodeId ? defaultDiscountCodeId : undefined,
+      defaultDiscountPercent:
+        discountMode === 'percentage'
+          ? Math.min(100, Math.max(0, parseFloat(defaultDiscountPercent) || 0))
+          : undefined,
       notes: notes.trim() || undefined,
       createdAt: existingCustomer?.createdAt || today,
     };
@@ -717,6 +739,56 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900"
             />
+          </div>
+          {/* Benefício padrão */}
+          <div className="p-4 rounded-xl bg-[#fbf7f2] border border-[#eadfd6] space-y-3">
+            <div className="flex items-center gap-1.5">
+              <Percent className="w-4 h-4 text-[#b96f55]" />
+              <label className="text-xs font-bold text-stone-700 uppercase tracking-wider">
+                Benefício padrão do cliente
+              </label>
+            </div>
+
+            <select
+              value={discountMode}
+              onChange={(e) => setDiscountMode(e.target.value as 'none' | 'code' | 'percentage')}
+              className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-[#b96f55] text-stone-900"
+            >
+              <option value="none">Sem desconto automático</option>
+              <option value="code">Vincular código de desconto</option>
+              <option value="percentage">Porcentagem fixa para este cliente</option>
+            </select>
+
+            {discountMode === 'code' && (
+              <select
+                value={defaultDiscountCodeId}
+                onChange={(e) => setDefaultDiscountCodeId(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-[#b96f55] text-stone-900"
+              >
+                <option value="">Escolher código...</option>
+                {discountCodes.filter((code) => code.active !== false).map((code) => (
+                  <option key={code.id} value={code.id}>
+                    {code.code} · {code.type === 'percentage' ? `${code.value}%` : formatCurrency(code.value)}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {discountMode === 'percentage' && (
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={defaultDiscountPercent}
+                  onChange={(e) => setDefaultDiscountPercent(e.target.value)}
+                  placeholder="Ex: 10"
+                  className="w-full px-3 py-2 pr-9 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-[#b96f55] text-stone-900"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-stone-500">%</span>
+              </div>
+            )}
           </div>
 
           {/* Observações / Notas */}
