@@ -178,10 +178,20 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   };
 
   const handleConfirmAdjust = (id: string) => {
-    const val = parseFloat(adjustDelta);
-    if (!isNaN(val) && val !== 0 && onQuickStockChange) {
-      onQuickStockChange(id, val);
+    const newStock = parseFloat(adjustDelta);
+    const product = products.find((p) => p.id === id);
+
+    if (!product || isNaN(newStock) || newStock < 0) {
+      alert('Informe um valor de estoque válido, igual ou maior que zero.');
+      return;
     }
+
+    const currentStock = product.currentStock ?? 0;
+    const delta = newStock - currentStock;
+    if (delta !== 0 && onQuickStockChange) {
+      onQuickStockChange(id, delta);
+    }
+
     setAdjustingId(null);
     setAdjustDelta('');
   };
@@ -690,7 +700,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                               <input
                                 type="number"
                                 step="1"
-                                placeholder="+5 ou -2"
+                                min="0"
+                                placeholder="Novo estoque"
                                 value={adjustDelta}
                                 onChange={(e) => setAdjustDelta(e.target.value)}
                                 className="w-24 text-xs px-2 py-1 bg-white border border-stone-300 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500 text-stone-900"
@@ -728,7 +739,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                               <button
                                 onClick={() => {
                                   setAdjustingId(p.id);
-                                  setAdjustDelta('');
+                                  setAdjustDelta(String(currentStock));
                                 }}
                                 className="text-[11px] text-stone-500 hover:text-amber-800 underline cursor-pointer ml-1"
                               >
