@@ -1058,7 +1058,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   const handleSelectProductToAdd = (prod: Product | null) => {
     if (prod) {
       setSelectedProductIdToAdd(prod.id);
-      setPriceToAdd(prod.actualPrice.toString());
+      setPriceToAdd(prod.actualPrice.toFixed(2));
     } else {
       setSelectedProductIdToAdd('');
       setPriceToAdd('');
@@ -1609,11 +1609,16 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
               </div>
 
               {!isCustomItemMode ? (
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
-                  <div className="sm:col-span-6">
-                    <label className="block text-[10px] font-bold text-stone-500 mb-0.5">
-                      Produto (Digite o nome para buscar)
-                    </label>
+                <div className="sm:col-span-12">
+                  <label className="block text-[10px] font-bold text-stone-500 mb-0.5">
+                    Produto (Digite o nome para buscar)
+                  </label>
+
+                  <div className={`space-y-2.5 ${
+                    selectedProductIdToAdd
+                      ? 'rounded-xl border border-amber-300 bg-amber-50/70 p-2.5'
+                      : ''
+                  }`}>
                     <SearchableProductCombobox
                       products={products}
                       selectedProductId={selectedProductIdToAdd}
@@ -1621,44 +1626,78 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                       placeholder="Digite para buscar produto final..."
                       id="order-product-search-combobox"
                       filterOnlyFinalForSale={true}
+                      embeddedSelectedCard={true}
                     />
-                  </div>
 
-                  <div className="sm:col-span-2">
-                    <label className="block text-[10px] font-bold text-stone-500 mb-0.5">Qtd</label>
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={qtyToAdd}
-                      onChange={(e) => setQtyToAdd(e.target.value)}
-                      className="w-full px-2.5 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900 font-bold text-center"
-                      placeholder="1"
-                    />
-                  </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                      <div className="sm:col-span-4">
+                        <label className="block text-[10px] font-bold text-stone-500 mb-0.5">Qtd</label>
+                        <div className="flex w-full">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setQtyToAdd((current) =>
+                                String(Math.max(1, (parseInt(current, 10) || 1) - 1))
+                              )
+                            }
+                            className="w-10 shrink-0 rounded-l-lg border border-r-0 border-stone-300 bg-stone-50 text-stone-700 font-bold hover:bg-stone-100"
+                            aria-label="Diminuir quantidade"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={qtyToAdd}
+                            onChange={(e) => setQtyToAdd(e.target.value)}
+                            className="min-w-0 flex-1 px-2.5 py-2 text-sm bg-white border border-stone-300 focus:ring-2 focus:ring-amber-500 text-stone-900 font-bold text-center"
+                            placeholder="1"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setQtyToAdd((current) =>
+                                String(Math.max(1, (parseInt(current, 10) || 1) + 1))
+                              )
+                            }
+                            className="w-10 shrink-0 rounded-r-lg border border-l-0 border-stone-300 bg-stone-50 text-stone-700 font-bold hover:bg-stone-100"
+                            aria-label="Aumentar quantidade"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
 
-                  <div className="sm:col-span-2">
-                    <label className="block text-[10px] font-bold text-stone-500 mb-0.5">Preço (R$)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={priceToAdd}
-                      onChange={(e) => setPriceToAdd(e.target.value)}
-                      className="w-full px-2.5 py-2 text-sm font-semibold bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
-                      placeholder="0,00"
-                    />
-                  </div>
+                      <div className="sm:col-span-4">
+                        <label className="block text-[10px] font-bold text-stone-500 mb-0.5">Preço (R$)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={priceToAdd}
+                          onChange={(e) => setPriceToAdd(e.target.value)}
+                          onBlur={() => {
+                            const parsed = parseFloat(priceToAdd);
+                            if (Number.isFinite(parsed)) {
+                              setPriceToAdd(Math.max(0, parsed).toFixed(2));
+                            }
+                          }}
+                          className="w-full px-2.5 py-2 text-sm font-bold text-center bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
+                          placeholder="0,00"
+                        />
+                      </div>
 
-                  <div className="sm:col-span-2">
-                    <button
-                      type="button"
-                      onClick={handleAddItem}
-                      className="w-full py-2 px-3 bg-amber-500 hover:bg-amber-600 text-stone-950 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer active:scale-98 shadow-2xs"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Adicionar</span>
-                    </button>
+                      <div className="sm:col-span-4">
+                        <button
+                          type="button"
+                          onClick={handleAddItem}
+                          className="w-full py-2 px-3 bg-amber-500 hover:bg-amber-600 text-stone-950 text-xs font-bold rounded-lg transition-colors flex items-center justify-center cursor-pointer active:scale-98 shadow-2xs"
+                        >
+                          <span>Adicionar</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : (
