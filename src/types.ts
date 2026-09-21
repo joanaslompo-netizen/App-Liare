@@ -143,6 +143,17 @@ export interface Purchase {
   createdAt: string;
 }
 
+export type DiscountType = 'percentage' | 'fixed';
+
+export interface DiscountCode {
+  id: string;
+  code: string;
+  type: DiscountType;
+  value: number;
+  active?: boolean;
+  createdAt: string;
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -150,6 +161,10 @@ export interface Customer {
   birthdate?: string; // YYYY-MM-DD
   email?: string;
   notes?: string;
+  /** Reusable discount code automatically applied to new orders for this customer. */
+  defaultDiscountCodeId?: string;
+  /** Direct percentage discount when no reusable code is linked. */
+  defaultDiscountPercent?: number;
   createdAt: string;
 }
 
@@ -207,6 +222,14 @@ export interface Sale {
   customerContact?: string; // Telefone/WhatsApp do cliente
   channel?: string; // Elo7, Instagram, Feira, WhatsApp, etc.
   paymentMethod?: string; // 'offline', 'site' ou categoria personalizada
+  /** Order subtotal before discount. Kept as a snapshot for historical accuracy. */
+  subtotalRevenue?: number;
+  discountType?: DiscountType;
+  discountValue?: number;
+  discountAmount?: number;
+  /** Snapshot of the code used at checkout, so old orders never change retroactively. */
+  discountCode?: string;
+  discountCodeId?: string;
   notes?: string;
 
   // Novos campos para flexibilidade de Pedidos & Pronta Entrega
@@ -260,6 +283,7 @@ export interface AtelierSettings {
   defaultFixedCostPercent: number; // %
   defaultProfitMargin: number; // %
   paymentMethods?: string[]; // Lista de formas/categorias de pagamento ('offline', 'site', etc.)
+  discountCodes?: DiscountCode[];
 }
 
 export type NavTab = 
