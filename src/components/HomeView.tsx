@@ -151,58 +151,62 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   return (
     <div className="space-y-4 sm:space-y-6 pb-12">
-      <section className="rounded-2xl sm:rounded-3xl border border-[#eadfd6] bg-[#fbf7f2] p-4 sm:p-7 shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
-          <div>
-            <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-semibold text-[#a75f49] uppercase tracking-wider mb-1">
-              <Calendar className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-              <span>{capitalizedDate}</span>
+      <section className="px-1 sm:px-0">
+        <div className="grid grid-cols-[1fr_auto] items-start gap-4 sm:gap-8">
+          <div className="min-w-0 pt-1">
+            <div className="text-[11px] sm:text-xs font-medium text-[#8b817a] mb-1">
+              {capitalizedDate}
             </div>
-            <h2 className="text-xl sm:text-3xl font-bold text-[#352f2b] tracking-tight">
-              Olá, {artisanName || 'Artesã'}! ✨
+            <h2 className="text-[28px] sm:text-3xl leading-none font-bold text-[#2f2925] tracking-tight">
+              Olá, {artisanName || 'Artesã'}
             </h2>
-            <p className="text-[13px] sm:text-sm text-[#766b64] mt-1 max-w-2xl leading-snug">
-              Seu painel do <strong className="text-[#4a403a]">{atelierName || 'ateliê'}</strong>: o que importa hoje, sem distrações.
+            <p className="text-[13px] sm:text-sm text-[#766b64] mt-2 leading-snug max-w-md">
+              Um ateliê organizado acende grandes planos. ✦
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-            <button
-              id="btn-home-quick-sale"
-              onClick={onOpenNewSale ? onOpenNewSale : () => onNavigate('sales')}
-              className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-[#b96f55] hover:bg-[#a86149] text-white text-[11px] sm:text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-98"
-            >
-              <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span>Novo pedido</span>
-            </button>
-            <button
-              id="btn-home-quick-production"
-              onClick={() => onNavigate('productions')}
-              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-[#f1e4da] hover:bg-[#ead8ca] text-[#744737] text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <Factory className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-              <span>Produção</span>
-            </button>
-            <button
-              id="btn-home-quick-product"
-              onClick={onOpenNewProduct ? onOpenNewProduct : () => onNavigate('products')}
-              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-white hover:bg-[#f7efe9] text-[#5e5149] text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 border border-[#eadfd6] transition-colors cursor-pointer"
-            >
-              <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-              <span>Receita</span>
-            </button>
-            <button
-              id="btn-home-quick-material"
-              onClick={onOpenNewMaterial ? onOpenNewMaterial : () => onNavigate('materials')}
-              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-white hover:bg-[#f7efe9] text-[#5e5149] text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 border border-[#eadfd6] transition-colors cursor-pointer"
-            >
-              <Package className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-              <span>Material</span>
-            </button>
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white/70 border border-white shadow-sm flex items-center justify-center overflow-hidden">
+              <img src="/liare-icon.svg" alt="Liare" className="w-full h-full object-cover" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:justify-end">
+              <button
+                id="btn-home-quick-sale"
+                onClick={onOpenNewSale ? onOpenNewSale : () => onNavigate('sales')}
+                className="px-2.5 py-1.5 rounded-xl bg-[#b96f55] hover:bg-[#a86149] text-white text-[10px] sm:text-xs font-bold flex items-center justify-center gap-1 shadow-xs transition-all cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Pedido</span>
+              </button>
+              <button
+                id="btn-home-quick-production"
+                onClick={() => onNavigate('productions')}
+                className="px-2.5 py-1.5 rounded-xl bg-[#eef1e6] hover:bg-[#e4e9d8] text-[#66704f] text-[10px] sm:text-xs font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+              >
+                <Factory className="w-3 h-3" />
+                <span>Produção</span>
+              </button>
+              <button
+                id="btn-home-quick-product"
+                onClick={onOpenNewProduct ? onOpenNewProduct : () => onNavigate('products')}
+                className="px-2.5 py-1.5 rounded-xl bg-white/80 hover:bg-white text-[#5e5149] text-[10px] sm:text-xs font-semibold flex items-center justify-center gap-1 border border-[#eadfd6] transition-colors cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Receita</span>
+              </button>
+              <button
+                id="btn-home-quick-material"
+                onClick={onOpenNewMaterial ? onOpenNewMaterial : () => onNavigate('materials')}
+                className="px-2.5 py-1.5 rounded-xl bg-white/80 hover:bg-white text-[#5e5149] text-[10px] sm:text-xs font-semibold flex items-center justify-center gap-1 border border-[#eadfd6] transition-colors cursor-pointer"
+              >
+                <Package className="w-3 h-3" />
+                <span>Material</span>
+              </button>
+            </div>
           </div>
         </div>
       </section>
-
       <section
         onClick={() => onNavigate('reports')}
         className="rounded-[28px] sm:rounded-3xl bg-[#b96f55] text-white px-4.5 pt-4.5 pb-3.5 sm:p-6 shadow-sm cursor-pointer transition-transform hover:-translate-y-0.5"
@@ -274,52 +278,63 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
         </div>
       </section>
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         <button
           onClick={() => onNavigate('sales')}
-          className="text-left bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-[#eadfd6] hover:border-[#c98a72] transition-all shadow-xs cursor-pointer group"
+          className="h-[72px] sm:h-auto sm:min-h-[104px] text-left bg-white px-3 py-2.5 sm:p-5 rounded-2xl border border-[#eadfd6] hover:border-[#c98a72] transition-all shadow-xs cursor-pointer group flex items-center gap-2.5"
         >
-          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-[#f5e8df] text-[#a86149] flex items-center justify-center mb-2 sm:mb-3">
-            <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[#f5e8df] text-[#a86149] flex items-center justify-center shrink-0">
+            <ShoppingBag className="w-5 h-5" />
           </div>
-          <span className="text-[11px] sm:text-xs text-[#766b64] block">Pedidos do mês</span>
-          <strong className="text-xl sm:text-2xl font-bold text-[#352f2b] tracking-tight">{monthSales.length}</strong>
+          <div className="min-w-0">
+            <span className="text-[11px] sm:text-xs text-[#5f5650] block leading-tight">Pedidos ativos</span>
+            <strong className="text-xl sm:text-2xl leading-none font-bold text-[#2f2925] tracking-tight block mt-1">{monthSales.length}</strong>
+          </div>
+          <ArrowRight className="w-3.5 h-3.5 text-[#7e746d] ml-auto shrink-0 sm:hidden" />
+        </button>
+
+        <button
+          onClick={() => onNavigate('productions')}
+          className="h-[72px] sm:h-auto sm:min-h-[104px] text-left bg-white px-3 py-2.5 sm:p-5 rounded-2xl border border-[#eadfd6] hover:border-[#c98a72] transition-all shadow-xs cursor-pointer flex items-center gap-2.5"
+        >
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[#eef1e6] text-[#66704f] flex items-center justify-center shrink-0">
+            <Factory className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-[11px] sm:text-xs text-[#5f5650] block leading-tight">Em produção</span>
+            <strong className="text-xl sm:text-2xl leading-none font-bold text-[#2f2925] tracking-tight block mt-1">{pendingDeliveries.length}</strong>
+          </div>
+          <ArrowRight className="w-3.5 h-3.5 text-[#7e746d] ml-auto shrink-0 sm:hidden" />
         </button>
 
         <button
           onClick={() => onNavigate('sales', 'pending_delivery')}
-          className="text-left bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-[#eadfd6] hover:border-[#c98a72] transition-all shadow-xs cursor-pointer"
+          className="h-[72px] sm:h-auto sm:min-h-[104px] text-left bg-white px-3 py-2.5 sm:p-5 rounded-2xl border border-[#eadfd6] hover:border-[#c98a72] transition-all shadow-xs cursor-pointer flex items-center gap-2.5"
         >
-          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-[#f5e8df] text-[#a86149] flex items-center justify-center mb-2 sm:mb-3">
-            <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[#eef1e6] text-[#66704f] flex items-center justify-center shrink-0">
+            <Truck className="w-5 h-5" />
           </div>
-          <span className="text-[11px] sm:text-xs text-[#766b64] block">A despachar</span>
-          <strong className="text-xl sm:text-2xl font-bold text-[#352f2b] tracking-tight">{pendingDeliveries.length}</strong>
-        </button>
-
-        <button
-          onClick={() => onNavigate('sales', 'pending_payment')}
-          className="text-left bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-[#eadfd6] hover:border-[#c98a72] transition-all shadow-xs cursor-pointer"
-        >
-          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-[#eef1e6] text-[#6d7658] flex items-center justify-center mb-2 sm:mb-3">
-            <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          <div className="min-w-0">
+            <span className="text-[11px] sm:text-xs text-[#5f5650] block leading-tight">A despachar</span>
+            <strong className="text-xl sm:text-2xl leading-none font-bold text-[#2f2925] tracking-tight block mt-1">{pendingDeliveries.length}</strong>
           </div>
-          <span className="text-[11px] sm:text-xs text-[#766b64] block">Valores a receber</span>
-          <strong className="text-xl sm:text-2xl font-bold text-[#352f2b] tracking-tight">{pendingPayments.length}</strong>
+          <ArrowRight className="w-3.5 h-3.5 text-[#7e746d] ml-auto shrink-0 sm:hidden" />
         </button>
 
         <button
           onClick={() => onNavigate('materials')}
-          className="text-left bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-[#eadfd6] hover:border-[#c98a72] transition-all shadow-xs cursor-pointer"
+          className="h-[72px] sm:h-auto sm:min-h-[104px] text-left bg-white px-3 py-2.5 sm:p-5 rounded-2xl border border-[#eadfd6] hover:border-[#c98a72] transition-all shadow-xs cursor-pointer flex items-center gap-2.5"
         >
-          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-[#f6eadf] text-[#a56d4f] flex items-center justify-center mb-2 sm:mb-3">
-            <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[#f6eadf] text-[#a56d4f] flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5" />
           </div>
-          <span className="text-[11px] sm:text-xs text-[#766b64] block">Estoque baixo</span>
-          <strong className="text-xl sm:text-2xl font-bold text-[#352f2b] tracking-tight">{totalLowStock}</strong>
+          <div className="min-w-0">
+            <span className="text-[11px] sm:text-xs text-[#5f5650] block leading-tight">Estoque baixo</span>
+            <strong className="text-xl sm:text-2xl leading-none font-bold text-[#2f2925] tracking-tight block mt-1">{totalLowStock}</strong>
+          </div>
+          <ArrowRight className="w-3.5 h-3.5 text-[#7e746d] ml-auto shrink-0 sm:hidden" />
         </button>
       </section>
-
       <section className="grid grid-cols-1 xl:grid-cols-5 gap-6">
         <div className="xl:col-span-3 bg-white rounded-3xl border border-[#eadfd6] p-6 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#f0e7e0]">
