@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, X, Check, Tag, ChevronDown, Layers, Sparkles } from 'lucide-react';
+import { Search, X, Check, Tag, ChevronDown, ChevronLeft, Layers, Sparkles } from 'lucide-react';
 import { Product } from '../types';
 import { formatCurrency } from '../utils/formatters';
 
@@ -29,11 +29,14 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
   const defaultPlaceholder = mode === 'production'
     ? 'Buscar receita por palavras-chave (ex: vela lavanda, difusor, aroma)...'
     : 'Buscar produto pelo nome ou categoria...';
-  const effectivePlaceholder = placeholder || defaultPlaceholder;
+  const effectivePlaceholder = activeFamily
+    ? `Buscar aroma de ${activeFamily}...`
+    : (placeholder || defaultPlaceholder);
 
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [activeFamily, setActiveFamily] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -46,31 +49,62 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
     return products.filter((p) => !p.isCustomRecipe && !p.isIntermediate);
   }, [products, filterOnlyFinalForSale]);
 
+  const familyGroups = useMemo(() => {
+    const map = new Map<string, Product[]>();
+    eligibleProducts.forEach((product) => {
+      const family = product.productFamily?.trim();
+      if (!family || !product.fragrance?.trim()) return;
+      const current = map.get(family) || [];
+      current.push(product);
+      map.set(family, current);
+    });
+
+    return Array.from(map.entries())
+      .map(([family, variants]) => ({
+        family,
+        variants: variants.sort((a, b) =>
+          (a.fragrance || a.name).localeCompare(b.fragrance || b.name, 'pt-BR', { sensitivity: 'base' })
+        ),
+        totalStock: variants.reduce((sum, item) => sum + (item.currentStock ?? 0), 0),
+      }))
+      .sort((a, b) => a.family.localeCompare(b.family, 'pt-BR', { sensitivity: 'base' }));
+  }, [eligibleProducts]);
+
   // Currently selected product
   const selectedProduct = useMemo(() => {
     return products.find((p) => p.id === selectedProductId) || null;
   }, [products, selectedProductId]);
 
-  // Filtered products based on search term (multi-keyword search)
+  // Filtered products based on search term (multi-keyword search).
+  // In sales, grouped products open in two steps: product-base -> aroma.
   const filteredProducts = useMemo(() => {
-    let list = eligibleProducts;
+    let list = activeFamily
+      ? eligibleProducts.filter((p) => p.productFamily === activeFamily)
+      : eligibleProducts;
+
     const trimmed = query.trim().toLowerCase();
     if (trimmed) {
       const keywords = trimmed.split(/\s+/).filter(Boolean);
-      list = eligibleProducts.filter((p) => {
+      list = list.filter((p) => {
         const itemsText = (p.items || []).map((it) => it.name).join(' ');
-        const searchBlob = `${p.name} ${p.category} ${p.description || ''} ${itemsText}`.toLowerCase();
+        const searchBlob = `${p.name} ${p.category} ${p.productFamily || ''} ${p.fragrance || ''} ${p.description || ''} ${itemsText}`.toLowerCase();
         return keywords.every((kw) => searchBlob.includes(kw));
       });
+    } else if (mode === 'sale' && !activeFamily && familyGroups.length > 0) {
+      // Grouped variants are represented by their product-base cards above the regular list.
+      list = list.filter((p) => !p.productFamily || !p.fragrance);
     }
 
     return [...list].sort((a, b) => {
       const aPaused = (a.minStock ?? 2) === 0;
       const bPaused = (b.minStock ?? 2) === 0;
       if (aPaused !== bPaused) return aPaused ? 1 : -1;
+      if (activeFamily) {
+        return (a.fragrance || a.name).localeCompare(b.fragrance || b.name, 'pt-BR', { sensitivity: 'base' });
+      }
       return a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' });
     });
-  }, [eligibleProducts, query]);
+  }, [eligibleProducts, query, mode, activeFamily, familyGroups]);
 
   // Keep active index in bounds
   useEffect(() => {
@@ -110,6 +144,7 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
   const handleSelect = (prod: Product) => {
     onSelectProduct(prod);
     setQuery('');
+    setActiveFamily(null);
     setIsOpen(false);
   };
 
@@ -117,6 +152,7 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
     if (e) e.stopPropagation();
     onSelectProduct(null);
     setQuery('');
+    setActiveFamily(null);
     setIsOpen(true);
     setTimeout(() => {
       inputRef.current?.focus();
@@ -174,8 +210,13 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
                 <span className={`text-xs font-bold text-stone-900 ${
                   embeddedSelectedCard ? 'whitespace-normal break-words leading-snug' : 'truncate block'
                 }`}>
-                  {selectedProduct.name}
+                  {selectedProduct.productFamily || selectedProduct.name}
                 </span>
+                {selectedProduct.fragrance && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-purple-50 text-purple-800 border border-purple-200">
+                    {selectedProduct.fragrance}
+                  </span>
+                )}
                 {!embeddedSelectedCard && (
                   <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-stone-200/80 text-stone-700">
                     {selectedProduct.category}
@@ -278,12 +319,68 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
           {/* Floating Dropdown Results */}
           {isOpen && (
             <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-stone-200 rounded-xl shadow-xl z-50 overflow-hidden max-h-72 flex flex-col animate-in fade-in zoom-in-95 duration-100">
+              {mode === 'sale' && !query.trim() && familyGroups.length > 0 && (
+                <div className="border-b border-stone-200 bg-amber-50/40">
+                  {activeFamily ? (
+                    <div className="px-3 py-2.5 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveFamily(null);
+                          setQuery('');
+                          setActiveIndex(0);
+                        }}
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-stone-600 hover:text-stone-900"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        Produtos
+                      </button>
+                      <span className="text-xs font-bold text-stone-900 truncate">
+                        {activeFamily} · escolha o aroma
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="p-2.5">
+                      <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mb-2 px-0.5">
+                        Produtos com variações de aroma
+                      </div>
+                      <div className="grid grid-cols-1 gap-1.5">
+                        {familyGroups.map((group) => (
+                          <button
+                            key={group.family}
+                            type="button"
+                            onClick={() => {
+                              setActiveFamily(group.family);
+                              setQuery('');
+                              setActiveIndex(0);
+                            }}
+                            className="w-full text-left px-3 py-2 rounded-lg bg-white border border-amber-200 hover:border-amber-400 hover:bg-amber-50 transition-colors"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-stone-900">{group.family}</span>
+                              <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded-full">
+                                {group.variants.length} {group.variants.length === 1 ? 'aroma' : 'aromas'}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-stone-500 mt-0.5">
+                              Estoque total: {group.totalStock} un
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="px-3 py-2 bg-stone-50 border-b border-stone-200 flex items-center justify-between text-xs text-stone-500">
                 <span className="font-semibold text-stone-700 flex items-center gap-1">
                   <Sparkles className="w-3 h-3 text-amber-500" />
                   {mode === 'production'
                     ? (filteredProducts.length === 1 ? '1 receita encontrada' : `${filteredProducts.length} receitas encontradas`)
-                    : (filteredProducts.length === 1 ? '1 produto encontrado para venda' : `${filteredProducts.length} produtos encontrados para venda`)}
+                    : activeFamily
+                      ? (filteredProducts.length === 1 ? '1 aroma disponível' : `${filteredProducts.length} aromas disponíveis`)
+                      : (filteredProducts.length === 1 ? '1 produto encontrado para venda' : `${filteredProducts.length} produtos encontrados para venda`)}
                 </span>
                 <span className="text-[11px] text-stone-400">↑ ↓ e Enter</span>
               </div>
@@ -337,8 +434,13 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-xs font-bold text-stone-900 truncate">
-                                {prod.name}
+                                {activeFamily ? (prod.fragrance || prod.name) : prod.name}
                               </span>
+                              {!activeFamily && prod.productFamily && prod.fragrance && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-purple-50 text-purple-800 border border-purple-200">
+                                  {prod.fragrance}
+                                </span>
+                              )}
                               <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-stone-100 text-stone-600 border border-stone-200">
                                 {prod.category}
                               </span>
