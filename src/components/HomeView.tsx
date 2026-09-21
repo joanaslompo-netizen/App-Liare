@@ -36,6 +36,7 @@ interface HomeViewProps {
   onOpenSettings?: () => void;
 }
 
+// Redeploy marker: summary banner
 export const HomeView: React.FC<HomeViewProps> = ({
   artisanName,
   atelierName,
