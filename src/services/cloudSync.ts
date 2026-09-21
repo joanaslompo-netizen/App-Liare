@@ -7,12 +7,13 @@ import {
   Unsubscribe
 } from 'firebase/firestore';
 import { db, User } from '../lib/firebase';
-import { Material, Product, Purchase, Sale, Customer, Supplier, AtelierSettings, TodoItem, Production } from '../types';
+import { Material, Product, Purchase, Sale, Customer, Supplier, AtelierSettings, TodoItem, Production, ProductionProject } from '../types';
 
 export interface WorkspaceData {
   materials: Material[];
   products: Product[];
   productions?: Production[];
+  projects?: ProductionProject[];
   purchases: Purchase[];
   sales: Sale[];
   customers?: Customer[];
@@ -63,7 +64,7 @@ function sanitizeForFirestore<T>(data: T): T {
 
 function workspaceFromData(data: any): WorkspaceData {
   return {
-    materials: data.materials || [], products: data.products || [], productions: data.productions || [],
+    materials: data.materials || [], products: data.products || [], productions: data.productions || [], projects: data.projects || [],
     purchases: data.purchases || [], sales: data.sales || [], customers: data.customers || [],
     paymentMethods: data.paymentMethods || [], suppliers: data.suppliers || [], settings: data.settings,
     todos: data.todos || [], version: data.version, revision: data.revision || 0,
@@ -111,6 +112,7 @@ export async function uploadWorkspaceToCloud(
       materials: workspace.materials,
       products: workspace.products,
       productions: workspace.productions || [],
+      projects: workspace.projects || [],
       purchases: workspace.purchases,
       sales: workspace.sales,
       customers: workspace.customers || [],
