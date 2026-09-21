@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Settings, 
   X, 
@@ -12,7 +12,8 @@ import {
   Sparkles,
   Cloud,
   CheckCircle2,
-  Trash2
+  Trash2,
+  Edit2
 } from 'lucide-react';
 import { AtelierSettings, DiscountCode, DiscountType } from '../types';
 import { User } from '../lib/firebase';
@@ -54,13 +55,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [defaultFixedCostPercent, setDefaultFixedCostPercent] = useState(settings.defaultFixedCostPercent.toString());
   const [defaultProfitMargin, setDefaultProfitMargin] = useState(settings.defaultProfitMargin.toString());
   const [discountCodes, setDiscountCodes] = useState<DiscountCode[]>(
-    settings.discountCodes?.length ? settings.discountCodes : (DEFAULT_SETTINGS.discountCodes || [])
+    Array.isArray(settings.discountCodes) ? settings.discountCodes : (DEFAULT_SETTINGS.discountCodes || [])
   );
   const [newDiscountCode, setNewDiscountCode] = useState('');
   const [newDiscountType, setNewDiscountType] = useState<DiscountType>('percentage');
   const [newDiscountValue, setNewDiscountValue] = useState('10');
+  const [editingDiscountCodeId, setEditingDiscountCodeId] = useState<string | null>(null);
 
   const fileImportRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setAtelierName(settings.atelierName);
+    setArtisanName(settings.artisanName);
+    setDefaultHourlyRate(settings.defaultHourlyRate.toString());
+    setDefaultFixedCostPercent(settings.defaultFixedCostPercent.toString());
+    setDefaultProfitMargin(settings.defaultProfitMargin.toString());
+    setDiscountCodes(
+      Array.isArray(settings.discountCodes) ? settings.discountCodes : (DEFAULT_SETTINGS.discountCodes || [])
+    );
+    setEditingDiscountCodeId(null);
+    setNewDiscountCode('');
+    setNewDiscountType('percentage');
+    setNewDiscountValue('10');
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -127,16 +145,53 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  const persistDiscountCodes = (nextCodes: DiscountCode[]) => {
+    setDiscountCodes(nextCodes);
+    onSaveSettings({
+      ...settings,
+      atelierName: atelierName.trim() || settings.atelierName,
+      artisanName: artisanName.trim() || settings.artisanName,
+      defaultHourlyRate: parseFloat(defaultHourlyRate) || settings.defaultHourlyRate,
+      defaultFixedCostPercent: parseFloat(defaultFixedCostPercent) || settings.defaultFixedCostPercent,
+      defaultProfitMargin: parseFloat(defaultProfitMargin) || settings.defaultProfitMargin,
+      discountCodes: nextCodes,
+    });
+  };
+
+  const resetDiscountEditor = () => {
+    setEditingDiscountCodeId(null);
+    setNewDiscountCode('');
+    setNewDiscountType('percentage');
+    setNewDiscountValue('10');
+  };
+
   const handleAddDiscountCode = () => {
     const code = newDiscountCode.trim().toUpperCase().replace(/\s+/g, '');
     const value = Math.max(0, parseFloat(newDiscountValue) || 0);
     if (!code || value <= 0) return;
-    if (discountCodes.some((item) => item.code.toUpperCase() === code)) {
+    if (discountCodes.some((item) => item.id !== editingDiscountCodeId && item.code.toUpperCase() === code)) {
       alert('Já existe um código de desconto com esse nome.');
       return;
     }
-    setDiscountCodes((prev) => [
-      ...prev,
+
+    if (editingDiscountCodeId) {
+      const next = discountCodes.map((item) =>
+        item.id === editingDiscountCodeId
+          ? {
+              ...item,
+              code,
+              type: newDiscountType,
+              value: newDiscountType === 'percentage' ? Math.min(100, value) : value,
+            }
+          : item
+      );
+      persistDiscountCodes(next);
+      resetDiscountEditor();
+      return;
+    }
+
+    const next = [
+      ...discountCodes,
       {
         id: `discount_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         code,
@@ -145,19 +200,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         active: true,
         createdAt: new Date().toISOString().split('T')[0],
       },
-    ]);
-    setNewDiscountCode('');
-    setNewDiscountValue('10');
+    ];
+    persistDiscountCodes(next);
+    resetDiscountEditor();
+  };
+
+  const handleEditDiscountCode = (discount: DiscountCode) => {
+    setEditingDiscountCodeId(discount.id);
+    setNewDiscountCode(discount.code);
+    setNewDiscountType(discount.type);
+    setNewDiscountValue(discount.value.toString());
   };
 
   const handleToggleDiscountCode = (id: string) => {
-    setDiscountCodes((prev) =>
-      prev.map((item) => item.id === id ? { ...item, active: item.active === false } : item)
+    const next = discountCodes.map((item) =>
+      item.id === id ? { ...item, active: item.active === false } : item
     );
+    persistDiscountCodes(next);
   };
 
   const handleDeleteDiscountCode = (id: string) => {
-    setDiscountCodes((prev) => prev.filter((item) => item.id !== id));
+    const next = discountCodes.filter((item) => item.id !== id);
+    persistDiscountCodes(next);
+    if (editingDiscountCodeId === id) resetDiscountEditor();
   };
 
   return (
@@ -288,6 +353,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                   <button
                     type="button"
+                    onClick={() => handleEditDiscountCode(discount)}
+                    className="p-1.5 text-stone-400 hover:text-[#a86149] hover:bg-[#fbf7f2] rounded-lg"
+                    title="Editar código"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleToggleDiscountCode(discount.id)}
                     className="px-2 py-1 text-[10px] font-semibold rounded-lg border border-stone-200 hover:bg-stone-50"
                   >
@@ -335,8 +408,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onClick={handleAddDiscountCode}
                 className="px-3 py-2 rounded-lg bg-[#b96f55] hover:bg-[#a86149] text-white text-xs font-bold"
               >
-                Adicionar
+                {editingDiscountCodeId ? 'Salvar alteração' : 'Adicionar'}
               </button>
+              {editingDiscountCodeId && (
+                <button
+                  type="button"
+                  onClick={resetDiscountEditor}
+                  className="px-3 py-2 rounded-lg bg-white border border-stone-300 text-stone-600 text-xs font-semibold hover:bg-stone-50"
+                >
+                  Cancelar edição
+                </button>
+              )}
             </div>
           </div>
 
