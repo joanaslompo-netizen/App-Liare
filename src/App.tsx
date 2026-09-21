@@ -1376,7 +1376,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-stone-100/70 text-stone-900 flex flex-col font-sans antialiased selection:bg-amber-200 selection:text-stone-900">
+    <div className="min-h-screen bg-[#f6f0e9] text-stone-900 flex flex-col font-sans antialiased selection:bg-[#ead0c3] selection:text-stone-900">
       {/* Sync Status Banner Notification if active */}
       {syncNotification && (
         <div className="bg-emerald-600 text-white px-4 py-2.5 text-xs font-medium flex items-center justify-between shadow-xs animate-in slide-in-from-top-2 duration-200">
