@@ -16,7 +16,8 @@ import {
   ChevronRight,
   Sparkles,
   AlertTriangle,
-  Hammer
+  Hammer,
+  ClipboardList
 } from 'lucide-react';
 import { NavTab } from '../types';
 import { User } from '../lib/firebase';
@@ -34,6 +35,7 @@ interface SidebarDrawerProps {
   salesCount: number;
   purchasesCount: number;
   productionsCount?: number;
+  projectsCount?: number;
   customersCount?: number;
   birthdayCustomersCount?: number;
   atelierName: string;
@@ -56,6 +58,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   salesCount,
   purchasesCount,
   productionsCount = 0,
+  projectsCount = 0,
   customersCount = 0,
   birthdayCustomersCount = 0,
   atelierName,
@@ -103,6 +106,14 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
       icon: Tag,
       badge: productsCount > 0 ? `${productsCount}` : null,
       badgeColor: 'bg-stone-100 text-stone-700',
+    },
+    {
+      id: 'projects' as NavTab,
+      label: 'Projetos',
+      description: 'Planejamento de produções e coleções',
+      icon: ClipboardList,
+      badge: projectsCount > 0 ? `${projectsCount}` : null,
+      badgeColor: 'bg-purple-100 text-purple-800 font-semibold',
     },
     {
       id: 'materials' as NavTab,
