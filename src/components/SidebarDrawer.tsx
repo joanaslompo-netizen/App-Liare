@@ -11,7 +11,6 @@ import {
   Cake,
   Settings, 
   Cloud, 
-  X, 
   Scissors, 
   Menu,
   ChevronRight,
@@ -242,15 +241,6 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
             </div>
           </div>
 
-          <button
-            id="btn-close-sidebar"
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-stone-400 hover:text-white hover:bg-stone-800 transition-colors cursor-pointer"
-            title="Fechar menu"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
 
         {/* Vertical Navigation Items List */}
