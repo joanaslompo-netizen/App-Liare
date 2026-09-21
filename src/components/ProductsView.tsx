@@ -23,7 +23,8 @@ import {
   Percent,
   Hammer,
   Package,
-  Sparkles
+  Sparkles,
+  ShoppingBag
 } from 'lucide-react';
 import { Product, Material, RecipeItem, RecipeItemType } from '../types';
 import { 
