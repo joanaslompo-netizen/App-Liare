@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
+  BarChart3,
   Calendar,
   Check,
   CheckCircle2,
@@ -205,38 +206,62 @@ export const HomeView: React.FC<HomeViewProps> = ({
         onClick={() => onNavigate('reports')}
         className="rounded-3xl bg-[#b96f55] text-white p-5 sm:p-6 shadow-sm cursor-pointer transition-transform hover:-translate-y-0.5"
       >
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5">
-          <div>
-            <span className="text-xs font-semibold uppercase tracking-wider text-white/80">
-              Resumo do mês
-            </span>
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-              <div>
-                <span className="text-xs text-white/75 block">Faturamento</span>
-                <strong className="text-2xl font-extrabold tracking-tight">{formatCurrency(monthRevenue)}</strong>
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-sm font-semibold text-white/90">Resumo do mês</span>
+          <span className="text-white/65">·</span>
+          <span className="text-sm font-semibold text-white/90">
+            {new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date())}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-3">
+          <div className="min-w-0 pr-3 sm:pr-5">
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                <BarChart3 className="w-4 h-4 text-white" />
               </div>
-              <div>
-                <span className="text-xs text-white/75 block">Lucro líquido</span>
-                <strong className="text-2xl font-extrabold tracking-tight">{monthProfit > 0 ? '+' : ''}{formatCurrency(monthProfit)}</strong>
-              </div>
-              <div>
-                <span className="text-xs text-white/75 block">A receber</span>
-                <strong className="text-2xl font-extrabold tracking-tight">{formatCurrency(totalPendingPaymentAmount)}</strong>
-              </div>
+              <span className="text-xs text-white/75">Faturamento</span>
             </div>
+            <strong className="block text-2xl font-extrabold tracking-tight whitespace-nowrap">
+              {formatCurrency(monthRevenue)}
+            </strong>
           </div>
 
-          <div className="min-w-[180px]">
-            <div className="flex items-center justify-between text-xs text-white/80 mb-1.5">
-              <span>{monthSales.length} {monthSales.length === 1 ? 'venda no mês' : 'vendas no mês'}</span>
-              <span>{formatPercent(monthMargin)}</span>
+          <div className="min-w-0 px-3 sm:px-5 border-l border-white/20">
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="w-8 h-8 rounded-full bg-[#e9efdc] flex items-center justify-center shrink-0">
+                <TrendingUp className="w-4 h-4 text-[#65734f]" />
+              </div>
+              <span className="text-xs text-white/75">Lucro</span>
             </div>
-            <div className="h-2 rounded-full bg-white/20 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-white/85"
-                style={{ width: `${Math.max(4, Math.min(100, Math.abs(monthMargin)))}%` }}
-              />
+            <strong className="block text-2xl font-extrabold tracking-tight whitespace-nowrap">
+              {monthProfit > 0 ? '+' : ''}{formatCurrency(monthProfit)}
+            </strong>
+          </div>
+
+          <div className="min-w-0 pl-3 sm:pl-5 border-l border-white/20">
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                <CreditCard className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-xs text-white/75">A receber</span>
             </div>
+            <strong className="block text-2xl font-extrabold tracking-tight whitespace-nowrap">
+              {formatCurrency(totalPendingPaymentAmount)}
+            </strong>
+          </div>
+        </div>
+
+        <div className="mt-5 flex items-center gap-4">
+          <div className="flex-1 h-2 rounded-full bg-white/25 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-white/90 transition-all"
+              style={{ width: `${Math.max(4, Math.min(100, Math.abs(monthMargin)))}%` }}
+            />
+          </div>
+          <div className="flex items-center gap-1 text-xs text-white/85 whitespace-nowrap">
+            <span>Margem {formatPercent(monthMargin)}</span>
+            <ArrowRight className="w-3.5 h-3.5" />
           </div>
         </div>
       </section>
