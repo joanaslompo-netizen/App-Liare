@@ -1238,22 +1238,17 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
             </div>
 
 
-            {/* Base unit for recipes */}
-            <div className="pt-2 border-t border-amber-200/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div>
-                <label className="block text-[11px] font-bold text-stone-800 mb-0.5">
-                  Unidade que você usa nas Receitas das Peças:
-                </label>
-                <p className="text-[11px] text-stone-500">
-                  (Ex: se comprou em metros, pode precificar por cm na receita)
-                </p>
-              </div>
+            {/* Base unit for recipes + calculated unit cost */}
+            <div className="pt-2 border-t border-amber-200/60">
+              <label className="block text-[11px] font-bold text-stone-800 mb-1.5">
+                Unidade que você usa nas Receitas das Peças:
+              </label>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <select
                   value={unit}
                   onChange={(e) => setUnit(e.target.value as UnitOfMeasure)}
-                  className="px-3 py-1.5 text-sm font-semibold bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
+                  className="min-w-0 flex-1 px-3 py-1.5 text-sm font-semibold bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
                 >
                   <option value="cm">Centímetros (cm)</option>
                   <option value="m">Metros (m)</option>
@@ -1264,20 +1259,14 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                   <option value="ml">Mililitros (ml)</option>
                   <option value="l">Litros (l)</option>
                 </select>
-              </div>
-            </div>
 
-            {/* Real-time Calculated Unit Cost Banner */}
-            <div className="bg-white p-3 rounded-lg border border-amber-200 flex items-center justify-between">
-              <span className="text-xs text-stone-600 font-medium">
-                Custo unitário calculado automaticamente:
-              </span>
-              <span className="text-base font-extrabold text-stone-900">
-                {formatCurrency(calculatedUnitCostPreview)}
-                <span className="text-xs font-normal text-stone-500 ml-1">
-                  por {UNIT_SHORT[unit]}
+                <span className="shrink-0 whitespace-nowrap text-base font-extrabold text-stone-900">
+                  {formatCurrency(calculatedUnitCostPreview)}
+                  <span className="text-xs font-normal text-stone-500 ml-1">
+                    por {UNIT_SHORT[unit]}
+                  </span>
                 </span>
-              </span>
+              </div>
             </div>
           </div>
           )}
