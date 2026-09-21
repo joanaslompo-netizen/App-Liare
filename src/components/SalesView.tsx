@@ -26,9 +26,10 @@ import {
   Globe,
   Store,
   UserPlus,
-  Sparkles
+  Sparkles,
+  Percent
 } from 'lucide-react';
-import { Sale, Product, Material, RecipeItem, OrderType, DeliveryStatus, PaymentStatus, SaleItem, Customer } from '../types';
+import { Sale, Product, Material, RecipeItem, OrderType, DeliveryStatus, PaymentStatus, SaleItem, Customer, DiscountCode, DiscountType } from '../types';
 import { 
   formatCurrency, 
   formatPercent, 
@@ -45,6 +46,7 @@ interface SalesViewProps {
   materials: Material[];
   customers: Customer[];
   paymentMethods: string[];
+  discountCodes: DiscountCode[];
   onSaveSale: (sale: Sale) => void;
   onReserveSaleItem: (saleId: string, itemId: string) => number | null;
   onReleaseSaleItemReservation: (saleId: string, itemId: string) => number | null;
@@ -67,6 +69,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   materials,
   customers = [],
   paymentMethods = ['offline', 'site'],
+  discountCodes = [],
   onSaveSale,
   onReserveSaleItem,
   onReleaseSaleItemReservation,
@@ -746,6 +749,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
           materials={materials}
           customers={customers}
           paymentMethods={paymentMethods}
+          discountCodes={discountCodes}
           sales={sales}
           existingSale={editingSale}
           initialCustomer={initialCustomerForNewOrder}
@@ -781,6 +785,7 @@ interface OrderSaleModalProps {
   materials: Material[];
   customers: Customer[];
   paymentMethods: string[];
+  discountCodes: DiscountCode[];
   sales: Sale[];
   existingSale?: Sale | null;
   initialCustomer?: Customer | null;
@@ -802,6 +807,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   materials,
   customers,
   paymentMethods,
+  discountCodes,
   sales,
   existingSale,
   initialCustomer,
@@ -843,6 +849,18 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
   const [channel, setChannel] = useState(existingSale?.channel || 'Instagram');
   const [notes, setNotes] = useState(existingSale?.notes || '');
+  const initialDiscountMode: 'none' | 'code' | 'percentage' | 'fixed' = existingSale?.discountCodeId
+    ? 'code'
+    : existingSale?.discountType === 'fixed'
+      ? 'fixed'
+      : existingSale?.discountType === 'percentage'
+        ? 'percentage'
+        : 'none';
+  const [discountMode, setDiscountMode] = useState<'none' | 'code' | 'percentage' | 'fixed'>(initialDiscountMode);
+  const [discountCodeId, setDiscountCodeId] = useState(existingSale?.discountCodeId || '');
+  const [manualDiscountValue, setManualDiscountValue] = useState(
+    existingSale?.discountValue?.toString() || ''
+  );
 
   // Computed all available payment categories
   const allPaymentCategories = useMemo(() => {
@@ -863,6 +881,38 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     return null;
   }, [customerId, customers]);
 
+  const appliedDiscountCode = useMemo(
+    () => discountCodes.find((code) => code.id === discountCodeId && code.active !== false) || null,
+    [discountCodes, discountCodeId]
+  );
+
+  useEffect(() => {
+    if (existingSale || !selectedCustomer) return;
+
+    if (selectedCustomer.defaultDiscountCodeId) {
+      const customerCode = discountCodes.find(
+        (code) => code.id === selectedCustomer.defaultDiscountCodeId && code.active !== false
+      );
+      if (customerCode) {
+        setDiscountMode('code');
+        setDiscountCodeId(customerCode.id);
+        setManualDiscountValue('');
+        return;
+      }
+    }
+
+    if ((selectedCustomer.defaultDiscountPercent || 0) > 0) {
+      setDiscountMode('percentage');
+      setDiscountCodeId('');
+      setManualDiscountValue(String(selectedCustomer.defaultDiscountPercent));
+      return;
+    }
+
+    setDiscountMode('none');
+    setDiscountCodeId('');
+    setManualDiscountValue('');
+  }, [selectedCustomer?.id, discountCodes, existingSale]);
+
   // Initialize items array from existingSale (or from single product fallback)
   const [items, setItems] = useState<SaleItem[]>(() => {
     if (existingSale?.items && existingSale.items.length > 0) {
@@ -878,7 +928,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
           quantity: existingSale.quantity || 1,
           unitPrice: existingSale.unitPrice,
           unitCost: existingSale.unitCost,
-          subtotal: existingSale.totalRevenue,
+          subtotal: existingSale.subtotalRevenue ?? existingSale.totalRevenue,
           totalCost: existingSale.totalCost,
         },
       ];
@@ -1308,10 +1358,29 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     );
   };
 
-  // Aggregate totals from items
+  // Aggregate totals from items + order discount
   const totalQuantity = items.reduce((acc, it) => acc + it.quantity, 0);
-  const totalRevenue = items.reduce((acc, it) => acc + it.subtotal, 0);
+  const subtotalRevenue = items.reduce((acc, it) => acc + (it.subtotal || (it.quantity * it.unitPrice)), 0);
   const totalCost = items.reduce((acc, it) => acc + it.totalCost, 0);
+
+  const effectiveDiscountType: DiscountType | undefined =
+    discountMode === 'code'
+      ? appliedDiscountCode?.type
+      : discountMode === 'percentage'
+        ? 'percentage'
+        : discountMode === 'fixed'
+          ? 'fixed'
+          : undefined;
+  const effectiveDiscountValue =
+    discountMode === 'code'
+      ? (appliedDiscountCode?.value || 0)
+      : Math.max(0, parseFloat(manualDiscountValue) || 0);
+  const discountAmount = effectiveDiscountType === 'percentage'
+    ? Math.min(subtotalRevenue, subtotalRevenue * Math.min(100, effectiveDiscountValue) / 100)
+    : effectiveDiscountType === 'fixed'
+      ? Math.min(subtotalRevenue, effectiveDiscountValue)
+      : 0;
+  const totalRevenue = Math.max(0, subtotalRevenue - discountAmount);
   const totalProfit = totalRevenue - totalCost;
   const marginPercent = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
   const isLoss = totalProfit < 0;
@@ -1357,6 +1426,12 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       unitPrice: totalQuantity > 0 ? totalRevenue / totalQuantity : firstItem.unitPrice,
       unitCost: totalQuantity > 0 ? totalCost / totalQuantity : firstItem.unitCost,
       items,
+      subtotalRevenue,
+      discountType: effectiveDiscountType,
+      discountValue: effectiveDiscountType ? effectiveDiscountValue : undefined,
+      discountAmount: discountAmount > 0 ? discountAmount : undefined,
+      discountCode: discountMode === 'code' ? appliedDiscountCode?.code : undefined,
+      discountCodeId: discountMode === 'code' ? appliedDiscountCode?.id : undefined,
       totalRevenue,
       totalCost,
       totalProfit,
@@ -2032,6 +2107,13 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                         {selectedCustomer.birthdate && (
                           <span className="text-stone-500">🎂 {formatBirthday(selectedCustomer.birthdate)}</span>
                         )}
+                        {(selectedCustomer.defaultDiscountCodeId || (selectedCustomer.defaultDiscountPercent || 0) > 0) && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#f5e8df] text-[#8b503c] border border-[#ead4c8]">
+                            {selectedCustomer.defaultDiscountCodeId
+                              ? (discountCodes.find((code) => code.id === selectedCustomer.defaultDiscountCodeId)?.code || 'Cupom')
+                              : `${selectedCustomer.defaultDiscountPercent}%`}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2202,6 +2284,374 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Order Discount */}
+          <div className="p-4 rounded-xl bg-[#fbf7f2] border border-[#eadfd6] space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
+                <Percent className="w-4 h-4 text-[#b96f55]" />
+                Desconto do pedido
+              </label>
+              {discountAmount > 0 && (
+                <span className="text-xs font-bold text-[#a86149]">
+                  -{formatCurrency(discountAmount)}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                ['none', 'Sem desconto'],
+                ['code', 'Código'],
+                ['percentage', '% manual'],
+                ['fixed', 'R$ manual'],
+              ].map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setDiscountMode(mode as 'none' | 'code' | 'percentage' | 'fixed');
+                    if (mode === 'none') {
+                      setDiscountCodeId('');
+                      setManualDiscountValue('');
+                    }
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${discountMode === mode ? 'bg-[#b96f55] text-white border-[#b96f55]' : 'bg-white text-stone-600 border-stone-200 hover:border-[#c98a72]'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {discountMode === 'code' && (
+              <select
+                value={discountCodeId}
+                onChange={(e) => setDiscountCodeId(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-[#b96f55] text-stone-900"
+              >
+                <option value="">Escolher código de desconto...</option>
+                {discountCodes.filter((code) => code.active !== false).map((code) => (
+                  <option key={code.id} value={code.id}>
+                    {code.code} · {code.type === 'percentage' ? `${code.value}%` : formatCurrency(code.value)}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {(discountMode === 'percentage' || discountMode === 'fixed') && (
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  max={discountMode === 'percentage' ? 100 : undefined}
+                  step="0.01"
+                  value={manualDiscountValue}
+                  onChange={(e) => setManualDiscountValue(e.target.value)}
+                  placeholder={discountMode === 'percentage' ? 'Ex: 10' : 'Ex: 20,00'}
+                  className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-[#b96f55] text-stone-900"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-stone-500">
+                  {discountMode === 'percentage' ? '%' : 'R
+          <div>
+            <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+              Canal de Venda
+            </label>
+            <select
+              value={channel}
+              onChange={(e) => setChannel(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900"
+            >
+              <option value="Instagram">Instagram Direct</option>
+              <option value="WhatsApp">WhatsApp</option>
+              <option value="Elo7">Elo7</option>
+              <option value="Feira Criativa">Feira / Bazar</option>
+              <option value="Loja Parceira">Loja Parceira</option>
+              <option value="Outro">Outro</option>
+            </select>
+          </div>
+
+          {/* Delivery Configuration Section */}
+          <div className="p-4 rounded-xl bg-stone-50 border border-stone-200/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
+                <Truck className="w-4 h-4 text-amber-600" />
+                Controle de Entrega
+              </span>
+              <div className="flex items-center gap-2">
+                <label className="inline-flex items-center gap-1 text-xs cursor-pointer">
+                  <input
+                    type="radio"
+                    name="deliveryStatus"
+                    checked={deliveryStatus === 'entregue'}
+                    onChange={() => setDeliveryStatus('entregue')}
+                    className="text-amber-600 focus:ring-amber-500"
+                  />
+                  <span className="font-semibold text-stone-800">Já Entregue</span>
+                </label>
+                <label className="inline-flex items-center gap-1 text-xs cursor-pointer ml-2">
+                  <input
+                    type="radio"
+                    name="deliveryStatus"
+                    checked={deliveryStatus === 'pendente_entrega'}
+                    onChange={() => setDeliveryStatus('pendente_entrega')}
+                    className="text-amber-600 focus:ring-amber-500"
+                  />
+                  <span className="font-semibold text-amber-900">Entregar Depois 📦</span>
+                </label>
+              </div>
+            </div>
+
+            {deliveryStatus === 'pendente_entrega' && (
+              <div className="pt-2 border-t border-stone-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <label className="text-xs font-semibold text-stone-700 flex items-center gap-1">
+                  <CalendarCheck className="w-3.5 h-3.5 text-amber-600" />
+                  Data Programada para Entrega:
+                </label>
+                <input
+                  type="date"
+                  value={deliveryScheduledDate}
+                  onChange={(e) => setDeliveryScheduledDate(e.target.value)}
+                  className="w-full sm:w-48 px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900 font-semibold"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Payment Configuration Section */}
+          <div className="p-4 rounded-xl bg-stone-50 border border-stone-200/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
+                <CreditCard className="w-4 h-4 text-emerald-600" />
+                Controle de Pagamento
+              </span>
+              <div className="flex items-center gap-2">
+                <label className="inline-flex items-center gap-1 text-xs cursor-pointer">
+                  <input
+                    type="radio"
+                    name="paymentStatus"
+                    checked={paymentStatus === 'pago'}
+                    onChange={() => setPaymentStatus('pago')}
+                    className="text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="font-semibold text-stone-800">Pago na Hora ✓</span>
+                </label>
+                <label className="inline-flex items-center gap-1 text-xs cursor-pointer ml-2">
+                  <input
+                    type="radio"
+                    name="paymentStatus"
+                    checked={paymentStatus === 'pendente_pagamento'}
+                    onChange={() => setPaymentStatus('pendente_pagamento')}
+                    className="text-rose-600 focus:ring-rose-500"
+                  />
+                  <span className="font-semibold text-rose-900">Receber Depois ⏳</span>
+                </label>
+              </div>
+            </div>
+
+            {paymentStatus === 'pendente_pagamento' && (
+              <div className="pt-2 border-t border-stone-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <label className="text-xs font-semibold text-stone-700 flex items-center gap-1">
+                  <CalendarCheck className="w-3.5 h-3.5 text-rose-600" />
+                  Data Prevista para Recebimento:
+                </label>
+                <input
+                  type="date"
+                  value={paymentScheduledDate}
+                  onChange={(e) => setPaymentScheduledDate(e.target.value)}
+                  className="w-full sm:w-48 px-3 py-1.5 text-xs bg-white border border-rose-300 rounded-lg focus:ring-2 focus:ring-rose-500 text-stone-900 font-semibold"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Profit Preview Banner */}
+          {items.length > 0 && (
+            <div className={`border rounded-2xl p-4 space-y-2 text-xs ${isLoss ? 'bg-red-50/80 border-red-200' : 'bg-emerald-50/80 border-emerald-200'}`}>
+              <div className="flex justify-between text-stone-600">
+                <span>Subtotal ({totalQuantity} peças):</span>
+                <span className="font-semibold text-stone-900">{formatCurrency(subtotalRevenue)}</span>
+              </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-[#a86149]">
+                  <span>
+                    Desconto{discountMode === 'code' && appliedDiscountCode ? ` · ${appliedDiscountCode.code}` : ''}:
+                  </span>
+                  <span className="font-bold">-{formatCurrency(discountAmount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-stone-700 font-semibold">
+                <span>Total do pedido:</span>
+                <span className="font-bold text-stone-900">{formatCurrency(totalRevenue)}</span>
+              </div>
+              <div className="flex justify-between text-stone-600">
+                <span>Custo de Produção Total dos Itens:</span>
+                <span>{formatCurrency(totalCost)}</span>
+              </div>
+              <div className={`pt-2 border-t flex justify-between items-baseline ${isLoss ? 'border-red-200' : 'border-emerald-200'}`}>
+                <span className={`font-bold ${isLoss ? 'text-red-950' : 'text-emerald-950'}`}>Lucro Líquido Real:</span>
+                <div className="text-right">
+                  <span className={`text-lg font-extrabold ${isLoss ? 'text-red-700' : 'text-emerald-700'}`}>
+                    {totalProfit > 0 ? '+' : ''}{formatCurrency(totalProfit)}
+                  </span>
+                  <span className={`text-xs ml-1.5 font-semibold ${isLoss ? 'text-red-800' : 'text-emerald-800'}`}>
+                    ({formatPercent(marginPercent)})
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Notes */}
+          <div>
+            <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+              Observações / Detalhes do Pedido
+            </label>
+            <input
+              type="text"
+              placeholder="Ex: Fita lilás, cartão 'Com Carinho', combinar entrega no metrô..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900"
+            />
+          </div>
+
+          {/* Footer */}
+          <div className="flex justify-end gap-3 pt-4 border-t border-stone-200">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-100 rounded-xl cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 text-sm font-semibold bg-stone-900 hover:bg-stone-800 text-white rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-98"
+            >
+              <Check className="w-4 h-4 text-amber-400" />
+              <span>{existingSale ? 'Salvar Alterações' : 'Concluir Pedido'}</span>
+            </button>
+          </div>
+        </form>
+
+        {/* Quick Customer Registration Modal Overlay */}
+        {isQuickCustomerOpen && (
+          <div className="fixed inset-0 z-60 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              <div className="px-5 py-4 border-b border-stone-200 bg-stone-50 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center">
+                    <UserPlus className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-stone-900 text-sm">Cadastro Rápido de Cliente</h4>
+                    <p className="text-[11px] text-stone-500">Adicione os dados e vincule ao pedido instantaneamente</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsQuickCustomerOpen(false)}
+                  className="p-1 text-stone-400 hover:text-stone-700 rounded-lg cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-3 text-xs">
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">
+                    Nome Completo do Cliente *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: Amanda Silva"
+                    value={quickName}
+                    onChange={(e) => setQuickName(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 text-sm"
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">
+                    Telefone / WhatsApp *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: (11) 99999-0000"
+                    value={quickPhone}
+                    onChange={(e) => setQuickPhone(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1 flex items-center justify-between">
+                    <span>Data de Aniversário</span>
+                    <span className="text-[10px] text-stone-400 font-normal">Dia e Mês ou Data Completa</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 15/09 ou 1992-09-15"
+                    value={quickBirthdate}
+                    onChange={(e) => setQuickBirthdate(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">
+                    Observações / Preferências
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Gosta de tons lilás, prefere entrega aos sábados..."
+                    value={quickNotes}
+                    onChange={(e) => setQuickNotes(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="px-5 py-3 border-t border-stone-200 bg-stone-50 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickCustomerOpen(false)}
+                  className="px-3.5 py-1.5 text-xs font-semibold text-stone-600 hover:bg-stone-200/70 rounded-lg cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveQuickCustomer}
+                  disabled={!quickName.trim()}
+                  className="px-4 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-stone-950 rounded-lg cursor-pointer flex items-center gap-1.5 shadow-xs"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Cadastrar e Vincular</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+}
+                </span>
+              </div>
+            )}
+
+            {selectedCustomer && (
+              <div className="text-[10px] text-stone-500">
+                {selectedCustomer.defaultDiscountCodeId || (selectedCustomer.defaultDiscountPercent || 0) > 0
+                  ? 'O benefício padrão deste cliente é aplicado automaticamente em novos pedidos.'
+                  : 'Este cliente não possui benefício padrão cadastrado.'}
+              </div>
+            )}
           </div>
 
           {/* Channel */}
