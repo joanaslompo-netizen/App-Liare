@@ -7,7 +7,8 @@ import {
   BarChart3, 
   Truck,
   Users,
-  Hammer
+  Hammer,
+  ClipboardList
 } from 'lucide-react';
 import { NavTab } from '../types';
 
@@ -38,6 +39,13 @@ export const Navigation: React.FC<NavigationProps> = ({
       id: 'products' as NavTab,
       label: 'Produtos & Receitas',
       icon: Tag,
+      badge: null,
+      badgeColor: '',
+    },
+    {
+      id: 'projects' as NavTab,
+      label: 'Projetos',
+      icon: ClipboardList,
       badge: null,
       badgeColor: '',
     },
