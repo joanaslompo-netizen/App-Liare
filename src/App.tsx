@@ -11,6 +11,7 @@ import {
   saveSuppliers, 
   saveSettings,
   saveTodos,
+  saveProjects,
   cascadeRecalculateAllProducts,
   DEFAULT_TODOS,
   DEFAULT_SETTINGS
@@ -27,6 +28,7 @@ import {
   Supplier, 
   AtelierSettings,
   TodoItem,
+  ProductionProject,
   NavTab
 } from './types';
 import { isBirthdayInMonth } from './utils/formatters';
@@ -35,6 +37,7 @@ import { SidebarDrawer } from './components/SidebarDrawer';
 import { HomeView } from './components/HomeView';
 import { MaterialsView } from './components/MaterialsView';
 import { ProductsView } from './components/ProductsView';
+import { ProjectsView } from './components/ProjectsView';
 import { PurchasesView } from './components/PurchasesView';
 import { ProductionsView } from './components/ProductionsView';
 import { SalesView } from './components/SalesView';
@@ -88,6 +91,7 @@ export default function App() {
     withDefaultDiscountCodes(initialData.settings)
   );
   const [todos, setTodos] = useState<TodoItem[]>(initialData.todos || DEFAULT_TODOS);
+  const [projects, setProjects] = useState<ProductionProject[]>(initialData.projects || []);
 
   // Lateral Sidebar Drawer State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -155,6 +159,7 @@ export default function App() {
             if (cloudData.suppliers) setSuppliers(cloudData.suppliers);
             if (cloudData.settings) setSettings(withDefaultDiscountCodes(cloudData.settings));
             if (cloudData.todos) setTodos(cloudData.todos);
+            if (cloudData.projects) setProjects(cloudData.projects);
 
             setSyncStatus('synced');
             setLastSyncedAt(new Date());
@@ -175,6 +180,7 @@ export default function App() {
               suppliers,
               settings,
               todos,
+              projects,
             });
             cloudRevisionRef.current = createdCloud.revision || 1;
             hasLoadedCloudRef.current = true;
@@ -220,6 +226,7 @@ export default function App() {
               if (updatedData.suppliers) setSuppliers(updatedData.suppliers);
               if (updatedData.settings) setSettings(withDefaultDiscountCodes(updatedData.settings));
               if (updatedData.todos) setTodos(updatedData.todos);
+              if (updatedData.projects) setProjects(updatedData.projects);
               setSyncStatus('synced');
               setLastSyncedAt(new Date());
             }
@@ -267,6 +274,7 @@ export default function App() {
           suppliers,
           settings,
           todos,
+          projects,
         }, 'Web', cloudRevisionRef.current);
         cloudRevisionRef.current = uploaded.revision;
         hasLocalChangesRef.current = false;
@@ -284,7 +292,7 @@ export default function App() {
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
-  }, [materials, products, purchases, productions, sales, customers, paymentMethods, suppliers, settings, todos, user]);
+  }, [materials, products, purchases, productions, sales, customers, paymentMethods, suppliers, settings, todos, projects, user]);
 
   // Auto-persist changes to local storage cache as well (offline fallback)
   useEffect(() => {
@@ -326,6 +334,10 @@ export default function App() {
   useEffect(() => {
     saveTodos(todos);
   }, [todos]);
+
+  useEffect(() => {
+    saveProjects(projects);
+  }, [projects]);
 
   // Auth Handlers
   const handleLoginGoogle = async () => {
@@ -387,6 +399,7 @@ export default function App() {
         setSuppliers(cloud.suppliers || []);
         if (cloud.settings) setSettings(withDefaultDiscountCodes(cloud.settings));
         setTodos(cloud.todos || []);
+        setProjects(cloud.projects || []);
         setSyncStatus('synced');
         setLastSyncedAt(new Date());
         setSyncNotification({ message: 'A nuvem tinha uma versão mais recente. Ela foi baixada para este dispositivo sem sobrescrever o backup.', type: 'info' });
@@ -402,7 +415,7 @@ export default function App() {
 
       const uploaded = await uploadWorkspaceToCloud(user.uid, {
         materials, products, productions, purchases, sales, customers,
-        paymentMethods, suppliers, settings, todos,
+        paymentMethods, suppliers, settings, todos, projects,
       }, 'Web', cloud ? cloudRevision : undefined);
       cloudRevisionRef.current = uploaded.revision;
       hasLoadedCloudRef.current = true;
@@ -1304,6 +1317,25 @@ export default function App() {
   }, []);
 
   // ----------------------------------------------------
+  // Project Handlers
+  // ----------------------------------------------------
+  const handleSaveProject = useCallback((project: ProductionProject) => {
+    setProjects((prev) => {
+      const idx = prev.findIndex((p) => p.id === project.id);
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = project;
+        return updated;
+      }
+      return [project, ...prev];
+    });
+  }, []);
+
+  const handleDeleteProject = useCallback((id: string) => {
+    setProjects((prev) => prev.filter((project) => project.id !== id));
+  }, []);
+
+  // ----------------------------------------------------
   // Supplier Handlers
   // ----------------------------------------------------
   const handleSaveSupplier = useCallback((sup: Supplier) => {
@@ -1375,6 +1407,7 @@ export default function App() {
     if (data.suppliers) setSuppliers(data.suppliers);
     if (data.settings) setSettings(withDefaultDiscountCodes(data.settings));
     if (data.todos) setTodos(data.todos);
+    if (data.projects) setProjects(data.projects);
   }, []);
 
   const handleSelectPreset = useCallback((preset: AtelierPreset) => {
@@ -1422,6 +1455,7 @@ export default function App() {
         salesCount={sales.length}
         purchasesCount={purchases.length}
         productionsCount={productions.length}
+        projectsCount={projects.length}
         customersCount={customers.length}
         birthdayCustomersCount={birthdayCustomersCount}
         atelierName={settings.atelierName}
@@ -1494,6 +1528,16 @@ export default function App() {
             onQuickStockChange={handleQuickProductStockChange}
             onOpenProduction={handleOpenProductionFromProduct}
             onOpenProductionHistory={() => setActiveTab('productions')}
+          />
+        )}
+
+        {activeTab === 'projects' && (
+          <ProjectsView
+            projects={projects}
+            products={products}
+            materials={materials}
+            onSaveProject={handleSaveProject}
+            onDeleteProject={handleDeleteProject}
           />
         )}
 
@@ -1597,6 +1641,7 @@ export default function App() {
           suppliers,
           settings,
           todos,
+          projects,
         }}
       />
 
@@ -1615,6 +1660,7 @@ export default function App() {
           products: products.length,
           purchases: purchases.length,
           productions: productions.length,
+          projects: projects.length,
           sales: sales.length,
           customers: customers.length,
         }}
