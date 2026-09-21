@@ -160,6 +160,15 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     }
   }, [selectedFragrance, fragranceOptions]);
 
+  const selectedFamilyVariants = useMemo(() => {
+    if (selectedFamily === 'all') return [];
+    return scopedProducts
+      .filter((p) => p.productFamily === selectedFamily)
+      .sort((a, b) =>
+        (a.fragrance || a.name).localeCompare(b.fragrance || b.name, 'pt-BR', { sensitivity: 'base' })
+      );
+  }, [scopedProducts, selectedFamily]);
+
   // Automatically reset category filter to 'all' if selected category is not in the current view
   useEffect(() => {
     if (selectedCategory !== 'all' && selectedCategory !== 'paused' && !visibleCategories.includes(selectedCategory)) {
@@ -500,6 +509,50 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           </div>
         )}
       </div>
+
+      {selectedFamily !== 'all' && selectedFamilyVariants.length > 0 && (
+        <div className="bg-white border border-amber-200 rounded-2xl p-4 shadow-xs">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                Estoque por aroma
+              </p>
+              <h3 className="text-sm font-bold text-stone-900">{selectedFamily}</h3>
+            </div>
+            <span className="text-xs font-semibold text-stone-600 bg-stone-100 px-2.5 py-1 rounded-full">
+              Total: {selectedFamilyVariants.reduce((sum, item) => sum + (item.currentStock ?? 0), 0)} un
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {selectedFamilyVariants.map((variant) => {
+              const stock = variant.currentStock ?? 0;
+              const min = variant.minStock ?? 2;
+              const isLow = min > 0 && stock <= min;
+              return (
+                <button
+                  key={variant.id}
+                  type="button"
+                  onClick={() => setSelectedFragrance(variant.fragrance || 'all')}
+                  className={`px-3 py-2 rounded-xl border text-left transition-colors ${
+                    selectedFragrance === variant.fragrance
+                      ? 'border-amber-400 bg-amber-50'
+                      : isLow
+                        ? 'border-rose-200 bg-rose-50/60'
+                        : 'border-stone-200 bg-stone-50 hover:bg-stone-100'
+                  }`}
+                >
+                  <span className="block text-xs font-semibold text-stone-800">
+                    {variant.fragrance || variant.name}
+                  </span>
+                  <span className={`text-[11px] font-bold ${isLow ? 'text-rose-700' : 'text-stone-600'}`}>
+                    {stock} un
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Products Grid */}
       {filteredProducts.length === 0 ? (
