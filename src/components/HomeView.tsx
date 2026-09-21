@@ -150,53 +150,53 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const totalLowStock = lowStockMaterials.length + lowStockProducts.length;
 
   return (
-    <div className="space-y-6 pb-12">
-      <section className="rounded-3xl border border-[#eadfd6] bg-[#fbf7f2] p-6 sm:p-7 shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-4 sm:space-y-6 pb-12">
+      <section className="rounded-2xl sm:rounded-3xl border border-[#eadfd6] bg-[#fbf7f2] p-4 sm:p-7 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
           <div>
-            <div className="flex items-center gap-2 text-xs font-semibold text-[#a75f49] uppercase tracking-wider mb-1">
-              <Calendar className="w-3.5 h-3.5" />
+            <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-semibold text-[#a75f49] uppercase tracking-wider mb-1">
+              <Calendar className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
               <span>{capitalizedDate}</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-[#352f2b] tracking-tight">
+            <h2 className="text-xl sm:text-3xl font-bold text-[#352f2b] tracking-tight">
               Olá, {artisanName || 'Artesã'}! ✨
             </h2>
-            <p className="text-sm text-[#766b64] mt-1 max-w-2xl">
+            <p className="text-[13px] sm:text-sm text-[#766b64] mt-1 max-w-2xl leading-snug">
               Seu painel do <strong className="text-[#4a403a]">{atelierName || 'ateliê'}</strong>: o que importa hoje, sem distrações.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <button
               id="btn-home-quick-sale"
               onClick={onOpenNewSale ? onOpenNewSale : () => onNavigate('sales')}
-              className="px-4 py-2 rounded-xl bg-[#b96f55] hover:bg-[#a86149] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-98"
+              className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-[#b96f55] hover:bg-[#a86149] text-white text-[11px] sm:text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-98"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span>Novo pedido</span>
             </button>
             <button
               id="btn-home-quick-production"
               onClick={() => onNavigate('productions')}
-              className="px-3.5 py-2 rounded-xl bg-[#f1e4da] hover:bg-[#ead8ca] text-[#744737] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-[#f1e4da] hover:bg-[#ead8ca] text-[#744737] text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
-              <Factory className="w-3.5 h-3.5" />
+              <Factory className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
               <span>Produção</span>
             </button>
             <button
               id="btn-home-quick-product"
               onClick={onOpenNewProduct ? onOpenNewProduct : () => onNavigate('products')}
-              className="px-3.5 py-2 rounded-xl bg-white hover:bg-[#f7efe9] text-[#5e5149] text-xs font-semibold flex items-center gap-1.5 border border-[#eadfd6] transition-colors cursor-pointer"
+              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-white hover:bg-[#f7efe9] text-[#5e5149] text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 border border-[#eadfd6] transition-colors cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
               <span>Receita</span>
             </button>
             <button
               id="btn-home-quick-material"
               onClick={onOpenNewMaterial ? onOpenNewMaterial : () => onNavigate('materials')}
-              className="px-3.5 py-2 rounded-xl bg-white hover:bg-[#f7efe9] text-[#5e5149] text-xs font-semibold flex items-center gap-1.5 border border-[#eadfd6] transition-colors cursor-pointer"
+              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-white hover:bg-[#f7efe9] text-[#5e5149] text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 border border-[#eadfd6] transition-colors cursor-pointer"
             >
-              <Package className="w-3.5 h-3.5" />
+              <Package className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
               <span>Material</span>
             </button>
           </div>
@@ -274,49 +274,49 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
         </div>
       </section>
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <button
           onClick={() => onNavigate('sales')}
-          className="text-left bg-white p-5 rounded-2xl border border-[#eadfd6] hover:border-[#c98a72] transition-all shadow-xs cursor-pointer group"
+          className="text-left bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-[#eadfd6] hover:border-[#c98a72] transition-all shadow-xs cursor-pointer group"
         >
-          <div className="w-8 h-8 rounded-xl bg-[#f5e8df] text-[#a86149] flex items-center justify-center mb-3">
-            <ShoppingBag className="w-4 h-4" />
+          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-[#f5e8df] text-[#a86149] flex items-center justify-center mb-2 sm:mb-3">
+            <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </div>
-          <span className="text-xs text-[#766b64] block">Pedidos do mês</span>
-          <strong className="text-2xl font-bold text-[#352f2b] tracking-tight">{monthSales.length}</strong>
+          <span className="text-[11px] sm:text-xs text-[#766b64] block">Pedidos do mês</span>
+          <strong className="text-xl sm:text-2xl font-bold text-[#352f2b] tracking-tight">{monthSales.length}</strong>
         </button>
 
         <button
           onClick={() => onNavigate('sales', 'pending_delivery')}
-          className="text-left bg-white p-5 rounded-2xl border border-[#eadfd6] hover:border-[#c98a72] transition-all shadow-xs cursor-pointer"
+          className="text-left bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-[#eadfd6] hover:border-[#c98a72] transition-all shadow-xs cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-xl bg-[#f5e8df] text-[#a86149] flex items-center justify-center mb-3">
-            <Truck className="w-4 h-4" />
+          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-[#f5e8df] text-[#a86149] flex items-center justify-center mb-2 sm:mb-3">
+            <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </div>
-          <span className="text-xs text-[#766b64] block">A despachar</span>
-          <strong className="text-2xl font-bold text-[#352f2b] tracking-tight">{pendingDeliveries.length}</strong>
+          <span className="text-[11px] sm:text-xs text-[#766b64] block">A despachar</span>
+          <strong className="text-xl sm:text-2xl font-bold text-[#352f2b] tracking-tight">{pendingDeliveries.length}</strong>
         </button>
 
         <button
           onClick={() => onNavigate('sales', 'pending_payment')}
-          className="text-left bg-white p-5 rounded-2xl border border-[#eadfd6] hover:border-[#c98a72] transition-all shadow-xs cursor-pointer"
+          className="text-left bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-[#eadfd6] hover:border-[#c98a72] transition-all shadow-xs cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-xl bg-[#eef1e6] text-[#6d7658] flex items-center justify-center mb-3">
-            <CreditCard className="w-4 h-4" />
+          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-[#eef1e6] text-[#6d7658] flex items-center justify-center mb-2 sm:mb-3">
+            <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </div>
-          <span className="text-xs text-[#766b64] block">Valores a receber</span>
-          <strong className="text-2xl font-bold text-[#352f2b] tracking-tight">{pendingPayments.length}</strong>
+          <span className="text-[11px] sm:text-xs text-[#766b64] block">Valores a receber</span>
+          <strong className="text-xl sm:text-2xl font-bold text-[#352f2b] tracking-tight">{pendingPayments.length}</strong>
         </button>
 
         <button
           onClick={() => onNavigate('materials')}
-          className="text-left bg-white p-5 rounded-2xl border border-[#eadfd6] hover:border-[#c98a72] transition-all shadow-xs cursor-pointer"
+          className="text-left bg-white p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border border-[#eadfd6] hover:border-[#c98a72] transition-all shadow-xs cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-xl bg-[#f6eadf] text-[#a56d4f] flex items-center justify-center mb-3">
-            <AlertTriangle className="w-4 h-4" />
+          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-[#f6eadf] text-[#a56d4f] flex items-center justify-center mb-2 sm:mb-3">
+            <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </div>
-          <span className="text-xs text-[#766b64] block">Estoque baixo</span>
-          <strong className="text-2xl font-bold text-[#352f2b] tracking-tight">{totalLowStock}</strong>
+          <span className="text-[11px] sm:text-xs text-[#766b64] block">Estoque baixo</span>
+          <strong className="text-xl sm:text-2xl font-bold text-[#352f2b] tracking-tight">{totalLowStock}</strong>
         </button>
       </section>
 
@@ -500,7 +500,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
                 <div className="w-9 h-9 rounded-xl bg-[#eef1e6] text-[#6d7658] flex items-center justify-center shrink-0">
-                  <CreditCard className="w-4 h-4" />
+                  <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-[#352f2b]">Valores a receber</h4>
@@ -530,7 +530,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
                 <div className="w-9 h-9 rounded-xl bg-[#f5e8df] text-[#a86149] flex items-center justify-center shrink-0">
-                  <Truck className="w-4 h-4" />
+                  <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-[#352f2b]">Pedidos a despachar</h4>
@@ -560,7 +560,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
                 <div className="w-9 h-9 rounded-xl bg-[#f6eadf] text-[#a56d4f] flex items-center justify-center shrink-0">
-                  <AlertTriangle className="w-4 h-4" />
+                  <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-[#352f2b]">Estoque baixo</h4>
