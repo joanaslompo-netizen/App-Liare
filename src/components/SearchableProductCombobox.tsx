@@ -26,17 +26,17 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
   mode = 'sale',
   embeddedSelectedCard = false,
 }) => {
+  const [query, setQuery] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeFamily, setActiveFamily] = useState<string | null>(null);
+
   const defaultPlaceholder = mode === 'production'
     ? 'Buscar receita por palavras-chave (ex: vela lavanda, difusor, aroma)...'
     : 'Buscar produto pelo nome ou categoria...';
   const effectivePlaceholder = activeFamily
     ? `Buscar aroma de ${activeFamily}...`
     : (placeholder || defaultPlaceholder);
-
-  const [query, setQuery] = useState('');
-  const [isOpen, setIsOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [activeFamily, setActiveFamily] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
