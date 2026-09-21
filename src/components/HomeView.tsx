@@ -205,68 +205,75 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
       <section
         onClick={() => onNavigate('reports')}
-        className="rounded-3xl bg-[#b96f55] text-white p-5 sm:p-6 shadow-sm cursor-pointer transition-transform hover:-translate-y-0.5"
+        className="rounded-[28px] sm:rounded-3xl bg-[#b96f55] text-white px-5 pt-5 pb-4 sm:p-6 shadow-sm cursor-pointer transition-transform hover:-translate-y-0.5"
       >
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-[15px] font-semibold text-white/90">Resumo do mês</span>
-          <span className="text-white/65">·</span>
-          <span className="text-[15px] font-semibold text-white/90">
+        <div className="flex items-center gap-2 mb-4 sm:mb-5">
+          <span className="text-[13px] sm:text-[15px] font-semibold text-white/90">
+            Resumo do mês
+          </span>
+          <span className="text-[13px] sm:text-[15px] text-white/65">·</span>
+          <span className="text-[13px] sm:text-[15px] font-semibold text-white/90">
             {new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date())}
           </span>
         </div>
 
         <div className="grid grid-cols-3">
-          <div className="min-w-0 pr-3 sm:pr-5">
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                <BarChart3 className="w-4 h-4 text-white" />
+          <div className="min-w-0 pr-2.5 sm:pr-5">
+            <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
               </div>
-              <span className="text-[13px] text-white/75">Faturamento</span>
+              <span className="text-[12px] sm:text-[13px] text-white/75 whitespace-nowrap">
+                Faturamento
+              </span>
             </div>
-            <strong className="block text-[2rem] leading-none font-extrabold tracking-tight whitespace-nowrap">
+            <strong className="block text-[26px] sm:text-[30px] leading-none font-bold tracking-tight whitespace-nowrap">
               {formatCurrency(monthRevenue)}
             </strong>
           </div>
 
-          <div className="min-w-0 px-3 sm:px-5 border-l border-white/20">
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-8 h-8 rounded-full bg-[#e9efdc] flex items-center justify-center shrink-0">
-                <TrendingUp className="w-4 h-4 text-[#65734f]" />
+          <div className="min-w-0 px-2.5 sm:px-5 border-l border-white/20">
+            <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#e9efdc] flex items-center justify-center shrink-0">
+                <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#65734f]" />
               </div>
-              <span className="text-[13px] text-white/75">Lucro</span>
+              <span className="text-[12px] sm:text-[13px] text-white/75 whitespace-nowrap">
+                Lucro
+              </span>
             </div>
-            <strong className="block text-[2rem] leading-none font-extrabold tracking-tight whitespace-nowrap">
+            <strong className="block text-[26px] sm:text-[30px] leading-none font-bold tracking-tight whitespace-nowrap">
               {monthProfit > 0 ? '+' : ''}{formatCurrency(monthProfit)}
             </strong>
           </div>
 
-          <div className="min-w-0 pl-3 sm:pl-5 border-l border-white/20">
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                <CreditCard className="w-4 h-4 text-white" />
+          <div className="min-w-0 pl-2.5 sm:pl-5 border-l border-white/20">
+            <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
               </div>
-              <span className="text-[13px] text-white/75">A receber</span>
+              <span className="text-[12px] sm:text-[13px] text-white/75 whitespace-nowrap">
+                A receber
+              </span>
             </div>
-            <strong className="block text-[2rem] leading-none font-extrabold tracking-tight whitespace-nowrap">
+            <strong className="block text-[26px] sm:text-[30px] leading-none font-bold tracking-tight whitespace-nowrap">
               {formatCurrency(totalPendingPaymentAmount)}
             </strong>
           </div>
         </div>
 
-        <div className="mt-5 flex items-center gap-4">
+        <div className="mt-4 sm:mt-5 flex items-center gap-3 sm:gap-4">
           <div className="flex-1 h-2 rounded-full bg-white/25 overflow-hidden">
             <div
               className="h-full rounded-full bg-white/90 transition-all"
               style={{ width: `${Math.max(4, Math.min(100, Math.abs(monthMargin)))}%` }}
             />
           </div>
-          <div className="flex items-center gap-1 text-[13px] text-white/85 whitespace-nowrap">
+          <div className="flex items-center gap-1 text-[12px] sm:text-[13px] text-white/85 whitespace-nowrap">
             <span>Margem {formatPercent(monthMargin)}</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </div>
         </div>
       </section>
-
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <button
           onClick={() => onNavigate('sales')}
