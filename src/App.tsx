@@ -62,6 +62,14 @@ import {
 } from './services/cloudSync';
 import { CheckCircle2, X } from 'lucide-react';
 
+const withDefaultDiscountCodes = (incoming: AtelierSettings): AtelierSettings => ({
+  ...incoming,
+  discountCodes:
+    incoming?.discountCodes?.length
+      ? incoming.discountCodes
+      : (DEFAULT_SETTINGS.discountCodes || []),
+});
+
 export default function App() {
   // Load initial data from localStorage (or sample seeds)
   const [initialData] = useState(() => loadStoredData());
@@ -76,13 +84,9 @@ export default function App() {
   const [paymentMethods, setPaymentMethods] = useState<string[]>(initialData.paymentMethods || ['offline', 'site']);
   const [customerForNewSale, setCustomerForNewSale] = useState<Customer | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>(initialData.suppliers);
-  const [settings, setSettings] = useState<AtelierSettings>(() => ({
-    ...initialData.settings,
-    discountCodes:
-      initialData.settings?.discountCodes?.length
-        ? initialData.settings.discountCodes
-        : (DEFAULT_SETTINGS.discountCodes || []),
-  }));
+  const [settings, setSettings] = useState<AtelierSettings>(() =>
+    withDefaultDiscountCodes(initialData.settings)
+  );
   const [todos, setTodos] = useState<TodoItem[]>(initialData.todos || DEFAULT_TODOS);
 
   // Lateral Sidebar Drawer State
@@ -149,7 +153,7 @@ export default function App() {
             if (cloudData.customers) setCustomers(cloudData.customers);
             if (cloudData.paymentMethods) setPaymentMethods(cloudData.paymentMethods);
             if (cloudData.suppliers) setSuppliers(cloudData.suppliers);
-            if (cloudData.settings) setSettings(cloudData.settings);
+            if (cloudData.settings) setSettings(withDefaultDiscountCodes(cloudData.settings));
             if (cloudData.todos) setTodos(cloudData.todos);
 
             setSyncStatus('synced');
@@ -214,7 +218,7 @@ export default function App() {
               if (updatedData.customers) setCustomers(updatedData.customers);
               if (updatedData.paymentMethods) setPaymentMethods(updatedData.paymentMethods);
               if (updatedData.suppliers) setSuppliers(updatedData.suppliers);
-              if (updatedData.settings) setSettings(updatedData.settings);
+              if (updatedData.settings) setSettings(withDefaultDiscountCodes(updatedData.settings));
               if (updatedData.todos) setTodos(updatedData.todos);
               setSyncStatus('synced');
               setLastSyncedAt(new Date());
@@ -381,7 +385,7 @@ export default function App() {
         setCustomers(cloud.customers || []);
         setPaymentMethods(cloud.paymentMethods || []);
         setSuppliers(cloud.suppliers || []);
-        if (cloud.settings) setSettings(cloud.settings);
+        if (cloud.settings) setSettings(withDefaultDiscountCodes(cloud.settings));
         setTodos(cloud.todos || []);
         setSyncStatus('synced');
         setLastSyncedAt(new Date());
@@ -1369,7 +1373,7 @@ export default function App() {
     if (data.customers) setCustomers(data.customers);
     if (data.paymentMethods) setPaymentMethods(data.paymentMethods);
     if (data.suppliers) setSuppliers(data.suppliers);
-    if (data.settings) setSettings(data.settings);
+    if (data.settings) setSettings(withDefaultDiscountCodes(data.settings));
     if (data.todos) setTodos(data.todos);
   }, []);
 
@@ -1379,7 +1383,7 @@ export default function App() {
     setPurchases(preset.purchases);
     setSales(preset.sales);
     setSuppliers(preset.suppliers);
-    setSettings(preset.settings);
+    setSettings(withDefaultDiscountCodes(preset.settings));
   }, []);
 
   return (
