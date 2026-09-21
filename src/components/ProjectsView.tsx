@@ -8,8 +8,6 @@ import {
   Edit2,
   Trash2,
   X,
-  Package,
-  Layers,
   Sparkles,
   AlertTriangle,
   ChevronDown,
@@ -866,7 +864,7 @@ const ProjectModal = ({
                   <div className="grid md:grid-cols-[1fr_110px_auto] gap-2 items-end">
                     {customItemType === 'material' ? (
                       <SearchableMaterialCombobox
-                        materials={materials.filter((m) => !m.isVirtualRecipe)}
+                        materials={materials}
                         selectedMaterialId={selectedMaterial?.id || ''}
                         onSelectMaterial={setSelectedMaterial}
                         placeholder="Buscar material para a receita..."
