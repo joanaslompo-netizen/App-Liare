@@ -171,10 +171,16 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
               )}
             </button>
 
-            {/* Atelier brand name */}
-            <span className="hidden md:inline text-sm font-bold text-stone-900 tracking-tight">
+            {/* Atelier brand name - shortcut to Home */}
+            <button
+              type="button"
+              onClick={() => onSelectTab('home')}
+              className="hidden md:inline text-sm font-bold text-stone-900 tracking-tight hover:text-amber-700 transition-colors cursor-pointer"
+              title="Voltar ao Início"
+              aria-label="Voltar ao Início"
+            >
               {atelierName || 'Ateliê'}
-            </span>
+            </button>
 
             {/* Divider */}
             <span className="text-stone-300">/</span>
