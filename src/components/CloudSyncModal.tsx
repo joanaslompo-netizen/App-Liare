@@ -29,6 +29,7 @@ interface CloudSyncModalProps {
     products: number;
     purchases: number;
     productions?: number;
+    projects?: number;
     sales: number;
     customers?: number;
   };
@@ -152,7 +153,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 pt-1 border-t border-stone-200 text-center">
+                <div className="grid grid-cols-2 sm:grid-cols-7 gap-2 pt-1 border-t border-stone-200 text-center">
                   <div className="bg-white p-2 rounded-lg border border-stone-200/60">
                     <span className="text-[10px] text-stone-500 block">Materiais</span>
                     <span className="text-sm font-bold text-stone-800">{itemCounts.materials}</span>
@@ -164,6 +165,10 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                   <div className="bg-white p-2 rounded-lg border border-stone-200/60">
                     <span className="text-[10px] text-stone-500 block">Produções</span>
                     <span className="text-sm font-bold text-stone-800">{itemCounts.productions ?? 0}</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-lg border border-stone-200/60">
+                    <span className="text-[10px] text-stone-500 block">Projetos</span>
+                    <span className="text-sm font-bold text-stone-800">{itemCounts.projects ?? 0}</span>
                   </div>
                   <div className="bg-white p-2 rounded-lg border border-stone-200/60">
                     <span className="text-[10px] text-stone-500 block">Compras</span>
