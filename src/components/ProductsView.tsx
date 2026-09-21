@@ -70,6 +70,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const [recipeScope, setRecipeScope] = useState<'catalog' | 'custom'>('catalog');
   const [typeFilter, setTypeFilter] = useState<'all' | 'final' | 'intermediate'>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedFamily, setSelectedFamily] = useState<string>('all');
+  const [selectedFragrance, setSelectedFragrance] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'in_stock' | 'low_stock' | 'out_of_stock'>(
     filterLowStockInitial ? 'low_stock' : 'all'
   );
@@ -119,6 +121,54 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     return Array.from(set).sort();
   }, [scopedProducts, typeFilter]);
 
+  // Product families and fragrances let the same catalog be explored in two directions:
+  // by base product (ex: Castiçal Lapidado) or by aroma (ex: Chá Branco).
+  const productFamilies = useMemo(() => {
+    const set = new Set<string>();
+    scopedProducts.forEach((p) => {
+      const matchesType =
+        typeFilter === 'all' ||
+        (typeFilter === 'intermediate' && p.isIntermediate) ||
+        (typeFilter === 'final' && !p.isIntermediate);
+      if (matchesType && p.productFamily?.trim()) set.add(p.productFamily.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+  }, [scopedProducts, typeFilter]);
+
+  const fragranceOptions = useMemo(() => {
+    const set = new Set<string>();
+    scopedProducts.forEach((p) => {
+      const matchesType =
+        typeFilter === 'all' ||
+        (typeFilter === 'intermediate' && p.isIntermediate) ||
+        (typeFilter === 'final' && !p.isIntermediate);
+      const matchesFamily = selectedFamily === 'all' || p.productFamily === selectedFamily;
+      if (matchesType && matchesFamily && p.fragrance?.trim()) set.add(p.fragrance.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+  }, [scopedProducts, typeFilter, selectedFamily]);
+
+  useEffect(() => {
+    if (selectedFamily !== 'all' && !productFamilies.includes(selectedFamily)) {
+      setSelectedFamily('all');
+    }
+  }, [selectedFamily, productFamilies]);
+
+  useEffect(() => {
+    if (selectedFragrance !== 'all' && !fragranceOptions.includes(selectedFragrance)) {
+      setSelectedFragrance('all');
+    }
+  }, [selectedFragrance, fragranceOptions]);
+
+  const selectedFamilyVariants = useMemo(() => {
+    if (selectedFamily === 'all') return [];
+    return scopedProducts
+      .filter((p) => p.productFamily === selectedFamily)
+      .sort((a, b) =>
+        (a.fragrance || a.name).localeCompare(b.fragrance || b.name, 'pt-BR', { sensitivity: 'base' })
+      );
+  }, [scopedProducts, selectedFamily]);
+
   // Automatically reset category filter to 'all' if selected category is not in the current view
   useEffect(() => {
     if (selectedCategory !== 'all' && selectedCategory !== 'paused' && !visibleCategories.includes(selectedCategory)) {
@@ -130,9 +180,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const filteredProducts = useMemo(() => {
     return scopedProducts
       .filter((p) => {
-        const matchesSearch = 
+        const matchesSearch =
           p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           p.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (p.productFamily && p.productFamily.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (p.fragrance && p.fragrance.toLowerCase().includes(searchTerm.toLowerCase())) ||
           (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()));
 
         const matchesType = 
@@ -143,6 +195,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         const isCategoryValid = selectedCategory === 'all' || selectedCategory === 'paused' || visibleCategories.includes(selectedCategory);
         const matchesCategory = !isCategoryValid || selectedCategory === 'all' || (selectedCategory === 'paused' ? (p.minStock ?? 2) === 0 : p.category === selectedCategory);
 
+        const matchesFamily = selectedFamily === 'all' || p.productFamily === selectedFamily;
+        const matchesFragrance = selectedFragrance === 'all' || p.fragrance === selectedFragrance;
+
         const currentStock = p.currentStock ?? 0;
         const minStock = p.minStock !== undefined ? p.minStock : 2;
         const matchesStock =
@@ -151,7 +206,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           (stockFilter === 'low_stock' && minStock > 0 && currentStock <= minStock) ||
           (stockFilter === 'out_of_stock' && currentStock <= 0);
 
-        return matchesSearch && matchesType && matchesCategory && matchesStock;
+        return matchesSearch && matchesType && matchesCategory && matchesFamily && matchesFragrance && matchesStock;
       })
       .sort((a, b) => {
         const aPaused = (a.minStock ?? 2) === 0;
@@ -165,7 +220,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         // Alphabetical A to Z
         return a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' });
       });
-  }, [scopedProducts, searchTerm, typeFilter, selectedCategory, stockFilter, visibleCategories]);
+  }, [scopedProducts, searchTerm, typeFilter, selectedCategory, selectedFamily, selectedFragrance, stockFilter, visibleCategories]);
 
   const handleOpenAdd = () => {
     setEditingProduct(null);
@@ -416,7 +471,88 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             ))}
           </div>
         )}
+        {recipeScope === 'catalog' && (productFamilies.length > 0 || fragranceOptions.length > 0) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-stone-100">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1">
+                Produto-base
+              </label>
+              <select
+                value={selectedFamily}
+                onChange={(e) => {
+                  setSelectedFamily(e.target.value);
+                  setSelectedFragrance('all');
+                }}
+                className="w-full px-3 py-2 text-xs bg-white border border-stone-300 rounded-lg text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+              >
+                <option value="all">Todos os produtos-base</option>
+                {productFamilies.map((family) => (
+                  <option key={family} value={family}>{family}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1">
+                Aroma
+              </label>
+              <select
+                value={selectedFragrance}
+                onChange={(e) => setSelectedFragrance(e.target.value)}
+                className="w-full px-3 py-2 text-xs bg-white border border-stone-300 rounded-lg text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+              >
+                <option value="all">Todos os aromas</option>
+                {fragranceOptions.map((fragrance) => (
+                  <option key={fragrance} value={fragrance}>{fragrance}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
       </div>
+
+      {selectedFamily !== 'all' && selectedFamilyVariants.length > 0 && (
+        <div className="bg-white border border-amber-200 rounded-2xl p-4 shadow-xs">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                Estoque por aroma
+              </p>
+              <h3 className="text-sm font-bold text-stone-900">{selectedFamily}</h3>
+            </div>
+            <span className="text-xs font-semibold text-stone-600 bg-stone-100 px-2.5 py-1 rounded-full">
+              Total: {selectedFamilyVariants.reduce((sum, item) => sum + (item.currentStock ?? 0), 0)} un
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {selectedFamilyVariants.map((variant) => {
+              const stock = variant.currentStock ?? 0;
+              const min = variant.minStock ?? 2;
+              const isLow = min > 0 && stock <= min;
+              return (
+                <button
+                  key={variant.id}
+                  type="button"
+                  onClick={() => setSelectedFragrance(variant.fragrance || 'all')}
+                  className={`px-3 py-2 rounded-xl border text-left transition-colors ${
+                    selectedFragrance === variant.fragrance
+                      ? 'border-amber-400 bg-amber-50'
+                      : isLow
+                        ? 'border-rose-200 bg-rose-50/60'
+                        : 'border-stone-200 bg-stone-50 hover:bg-stone-100'
+                  }`}
+                >
+                  <span className="block text-xs font-semibold text-stone-800">
+                    {variant.fragrance || variant.name}
+                  </span>
+                  <span className={`text-[11px] font-bold ${isLow ? 'text-rose-700' : 'text-stone-600'}`}>
+                    {stock} un
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Products Grid */}
       {filteredProducts.length === 0 ? (
@@ -487,6 +623,19 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                         <span className="text-xs font-semibold text-stone-700 bg-stone-100 px-2 py-0.5 rounded-md">
                           {p.category}
                         </span>
+
+                        {p.productFamily && (
+                          <span className="text-[11px] font-semibold text-amber-900 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                            {p.productFamily}
+                          </span>
+                        )}
+
+                        {p.fragrance && (
+                          <span className="text-[11px] font-semibold text-purple-800 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                            <Sparkles className="w-3 h-3" />
+                            {p.fragrance}
+                          </span>
+                        )}
 
                         {p.isCustomRecipe && (
                           <span className="text-[11px] font-semibold text-purple-800 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md flex items-center gap-1">
@@ -942,6 +1091,37 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     setNewCategoryInput('');
   };
 
+  const [productFamily, setProductFamily] = useState(product?.productFamily || '');
+  const [fragrance, setFragrance] = useState(product?.fragrance || '');
+
+  const familySuggestions = useMemo(() => {
+    const set = new Set<string>();
+    allProducts.forEach((p) => {
+      if (p.productFamily?.trim()) set.add(p.productFamily.trim());
+    });
+    if (product?.productFamily?.trim()) set.add(product.productFamily.trim());
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+  }, [allProducts, product]);
+
+  const fragranceSuggestions = useMemo(() => {
+    const set = new Set<string>();
+    allProducts.forEach((p) => {
+      if (p.fragrance?.trim()) set.add(p.fragrance.trim());
+    });
+    allMaterials.forEach((m) => {
+      const categoryName = (m.category || '').toLowerCase();
+      if (
+        categoryName.includes('essên') ||
+        categoryName.includes('essen') ||
+        categoryName.includes('aroma')
+      ) {
+        if (m.name?.trim()) set.add(m.name.trim());
+      }
+    });
+    if (product?.fragrance?.trim()) set.add(product.fragrance.trim());
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+  }, [allProducts, allMaterials, product]);
+
   const [description, setDescription] = useState(product?.description || '');
   const [imageUrl, setImageUrl] = useState(product?.imageUrl || '');
   const [isFinalProduct, setIsFinalProduct] = useState(product ? !product.isIntermediate : false);
@@ -1187,6 +1367,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       id: product?.id || `prod_${Date.now()}`,
       name: name.trim(),
       category: (finalCategory || 'Acessórios & Bolsas').trim(),
+      productFamily: productFamily.trim() || undefined,
+      fragrance: fragrance.trim() || undefined,
       description: description.trim() || undefined,
       imageUrl: imageUrl || undefined,
       isIntermediate: !isFinalProduct,
@@ -1385,6 +1567,46 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                     className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
                     title="Se esta receita produz 1 peça única, deixe 1. Se você corta e produz um lote de 50 etiquetas por receita, coloque 50."
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                    Produto-base / Família
+                  </label>
+                  <input
+                    type="text"
+                    list="product-family-suggestions"
+                    value={productFamily}
+                    onChange={(e) => setProductFamily(e.target.value)}
+                    placeholder="Ex: Castiçal Lapidado"
+                    className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
+                  />
+                  <datalist id="product-family-suggestions">
+                    {familySuggestions.map((family) => <option key={family} value={family} />)}
+                  </datalist>
+                  <p className="text-[10px] text-stone-500 mt-1">
+                    Agrupa receitas que são o mesmo produto com aromas diferentes.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                    Aroma / Variação
+                  </label>
+                  <input
+                    type="text"
+                    list="product-fragrance-suggestions"
+                    value={fragrance}
+                    onChange={(e) => setFragrance(e.target.value)}
+                    placeholder="Ex: Chá Branco"
+                    className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
+                  />
+                  <datalist id="product-fragrance-suggestions">
+                    {fragranceSuggestions.map((item) => <option key={item} value={item} />)}
+                  </datalist>
+                  <p className="text-[10px] text-stone-500 mt-1">
+                    Cada aroma continua com receita e estoque próprios.
+                  </p>
                 </div>
               </div>
 

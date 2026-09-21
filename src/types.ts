@@ -87,6 +87,10 @@ export interface Product {
   id: string;
   name: string;
   category: string;
+  /** Família/produto-base usada para agrupar variações da mesma peça (ex: Castiçal Lapidado). */
+  productFamily?: string;
+  /** Aroma/variação desta receita dentro da família (ex: Chá Branco). */
+  fragrance?: string;
   description?: string;
   imageUrl?: string;
   isIntermediate: boolean; // True if this item is a sub-component (like "Etiqueta", "Tag Kraft", "Laço")
