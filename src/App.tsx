@@ -65,7 +65,7 @@ import { CheckCircle2, X } from 'lucide-react';
 const withDefaultDiscountCodes = (incoming: AtelierSettings): AtelierSettings => ({
   ...incoming,
   discountCodes:
-    incoming?.discountCodes?.length
+    Array.isArray(incoming?.discountCodes)
       ? incoming.discountCodes
       : (DEFAULT_SETTINGS.discountCodes || []),
 });
