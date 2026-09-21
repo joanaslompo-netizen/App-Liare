@@ -87,7 +87,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   );
 
   const lowStockCount = useMemo(() => {
-    return products.filter((p) => !p.isCustomRecipe && (p.currentStock ?? 0) <= (p.minStock ?? 2)).length;
+    return products.filter((p) => !p.isCustomRecipe && (p.minStock ?? 2) > 0 && (p.currentStock ?? 0) <= (p.minStock ?? 2)).length;
   }, [products]);
 
   // Categories (all registered for modals)
