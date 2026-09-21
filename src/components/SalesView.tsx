@@ -881,10 +881,23 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     return null;
   }, [customerId, customers]);
 
-  const appliedDiscountCode = useMemo(
-    () => discountCodes.find((code) => code.id === discountCodeId && code.active !== false) || null,
-    [discountCodes, discountCodeId]
-  );
+  const appliedDiscountCode = useMemo(() => {
+    if (
+      existingSale?.discountCodeId === discountCodeId &&
+      existingSale.discountType &&
+      existingSale.discountValue !== undefined
+    ) {
+      return {
+        id: existingSale.discountCodeId,
+        code: existingSale.discountCode || 'DESCONTO',
+        type: existingSale.discountType,
+        value: existingSale.discountValue,
+        active: true,
+        createdAt: existingSale.createdAt,
+      } as DiscountCode;
+    }
+    return discountCodes.find((code) => code.id === discountCodeId) || null;
+  }, [discountCodes, discountCodeId, existingSale]);
 
   useEffect(() => {
     if (existingSale || !selectedCustomer) return;
