@@ -1,4 +1,4 @@
-import { Material, Product, Purchase, Sale, Customer, Supplier, AtelierSettings, RecipeItem, TodoItem, Production } from '../types';
+import { Material, Product, Purchase, Sale, Customer, Supplier, AtelierSettings, RecipeItem, TodoItem, Production, ProductionProject } from '../types';
 
 const STORAGE_KEYS = {
   MATERIALS: 'atelie_materials_v1',
@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
   SUPPLIERS: 'atelie_suppliers_v1',
   SETTINGS: 'atelie_settings_v1',
   TODOS: 'atelie_todos_v1',
+  PROJECTS: 'atelie_projects_v1',
 };
 
 export const DEFAULT_TODOS: TodoItem[] = [
@@ -1855,6 +1856,7 @@ export const loadStoredData = () => {
     const storedPaymentMethods = localStorage.getItem(STORAGE_KEYS.PAYMENT_METHODS);
     const storedSuppliers = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
     const storedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+    const storedProjects = localStorage.getItem(STORAGE_KEYS.PROJECTS);
 
     // Sanitize product stock (ensures currentStock and minStock exist, and removes prod_sub_1)
     const sanitizeProducts = (prods: Product[]) => {
@@ -1922,6 +1924,7 @@ export const loadStoredData = () => {
         suppliers: storedSuppliers ? JSON.parse(storedSuppliers) : DEFAULT_SUPPLIERS,
         settings: storedSettings ? JSON.parse(storedSettings) : DEFAULT_SETTINGS,
         todos: localStorage.getItem(STORAGE_KEYS.TODOS) ? JSON.parse(localStorage.getItem(STORAGE_KEYS.TODOS)!) : DEFAULT_TODOS,
+        projects: storedProjects ? JSON.parse(storedProjects) : [],
       };
     }
 
@@ -1940,6 +1943,7 @@ export const loadStoredData = () => {
       suppliers: storedSuppliers ? JSON.parse(storedSuppliers) : DEFAULT_SUPPLIERS,
       settings: storedSettings ? JSON.parse(storedSettings) : DEFAULT_SETTINGS,
       todos: storedTodos ? JSON.parse(storedTodos) : DEFAULT_TODOS,
+      projects: storedProjects ? JSON.parse(storedProjects) : [],
     };
   } catch (err) {
     console.error('Error loading data from localStorage, falling back to defaults:', err);
@@ -1954,6 +1958,7 @@ export const loadStoredData = () => {
       suppliers: DEFAULT_SUPPLIERS,
       settings: DEFAULT_SETTINGS,
       todos: DEFAULT_TODOS,
+      projects: [],
     };
   }
 };
@@ -1996,6 +2001,10 @@ export const saveSettings = (settings: AtelierSettings) => {
 
 export const saveTodos = (todos: TodoItem[]) => {
   localStorage.setItem(STORAGE_KEYS.TODOS, JSON.stringify(todos));
+};
+
+export const saveProjects = (projects: ProductionProject[]) => {
+  localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
 };
 
 /**
