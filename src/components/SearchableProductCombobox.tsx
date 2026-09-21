@@ -12,6 +12,7 @@ interface SearchableProductComboboxProps {
   autoFocus?: boolean;
   filterOnlyFinalForSale?: boolean; // When true, filters out intermediate products if desired, or highlights them
   mode?: 'sale' | 'production';
+  embeddedSelectedCard?: boolean;
 }
 
 export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps> = ({
@@ -23,6 +24,7 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
   autoFocus = false,
   filterOnlyFinalForSale = true,
   mode = 'sale',
+  embeddedSelectedCard = false,
 }) => {
   const defaultPlaceholder = mode === 'production'
     ? 'Buscar receita por palavras-chave (ex: vela lavanda, difusor, aroma)...'
@@ -149,8 +151,12 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
     <div ref={containerRef} className="relative w-full">
       {/* Selected Product Card (when a product is chosen and dropdown is closed) */}
       {selectedProduct && !isOpen ? (
-        <div className="flex items-center justify-between p-2.5 bg-amber-50/70 border border-amber-300 rounded-xl transition-all shadow-2xs hover:border-amber-400">
-          <div className="flex items-center gap-2.5 min-w-0">
+        <div className={`flex justify-between transition-all ${
+          embeddedSelectedCard
+            ? 'items-start bg-transparent border-0 p-0 shadow-none'
+            : 'items-center p-2.5 bg-amber-50/70 border border-amber-300 rounded-xl shadow-2xs hover:border-amber-400'
+        }`}>
+          <div className="flex items-start gap-2.5 min-w-0 flex-1">
             {selectedProduct.imageUrl ? (
               <img
                 src={selectedProduct.imageUrl}
@@ -165,12 +171,16 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
             )}
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-stone-900 truncate block">
+                <span className={`text-xs font-bold text-stone-900 ${
+                  embeddedSelectedCard ? 'whitespace-normal break-words leading-snug' : 'truncate block'
+                }`}>
                   {selectedProduct.name}
                 </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-stone-200/80 text-stone-700">
-                  {selectedProduct.category}
-                </span>
+                {!embeddedSelectedCard && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-stone-200/80 text-stone-700">
+                    {selectedProduct.category}
+                  </span>
+                )}
                 {selectedProduct.isIntermediate && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800 flex items-center gap-0.5">
                     <Layers className="w-2.5 h-2.5" /> Sub-produto
@@ -198,17 +208,19 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 ml-2">
-            <button
-              type="button"
-              id="btn-change-selected-product"
-              onClick={() => {
-                setIsOpen(true);
-                setTimeout(() => inputRef.current?.focus(), 50);
-              }}
-              className="px-2.5 py-1 text-xs font-semibold text-amber-900 bg-amber-200/70 hover:bg-amber-300 rounded-lg transition-colors cursor-pointer"
-            >
-              Trocar
-            </button>
+            {!embeddedSelectedCard && (
+              <button
+                type="button"
+                id="btn-change-selected-product"
+                onClick={() => {
+                  setIsOpen(true);
+                  setTimeout(() => inputRef.current?.focus(), 50);
+                }}
+                className="px-2.5 py-1 text-xs font-semibold text-amber-900 bg-amber-200/70 hover:bg-amber-300 rounded-lg transition-colors cursor-pointer"
+              >
+                Trocar
+              </button>
+            )}
             <button
               type="button"
               onClick={handleClear}
