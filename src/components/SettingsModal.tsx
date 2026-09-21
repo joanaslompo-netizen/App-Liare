@@ -11,9 +11,10 @@ import {
   DollarSign, 
   Sparkles,
   Cloud,
-  CheckCircle2
+  CheckCircle2,
+  Trash2
 } from 'lucide-react';
-import { AtelierSettings } from '../types';
+import { AtelierSettings, DiscountCode, DiscountType } from '../types';
 import { User } from '../lib/firebase';
 import { 
   DEFAULT_SETTINGS, 
@@ -52,6 +53,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [defaultHourlyRate, setDefaultHourlyRate] = useState(settings.defaultHourlyRate.toString());
   const [defaultFixedCostPercent, setDefaultFixedCostPercent] = useState(settings.defaultFixedCostPercent.toString());
   const [defaultProfitMargin, setDefaultProfitMargin] = useState(settings.defaultProfitMargin.toString());
+  const [discountCodes, setDiscountCodes] = useState<DiscountCode[]>(
+    settings.discountCodes?.length ? settings.discountCodes : (DEFAULT_SETTINGS.discountCodes || [])
+  );
+  const [newDiscountCode, setNewDiscountCode] = useState('');
+  const [newDiscountType, setNewDiscountType] = useState<DiscountType>('percentage');
+  const [newDiscountValue, setNewDiscountValue] = useState('10');
 
   const fileImportRef = useRef<HTMLInputElement>(null);
 
@@ -65,6 +72,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       defaultHourlyRate: parseFloat(defaultHourlyRate) || 35,
       defaultFixedCostPercent: parseFloat(defaultFixedCostPercent) || 10,
       defaultProfitMargin: parseFloat(defaultProfitMargin) || 45,
+      discountCodes,
     });
     onClose();
   };
@@ -117,6 +125,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       });
       onClose();
     }
+  };
+
+  const handleAddDiscountCode = () => {
+    const code = newDiscountCode.trim().toUpperCase().replace(/\s+/g, '');
+    const value = Math.max(0, parseFloat(newDiscountValue) || 0);
+    if (!code || value <= 0) return;
+    if (discountCodes.some((item) => item.code.toUpperCase() === code)) {
+      alert('Já existe um código de desconto com esse nome.');
+      return;
+    }
+    setDiscountCodes((prev) => [
+      ...prev,
+      {
+        id: `discount_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        code,
+        type: newDiscountType,
+        value: newDiscountType === 'percentage' ? Math.min(100, value) : value,
+        active: true,
+        createdAt: new Date().toISOString().split('T')[0],
+      },
+    ]);
+    setNewDiscountCode('');
+    setNewDiscountValue('10');
+  };
+
+  const handleToggleDiscountCode = (id: string) => {
+    setDiscountCodes((prev) =>
+      prev.map((item) => item.id === id ? { ...item, active: item.active === false } : item)
+    );
+  };
+
+  const handleDeleteDiscountCode = (id: string) => {
+    setDiscountCodes((prev) => prev.filter((item) => item.id !== id));
   };
 
   return (
@@ -218,6 +259,84 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   className="w-full px-3 py-1.5 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Discount codes */}
+          <div className="bg-[#fbf7f2] p-4 rounded-xl border border-[#eadfd6] space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h4 className="font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
+                <Percent className="w-3.5 h-3.5 text-[#b96f55]" />
+                Códigos de desconto
+              </h4>
+              <span className="text-[10px] text-stone-500">{discountCodes.length} cadastrados</span>
+            </div>
+
+            <div className="space-y-2">
+              {discountCodes.map((discount) => (
+                <div key={discount.id} className="flex items-center gap-2 p-2.5 rounded-lg bg-white border border-stone-200">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-stone-900">{discount.code}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${discount.active === false ? 'bg-stone-100 text-stone-500' : 'bg-emerald-50 text-emerald-700'}`}>
+                        {discount.active === false ? 'Pausado' : 'Ativo'}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-stone-500">
+                      {discount.type === 'percentage' ? `${discount.value}% de desconto` : `${discount.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} de desconto`}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleDiscountCode(discount.id)}
+                    className="px-2 py-1 text-[10px] font-semibold rounded-lg border border-stone-200 hover:bg-stone-50"
+                  >
+                    {discount.active === false ? 'Ativar' : 'Pausar'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteDiscountCode(discount.id)}
+                    className="p-1.5 text-stone-400 hover:text-rose-600"
+                    title="Excluir código"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-[1.4fr_1fr_0.8fr_auto] gap-2 pt-1">
+              <input
+                type="text"
+                value={newDiscountCode}
+                onChange={(e) => setNewDiscountCode(e.target.value)}
+                placeholder="Código (ex: VIP20)"
+                className="px-3 py-2 text-xs bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-[#b96f55] text-stone-900 uppercase"
+              />
+              <select
+                value={newDiscountType}
+                onChange={(e) => setNewDiscountType(e.target.value as DiscountType)}
+                className="px-2.5 py-2 text-xs bg-white border border-stone-300 rounded-lg text-stone-900"
+              >
+                <option value="percentage">Porcentagem</option>
+                <option value="fixed">Valor em R$</option>
+              </select>
+              <input
+                type="number"
+                min="0"
+                max={newDiscountType === 'percentage' ? 100 : undefined}
+                step="0.01"
+                value={newDiscountValue}
+                onChange={(e) => setNewDiscountValue(e.target.value)}
+                className="px-2.5 py-2 text-xs bg-white border border-stone-300 rounded-lg text-stone-900"
+              />
+              <button
+                type="button"
+                onClick={handleAddDiscountCode}
+                className="px-3 py-2 rounded-lg bg-[#b96f55] hover:bg-[#a86149] text-white text-xs font-bold"
+              >
+                Adicionar
+              </button>
             </div>
           </div>
 
