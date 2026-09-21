@@ -931,18 +931,20 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   const [isFinalProduct, setIsFinalProduct] = useState(product ? !product.isIntermediate : false);
   const [batchYield, setBatchYield] = useState<string>(product?.batchYield ? product.batchYield.toString() : '1');
   const [currentStock, setCurrentStock] = useState<string>(
-    product?.currentStock !== undefined ? product.currentStock.toString() : '0'
+    product?.currentStock != null ? product.currentStock.toString() : '0'
   );
   const [minStock, setMinStock] = useState<string>(
-    product?.minStock !== undefined ? product.minStock.toString() : '2'
+    product?.minStock != null ? product.minStock.toString() : '2'
   );
   const [standardStock, setStandardStock] = useState<string>(
-    product?.standardStock !== undefined ? product.standardStock.toString() : '10'
+    product?.standardStock != null ? product.standardStock.toString() : '10'
   );
   const [notes, setNotes] = useState(product?.notes || '');
 
   // Recipe items (BOM)
-  const [items, setItems] = useState<RecipeItem[]>(product?.items || []);
+  const [items, setItems] = useState<RecipeItem[]>(
+    Array.isArray(product?.items) ? product.items.filter(Boolean) : []
+  );
 
   // Adding item form state
   const [itemTypeToAdd, setItemTypeToAdd] = useState<RecipeItemType>('material');
