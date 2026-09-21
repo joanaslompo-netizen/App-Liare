@@ -1404,8 +1404,8 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       alert('Adicione pelo menos um produto ao pedido.');
       return;
     }
-    if (totalRevenue <= 0 && !items.some((item) => item.isCustom)) {
-      alert('O valor total do pedido deve ser maior que zero.');
+    if (subtotalRevenue <= 0 && !items.some((item) => item.isCustom)) {
+      alert('O valor dos itens do pedido deve ser maior que zero.');
       return;
     }
 
