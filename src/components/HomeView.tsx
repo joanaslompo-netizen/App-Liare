@@ -53,12 +53,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [todoFilter, setTodoFilter] = useState<'all' | 'pending' | 'completed'>('all');
 
   const lowStockMaterials = useMemo(
-    () => materials.filter((m) => !m.isVirtualRecipe && !m.isPaused && m.minStock > 0 && m.currentStock <= m.minStock),
+    () => materials.filter((m) => !m.isVirtualRecipe && m.minStock > 0 && m.currentStock <= m.minStock),
     [materials]
   );
 
   const lowStockProducts = useMemo(
-    () => products.filter((p) => !p.isPaused && (p.minStock ?? 0) > 0 && (p.currentStock ?? 0) <= (p.minStock ?? 0)),
+    () => products.filter((p) => (p.minStock ?? 0) > 0 && (p.currentStock ?? 0) <= (p.minStock ?? 0)),
     [products]
   );
 
