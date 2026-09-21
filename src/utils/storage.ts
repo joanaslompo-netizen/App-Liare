@@ -53,6 +53,16 @@ export const DEFAULT_SETTINGS: AtelierSettings = {
   defaultHourlyRate: 38.0, // R$ 38,00/hora de mão de obra da artesã
   defaultFixedCostPercent: 12, // 12% custos fixos (energia panela/soprador, impressora, internet)
   defaultProfitMargin: 50, // 50% margem de lucro desejada para perfumaria
+  discountCodes: [
+    {
+      id: 'discount_familia30',
+      code: 'FAMILIA30',
+      type: 'percentage',
+      value: 50,
+      active: true,
+      createdAt: '2026-09-21',
+    },
+  ],
 };
 
 export const DEFAULT_SUPPLIERS: Supplier[] = [
