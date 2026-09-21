@@ -12,7 +12,8 @@ import {
   saveSettings,
   saveTodos,
   cascadeRecalculateAllProducts,
-  DEFAULT_TODOS
+  DEFAULT_TODOS,
+  DEFAULT_SETTINGS
 } from './utils/storage';
 import { 
   Material, 
@@ -75,7 +76,13 @@ export default function App() {
   const [paymentMethods, setPaymentMethods] = useState<string[]>(initialData.paymentMethods || ['offline', 'site']);
   const [customerForNewSale, setCustomerForNewSale] = useState<Customer | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>(initialData.suppliers);
-  const [settings, setSettings] = useState<AtelierSettings>(initialData.settings);
+  const [settings, setSettings] = useState<AtelierSettings>(() => ({
+    ...initialData.settings,
+    discountCodes:
+      initialData.settings?.discountCodes?.length
+        ? initialData.settings.discountCodes
+        : (DEFAULT_SETTINGS.discountCodes || []),
+  }));
   const [todos, setTodos] = useState<TodoItem[]>(initialData.todos || DEFAULT_TODOS);
 
   // Lateral Sidebar Drawer State
@@ -1517,6 +1524,7 @@ export default function App() {
             materials={materials}
             customers={customers}
             paymentMethods={paymentMethods}
+            discountCodes={settings.discountCodes || []}
             onSaveSale={handleSaveSale}
             onReserveSaleItem={handleReserveSaleItem}
             onReleaseSaleItemReservation={handleReleaseSaleItemReservation}
@@ -1534,9 +1542,11 @@ export default function App() {
           <CustomersView
             customers={customers}
             sales={sales}
+            products={products}
+            discountCodes={settings.discountCodes || []}
             onSaveCustomer={handleSaveCustomer}
             onDeleteCustomer={handleDeleteCustomer}
-            onCreateSaleForCustomer={handleCreateSaleForCustomer}
+            onNavigateToNewOrderWithCustomer={handleCreateSaleForCustomer}
           />
         )}
 
