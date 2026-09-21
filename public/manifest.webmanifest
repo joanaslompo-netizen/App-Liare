@@ -1,0 +1,16 @@
+{
+  "name": "Liare Ateliê",
+  "short_name": "Liare",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F7EEDF",
+  "theme_color": "#B66F54",
+  "icons": [
+    {
+      "src": "/liare-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
