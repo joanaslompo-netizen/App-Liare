@@ -207,9 +207,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
         className="rounded-3xl bg-[#b96f55] text-white p-5 sm:p-6 shadow-sm cursor-pointer transition-transform hover:-translate-y-0.5"
       >
         <div className="flex items-center gap-2 mb-4">
-          <span className="text-sm font-semibold text-white/90">Resumo do mês</span>
+          <span className="text-[15px] font-semibold text-white/90">Resumo do mês</span>
           <span className="text-white/65">·</span>
-          <span className="text-sm font-semibold text-white/90">
+          <span className="text-[15px] font-semibold text-white/90">
             {new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date())}
           </span>
         </div>
@@ -220,9 +220,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
                 <BarChart3 className="w-4 h-4 text-white" />
               </div>
-              <span className="text-xs text-white/75">Faturamento</span>
+              <span className="text-[13px] text-white/75">Faturamento</span>
             </div>
-            <strong className="block text-2xl font-extrabold tracking-tight whitespace-nowrap">
+            <strong className="block text-[2rem] leading-none font-extrabold tracking-tight whitespace-nowrap">
               {formatCurrency(monthRevenue)}
             </strong>
           </div>
@@ -232,9 +232,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <div className="w-8 h-8 rounded-full bg-[#e9efdc] flex items-center justify-center shrink-0">
                 <TrendingUp className="w-4 h-4 text-[#65734f]" />
               </div>
-              <span className="text-xs text-white/75">Lucro</span>
+              <span className="text-[13px] text-white/75">Lucro</span>
             </div>
-            <strong className="block text-2xl font-extrabold tracking-tight whitespace-nowrap">
+            <strong className="block text-[2rem] leading-none font-extrabold tracking-tight whitespace-nowrap">
               {monthProfit > 0 ? '+' : ''}{formatCurrency(monthProfit)}
             </strong>
           </div>
@@ -244,9 +244,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
                 <CreditCard className="w-4 h-4 text-white" />
               </div>
-              <span className="text-xs text-white/75">A receber</span>
+              <span className="text-[13px] text-white/75">A receber</span>
             </div>
-            <strong className="block text-2xl font-extrabold tracking-tight whitespace-nowrap">
+            <strong className="block text-[2rem] leading-none font-extrabold tracking-tight whitespace-nowrap">
               {formatCurrency(totalPendingPaymentAmount)}
             </strong>
           </div>
@@ -259,7 +259,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               style={{ width: `${Math.max(4, Math.min(100, Math.abs(monthMargin)))}%` }}
             />
           </div>
-          <div className="flex items-center gap-1 text-xs text-white/85 whitespace-nowrap">
+          <div className="flex items-center gap-1 text-[13px] text-white/85 whitespace-nowrap">
             <span>Margem {formatPercent(monthMargin)}</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </div>
