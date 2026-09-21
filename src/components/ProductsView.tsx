@@ -87,7 +87,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   );
 
   const lowStockCount = useMemo(() => {
-    return products.filter((p) => !p.isCustomRecipe && (p.minStock ?? 2) > 0 && (p.currentStock ?? 0) <= (p.minStock ?? 2)).length;
+    return products.filter((p) => {
+      const minStock = p.minStock ?? 2;
+      const currentStock = p.currentStock ?? 0;
+      return !p.isCustomRecipe && minStock > 0 && currentStock <= minStock;
+    }).length;
   }, [products]);
 
   // Categories (all registered for modals)
@@ -144,7 +148,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         const matchesStock =
           stockFilter === 'all' ||
           (stockFilter === 'in_stock' && currentStock > minStock) ||
-          (stockFilter === 'low_stock' && minStock > 0 && currentStock <= minStock && currentStock > 0) ||
+          (stockFilter === 'low_stock' && minStock > 0 && currentStock <= minStock) ||
           (stockFilter === 'out_of_stock' && currentStock <= 0);
 
         return matchesSearch && matchesType && matchesCategory && matchesStock;
