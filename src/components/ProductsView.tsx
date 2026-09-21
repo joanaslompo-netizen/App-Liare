@@ -969,24 +969,24 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
 
   // Labor & Overhead
   const [productionTimeMinutes, setProductionTimeMinutes] = useState<string>(
-    product ? product.productionTimeMinutes.toString() : '30'
+    product?.productionTimeMinutes != null ? product.productionTimeMinutes.toString() : '30'
   );
   const [hourlyRate, setHourlyRate] = useState<string>(
-    product ? product.hourlyRate.toString() : defaultHourlyRate.toString()
+    product?.hourlyRate != null ? product.hourlyRate.toString() : defaultHourlyRate.toString()
   );
   const [fixedCostPercent, setFixedCostPercent] = useState<string>(
-    product ? product.fixedCostPercent.toString() : defaultFixedCostPercent.toString()
+    product?.fixedCostPercent != null ? product.fixedCostPercent.toString() : defaultFixedCostPercent.toString()
   );
   const [otherCosts, setOtherCosts] = useState<string>(
-    product ? product.otherCosts.toString() : '0'
+    product?.otherCosts != null ? product.otherCosts.toString() : '0'
   );
 
   // Pricing
   const [profitMarginPercent, setProfitMarginPercent] = useState<string>(
-    product ? product.profitMarginPercent.toString() : defaultProfitMargin.toString()
+    product?.profitMarginPercent != null ? product.profitMarginPercent.toString() : defaultProfitMargin.toString()
   );
   const [actualPrice, setActualPrice] = useState<string>(
-    product ? product.actualPrice.toString() : ''
+    product?.actualPrice != null ? product.actualPrice.toString() : ''
   );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1022,7 +1022,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     return allProducts.filter((p) => {
       if (product && p.id === product.id) return false;
       // If editing, make sure 'p' does not contain 'product.id' in its own recipe
-      if (product && p.items.some((it) => it.type === 'product' && it.targetId === product.id)) {
+      if (product && (p.items || []).some((it) => it.type === 'product' && it.targetId === product.id)) {
         return false;
       }
       return true;
