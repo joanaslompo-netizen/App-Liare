@@ -276,6 +276,40 @@ export interface Production {
   createdAt: string;
 }
 
+export type ProjectStatus = 'planning' | 'in_progress' | 'completed';
+
+export interface ProjectChecklistItem {
+  id: string;
+  text: string;
+  completed: boolean;
+}
+
+export interface ProjectProductLine {
+  id: string;
+  /** Catalog recipes follow the current registered product. Custom recipes live only inside this project. */
+  source: 'catalog' | 'custom';
+  productId?: string;
+  name: string;
+  quantity: number;
+  producedQuantity: number;
+  batchYield: number;
+  targetSalePrice?: number;
+  notes?: string;
+  customRecipeItems?: RecipeItem[];
+}
+
+export interface ProductionProject {
+  id: string;
+  name: string;
+  status: ProjectStatus;
+  dueDate?: string;
+  notes?: string;
+  lines: ProjectProductLine[];
+  checklist: ProjectChecklistItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AtelierSettings {
   atelierName: string;
   artisanName: string;
@@ -290,6 +324,7 @@ export type NavTab =
   | 'home' 
   | 'materials' 
   | 'products' 
+  | 'projects'
   | 'productions'
   | 'purchases' 
   | 'sales' 
