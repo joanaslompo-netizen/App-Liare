@@ -294,9 +294,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <h3 className="text-base sm:text-lg font-bold text-[#2f2925] tracking-tight">
                 Próximas entregas a despachar
               </h3>
-              <p className="text-[11px] sm:text-xs text-[#857970] mt-0.5">
-                Pedidos prontos para envio nos próximos dias.
-              </p>
             </div>
           </div>
           <button
@@ -323,6 +320,17 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 : 'sem data';
               const imageUrl = sale.productImageUrl || sale.items?.[0]?.productImageUrl;
               const itemName = sale.productName || sale.items?.[0]?.productName || 'Pedido';
+              const primaryItem = sale.items?.[0];
+              const stockProductId = primaryItem
+                ? (primaryItem.isCustom ? primaryItem.customProductId : primaryItem.productId)
+                : sale.productId;
+              const stockProduct = stockProductId
+                ? products.find((product) => product.id === stockProductId)
+                : undefined;
+              const physicalStock = stockProduct?.currentStock ?? 0;
+              const reservedQuantity = primaryItem?.reservedQuantity ?? 0;
+              const requestedQuantity = primaryItem?.quantity ?? sale.quantity;
+              const missingQuantity = Math.max(0, requestedQuantity - reservedQuantity);
 
               return (
                 <button
@@ -348,9 +356,19 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     <span className="text-xs sm:text-sm font-semibold text-[#352f2b] block truncate">
                       {itemName}
                     </span>
-                    <span className="text-[11px] sm:text-xs text-[#857970] block mt-0.5 truncate">
-                      {sale.customerName || 'Cliente sem nome'}
-                    </span>
+                    <div className="mt-0.5 flex items-center justify-between gap-3">
+                      <span className="text-[11px] sm:text-xs text-[#857970] truncate">
+                        {sale.customerName || 'Cliente sem nome'}
+                      </span>
+                      <div
+                        className="flex items-center gap-2.5 text-[11px] sm:text-xs font-bold shrink-0"
+                        aria-label={`Estoque ${physicalStock}, reservado ${reservedQuantity}, faltam ${missingQuantity}`}
+                      >
+                        <span className="text-emerald-600" title="Estoque">{physicalStock}</span>
+                        <span className="text-sky-600" title="Reservado">{reservedQuantity}</span>
+                        <span className="text-rose-600" title="Faltam">{missingQuantity}</span>
+                      </div>
+                    </div>
                   </div>
 
                   <ArrowRight className="w-4 h-4 text-[#7e746d] group-hover:translate-x-0.5 transition-transform shrink-0" />
@@ -375,9 +393,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   {completedTodosCount}/{totalTodosCount} feitas
                 </span>
               </div>
-              <p className="text-xs text-[#857970] mt-0.5">
-                Sua lista continua sendo o centro da rotina do ateliê.
-              </p>
             </div>
 
             <div className="flex items-center gap-1 bg-[#f7f2ed] p-1 rounded-xl text-xs font-medium self-start sm:self-auto">
