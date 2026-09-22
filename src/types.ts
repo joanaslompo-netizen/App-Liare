@@ -31,12 +31,28 @@ export interface Supplier {
 }
 
 export type MaterialType = 'internal' | 'for_sale'; // 'internal' = insumo interno/etiqueta/aviamento/embalagem, 'for_sale' = produto pronto para venda direta
+export type MaterialUsageType = 'consumable' | 'durable';
+export type DurableItemKind = 'mold' | 'tool' | 'equipment' | 'other';
 
 export interface Material {
   id: string;
   name: string;
   category: string;
   materialType?: MaterialType; // Tipo de material: insumo interno vs venda direta
+  /** Consumível por padrão. Duráveis podem entrar em receitas sem serem consumidos nem baixados do estoque. */
+  usageType?: MaterialUsageType;
+  /** Classificação específica do item durável. */
+  durableKind?: DurableItemKind;
+  /** Material físico do item durável (ex.: silicone, policarbonato, metal). */
+  durableMaterial?: string;
+  /** Medidas livres do item durável (ex.: 12 x 8 x 5 cm). */
+  durableDimensions?: string;
+  /** Número de cavidades, quando aplicável. */
+  durableCavities?: number;
+  /** Formatos disponíveis no mesmo molde. */
+  moldShapes?: string[];
+  /** Capacidade aproximada de cada cavidade/formato em gramas, quando conhecida. */
+  durableCapacityGrams?: number;
   unit: UnitOfMeasure; // Base unit used in recipes (e.g. cm, g, un)
   packageQuantity: number; // How much came in the package (e.g. 50 metros)
   packageUnit: UnitOfMeasure; // Unit of package (e.g. m)
@@ -83,6 +99,8 @@ export interface RecipeItem {
   targetCategory?: string;
   /** Choices made for category-based ingredients when a virtual recipe is used inside a one-off/custom item. */
   categorySelections?: Record<string, string>;
+  /** Formato/opção escolhida de um item durável, como o desenho específico de um molde multicavidade. */
+  durableOption?: string;
 }
 
 export interface Product {
