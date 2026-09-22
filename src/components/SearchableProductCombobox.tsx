@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, X, Check, Tag, ChevronDown, ChevronLeft, Layers, Sparkles } from 'lucide-react';
 import { Product } from '../types';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, normalizeSearchText } from '../utils/formatters';
 
 interface SearchableProductComboboxProps {
   products: Product[];
@@ -82,12 +82,12 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
       ? eligibleProducts.filter((p) => p.productFamily === activeFamily)
       : eligibleProducts;
 
-    const trimmed = query.trim().toLowerCase();
+    const trimmed = normalizeSearchText(query);
     if (trimmed) {
       const keywords = trimmed.split(/\s+/).filter(Boolean);
       list = list.filter((p) => {
         const itemsText = (p.items || []).map((it) => it.name).join(' ');
-        const searchBlob = `${p.name} ${p.category} ${p.productFamily || ''} ${p.fragrance || ''} ${p.description || ''} ${itemsText}`.toLowerCase();
+        const searchBlob = normalizeSearchText(`${p.name} ${p.category} ${p.productFamily || ''} ${p.fragrance || ''} ${p.description || ''} ${itemsText}`);
         return keywords.every((kw) => searchBlob.includes(kw));
       });
     } else if (mode === 'sale' && !activeFamily && familyGroups.length > 0) {
