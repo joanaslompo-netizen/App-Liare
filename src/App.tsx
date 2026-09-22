@@ -1737,9 +1737,9 @@ export default function App() {
         </div>
       )}
 
-      {/* Fixed bottom navigation */}
+      {/* Above quick actions (40), below modal overlays (50). */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-50 border-t border-[#eadfd6] bg-white/96 backdrop-blur-xl shadow-[0_-4px_18px_rgba(83,62,49,0.05)]"
+        className="fixed inset-x-0 bottom-0 z-[45] border-t border-[#eadfd6] bg-white/96 backdrop-blur-xl shadow-[0_-4px_18px_rgba(83,62,49,0.05)]"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.35rem)' }}
         aria-label="Navegação principal"
       >
