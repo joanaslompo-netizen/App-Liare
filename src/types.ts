@@ -85,7 +85,10 @@ export interface RecipeItem {
 
 export interface Product {
   id: string;
+  /** Nome de apresentação efetivo, mantido para compatibilidade com pedidos, produção e relatórios. */
   name: string;
+  /** Sobrescrita opcional. Quando vazio, o nome é gerado por Produto-base/Família + Variação. */
+  customName?: string;
   category: string;
   /** Família/produto-base usada para agrupar variações da mesma peça (ex: Castiçal Lapidado). */
   productFamily?: string;
