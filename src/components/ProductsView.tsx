@@ -90,9 +90,34 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [viewingFichaProduct, setViewingFichaProduct] = useState<Product | null>(null);
 
-  // Quick adjust inline state
+  // Stock changes stay in the dialog draft until Save.
   const [adjustingId, setAdjustingId] = useState<string | null>(null);
-  const [adjustDelta, setAdjustDelta] = useState<string>('');
+  const [adjustStockValue, setAdjustStockValue] = useState<string>('');
+  const stockDialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = stockDialogRef.current;
+    if (!adjustingId || !dialog) return;
+    dialog.showModal();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      dialog.close();
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [adjustingId]);
+
+  const closeStockAdjustment = () => {
+    setAdjustingId(null);
+    setAdjustStockValue('');
+  };
+
+  const stepStockAdjustment = (step: number) => {
+    setAdjustStockValue((value) => {
+      const stock = Number(value);
+      return String(Math.max(0, (Number.isFinite(stock) ? stock : 0) + step));
+    });
+  };
 
   const scopedProducts = useMemo(
     () => products.filter((p) => recipeScope === 'custom' ? !!p.isCustomRecipe : !p.isCustomRecipe),
@@ -244,10 +269,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   };
 
   const handleConfirmAdjust = (id: string) => {
-    const newStock = parseFloat(adjustDelta);
+    const newStock = Number(adjustStockValue);
     const product = products.find((p) => p.id === id);
 
-    if (!product || isNaN(newStock) || newStock < 0) {
+    if (!product || !adjustStockValue.trim() || !Number.isFinite(newStock) || newStock < 0) {
       alert('Informe um valor de estoque válido, igual ou maior que zero.');
       return;
     }
@@ -259,7 +284,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     }
 
     setAdjustingId(null);
-    setAdjustDelta('');
+    setAdjustStockValue('');
   };
 
   return (
@@ -862,58 +887,16 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
                         {/* Quick stock adjust & Produce button */}
                         <div className="pt-1 flex items-center justify-between gap-2">
-                          {adjustingId === p.id ? (
-                            <div className="flex items-center gap-1.5 flex-1">
-                              <input
-                                type="number"
-                                step="1"
-                                min="0"
-                                placeholder="Novo estoque"
-                                value={adjustDelta}
-                                onChange={(e) => setAdjustDelta(e.target.value)}
-                                className="w-24 text-xs px-2 py-1 bg-white border border-stone-300 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500 text-stone-900"
-                                autoFocus
-                              />
-                              <button
-                                onClick={() => handleConfirmAdjust(p.id)}
-                                className="px-2 py-1 bg-stone-900 text-white rounded text-xs font-semibold hover:bg-stone-800"
-                              >
-                                Ok
-                              </button>
-                              <button
-                                onClick={() => setAdjustingId(null)}
-                                className="text-xs text-stone-500 hover:text-stone-700"
-                              >
-                                Cancelar
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                onClick={() => onQuickStockChange && onQuickStockChange(p.id, -1)}
-                                className="w-6 h-6 flex items-center justify-center rounded bg-stone-200/70 hover:bg-stone-300 text-stone-700 text-xs font-bold transition-colors cursor-pointer"
-                                title="Diminuir 1 unidade do estoque"
-                              >
-                                -1
-                              </button>
-                              <button
-                                onClick={() => onQuickStockChange && onQuickStockChange(p.id, 1)}
-                                className="w-6 h-6 flex items-center justify-center rounded bg-stone-200/70 hover:bg-stone-300 text-stone-700 text-xs font-bold transition-colors cursor-pointer"
-                                title="Aumentar 1 unidade no estoque"
-                              >
-                                +1
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setAdjustingId(p.id);
-                                  setAdjustDelta(String(currentStock));
-                                }}
-                                className="text-[11px] text-stone-500 hover:text-amber-800 underline cursor-pointer ml-1"
-                              >
-                                Ajustar
-                              </button>
-                            </div>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAdjustingId(p.id);
+                              setAdjustStockValue(String(currentStock));
+                            }}
+                            className="text-[11px] text-stone-500 hover:text-amber-800 underline cursor-pointer py-2"
+                          >
+                            Ajustar
+                          </button>
 
                           {/* Shortcut to produce this recipe */}
                           {onOpenProduction && (
@@ -1006,6 +989,56 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             );
           })}
         </div>
+      )}
+
+      {adjustingId && (
+        <dialog
+          ref={stockDialogRef}
+          aria-labelledby="stock-adjust-title"
+          aria-describedby="stock-adjust-help"
+          onCancel={closeStockAdjustment}
+          className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white p-6 text-stone-900 shadow-xl backdrop:bg-black/40"
+        >
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            handleConfirmAdjust(adjustingId);
+          }}>
+            <h3 id="stock-adjust-title" className="text-lg font-bold text-center mb-5">Ajustar estoque</h3>
+            <label htmlFor="stock-adjust-value" className="block text-sm text-center mb-3">Novo estoque total</label>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                aria-label="Diminuir quantidade"
+                onClick={() => stepStockAdjustment(-1)}
+                disabled={Number(adjustStockValue) <= 0}
+                className="h-11 w-11 shrink-0 rounded-lg border border-stone-200 bg-stone-100 text-lg disabled:opacity-40"
+              >−</button>
+              <input
+                id="stock-adjust-value"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="any"
+                required
+                autoFocus
+                value={adjustStockValue}
+                onChange={(event) => setAdjustStockValue(event.target.value)}
+                className="min-w-0 w-full h-11 rounded-lg border border-stone-300 bg-white text-center text-sm focus:outline-none focus:ring-2 focus:ring-[#B77052]"
+              />
+              <button
+                type="button"
+                aria-label="Aumentar quantidade"
+                onClick={() => stepStockAdjustment(1)}
+                className="h-11 w-11 shrink-0 rounded-lg border border-stone-200 bg-stone-100 text-lg"
+              >+</button>
+            </div>
+            <p id="stock-adjust-help" className="mt-3 text-xs text-stone-500 text-center">Informe o novo total de peças em estoque.</p>
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <button type="button" onClick={closeStockAdjustment} className="min-h-11 rounded-lg border border-stone-200 bg-stone-50 text-sm font-semibold">Cancelar</button>
+              <button type="submit" className="min-h-11 rounded-lg bg-[#B77052] text-white text-sm font-semibold hover:bg-[#A46348]">Salvar</button>
+            </div>
+          </form>
+        </dialog>
       )}
 
       {/* Add / Edit Product Modal */}
