@@ -434,7 +434,7 @@ export default function App() {
   };
 
   // Low stock counter
-  const lowStockCount = materials.filter((m) => !m.isVirtualRecipe && !m.isPaused && m.minStock > 0 && m.currentStock <= m.minStock).length;
+  const lowStockCount = materials.filter((m) => !m.isVirtualRecipe && m.usageType !== 'durable' && !m.isPaused && m.minStock > 0 && m.currentStock <= m.minStock).length;
 
   // Birthday customers count for this month
   const birthdayCustomersCount = useMemo(() => {
@@ -506,10 +506,15 @@ export default function App() {
         return prev;
       }
 
-      const ingredientRequirements = target.recipeItems.map((item) => ({
-        ...item,
-        required: item.quantity * batchCount,
-      }));
+      const ingredientRequirements = target.recipeItems
+        .map((item) => ({
+          ...item,
+          required: item.quantity * batchCount,
+        }))
+        .filter((item) => {
+          const ingredient = prev.find((m) => m.id === item.targetId);
+          return ingredient?.usageType !== 'durable';
+        });
 
       const insufficient = ingredientRequirements.find((req) => {
         const ingredient = prev.find((m) => m.id === req.targetId);
@@ -666,7 +671,7 @@ export default function App() {
         setMaterials((prevMaterials) => {
           return prevMaterials.map((mat) => {
             const deduction = materialDeductions.find((it) => it.targetId === mat.id);
-            if (deduction) {
+            if (deduction && mat.usageType !== 'durable') {
               const newStock = Math.max(0, Number((mat.currentStock - deduction.quantityTotal).toFixed(4)));
               return {
                 ...mat,
@@ -726,7 +731,7 @@ export default function App() {
           setMaterials((prevMaterials) => {
             return prevMaterials.map((mat) => {
               const deduction = materialDeductions.find((it) => it.targetId === mat.id);
-              if (deduction) {
+              if (deduction && mat.usageType !== 'durable') {
                 return {
                   ...mat,
                   currentStock: Number((mat.currentStock + deduction.quantityTotal).toFixed(4)),
@@ -827,6 +832,10 @@ export default function App() {
           return null;
         }
 
+        if (mat.usageType === 'durable') {
+          continue;
+        }
+
         if (mat.isVirtualRecipe && mat.recipeItems?.length) {
           const virtualYield = Math.max(0.0001, mat.batchYield || 1);
           const scale = customItem.quantity / virtualYield;
@@ -844,15 +853,17 @@ export default function App() {
                 return null;
               }
 
-              addDeduction(
-                `${customItem.id}_${recipeItem.id}`,
-                chosen.id,
-                'material',
-                chosen.name,
-                chosen.unit,
-                required,
-                chosen.unitCost
-              );
+              if (chosen.usageType !== 'durable') {
+                addDeduction(
+                  `${customItem.id}_${recipeItem.id}`,
+                  chosen.id,
+                  'material',
+                  chosen.name,
+                  chosen.unit,
+                  required,
+                  chosen.unitCost
+                );
+              }
               continue;
             }
 
@@ -862,15 +873,17 @@ export default function App() {
                 alert(`O ingrediente "${recipeItem.name}" da receita virtual não foi encontrado.`);
                 return null;
               }
-              addDeduction(
-                `${customItem.id}_${recipeItem.id}`,
-                child.id,
-                'material',
-                child.name,
-                child.unit,
-                required,
-                child.unitCost
-              );
+              if (child.usageType !== 'durable') {
+                addDeduction(
+                  `${customItem.id}_${recipeItem.id}`,
+                  child.id,
+                  'material',
+                  child.name,
+                  child.unit,
+                  required,
+                  child.unitCost
+                );
+              }
               continue;
             }
 
