@@ -26,7 +26,8 @@ import {
   formatNumber, 
   UNIT_LABELS, 
   UNIT_SHORT, 
-  calculateUnitCost 
+  calculateUnitCost,
+  matchesSearchText
 } from '../utils/formatters';
 import { processImageFile } from '../utils/imageHelper';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
@@ -77,9 +78,9 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
     return materials
       .filter((m) => {
         const matchesSearch = 
-          m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (m.supplierName && m.supplierName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          m.category.toLowerCase().includes(searchTerm.toLowerCase());
+          matchesSearchText(m.name, searchTerm) ||
+          (m.supplierName && matchesSearchText(m.supplierName, searchTerm)) ||
+          matchesSearchText(m.category, searchTerm);
         
         const matchesCategory = selectedCategory === 'all' || (selectedCategory === 'paused' ? (!m.isVirtualRecipe && (m.minStock ?? 0) === 0) : m.category === selectedCategory);
         const matchesLowStock = !onlyLowStock || (!m.isVirtualRecipe && m.minStock > 0 && m.currentStock <= m.minStock);
