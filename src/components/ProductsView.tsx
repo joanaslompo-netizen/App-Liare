@@ -31,7 +31,8 @@ import {
   formatCurrency, 
   formatPercent, 
   formatNumber, 
-  UNIT_SHORT 
+  UNIT_SHORT,
+  matchesSearchText
 } from '../utils/formatters';
 import { processImageFile } from '../utils/imageHelper';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
@@ -181,11 +182,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     return scopedProducts
       .filter((p) => {
         const matchesSearch =
-          p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (p.productFamily && p.productFamily.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (p.fragrance && p.fragrance.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()));
+          matchesSearchText(p.name, searchTerm) ||
+          matchesSearchText(p.category, searchTerm) ||
+          (p.productFamily && matchesSearchText(p.productFamily, searchTerm)) ||
+          (p.fragrance && matchesSearchText(p.fragrance, searchTerm)) ||
+          (p.description && matchesSearchText(p.description, searchTerm));
 
         const matchesType = 
           typeFilter === 'all' || 
