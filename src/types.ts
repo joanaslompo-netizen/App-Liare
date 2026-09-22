@@ -44,6 +44,8 @@ export interface Material {
   unitCost: number; // Cost per base unit (R$ / unit)
   currentStock: number; // Current quantity in stock (in base unit)
   minStock: number; // Minimum stock threshold for alert
+  /** Pausa manual do material. Independente do estoque mínimo para alerta. */
+  isPaused?: boolean;
   supplierId?: string;
   supplierName?: string;
   imageUrl?: string;
