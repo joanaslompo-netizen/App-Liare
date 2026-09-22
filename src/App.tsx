@@ -1739,7 +1739,7 @@ export default function App() {
 
       {/* Fixed bottom navigation */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-50 border-t border-[#eadfd6] bg-white/96 backdrop-blur-xl shadow-[0_-8px_30px_rgba(83,62,49,0.08)]"
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-[#eadfd6] bg-white/96 backdrop-blur-xl shadow-[0_-4px_18px_rgba(83,62,49,0.05)]"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.35rem)' }}
         aria-label="Navegação principal"
       >
@@ -1774,7 +1774,7 @@ export default function App() {
               type="button"
               aria-label={isQuickMoreOpen ? 'Fechar atalhos rápidos' : 'Abrir atalhos rápidos'}
               onClick={() => setIsQuickMoreOpen((open) => !open)}
-              className={`-mt-9 flex h-15 w-15 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-[#b96f55] text-white shadow-[0_8px_24px_rgba(185,111,85,0.38)] border-4 border-[#f6f0e9] transition-transform active:scale-95 ${isQuickMoreOpen ? 'rotate-45' : ''}`}
+              className={`-mt-4 flex h-15 w-15 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-[#b96f55] text-white shadow-[0_4px_12px_rgba(83,62,49,0.14)] border-[3px] border-white transition-transform active:scale-95 ${isQuickMoreOpen ? 'rotate-45' : ''}`}
             >
               <Plus className="w-7 h-7" />
             </button>
