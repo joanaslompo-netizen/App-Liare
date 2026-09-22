@@ -15,7 +15,7 @@ import {
   MessageCircle
 } from 'lucide-react';
 import { Supplier, Material, Purchase } from '../types';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, matchesSearchText } from '../utils/formatters';
 
 interface SuppliersViewProps {
   suppliers: Supplier[];
@@ -41,10 +41,10 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
   const filteredSuppliers = useMemo(() => {
     return suppliers.filter((s) => {
       const match =
-        s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (s.phone && s.phone.includes(searchTerm)) ||
-        (s.email && s.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (s.notes && s.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+        matchesSearchText(s.name, searchTerm) ||
+        (s.phone && matchesSearchText(s.phone, searchTerm)) ||
+        (s.email && matchesSearchText(s.email, searchTerm)) ||
+        (s.notes && matchesSearchText(s.notes, searchTerm));
       return match;
     });
   }, [suppliers, searchTerm]);
