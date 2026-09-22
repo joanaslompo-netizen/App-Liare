@@ -57,8 +57,8 @@ export const SearchableMaterialCombobox: React.FC<SearchableMaterialComboboxProp
     }
 
     return [...list].sort((a, b) => {
-      const aPaused = (a.minStock ?? 0) === 0;
-      const bPaused = (b.minStock ?? 0) === 0;
+      const aPaused = !!a.isPaused;
+      const bPaused = !!b.isPaused;
       if (aPaused !== bPaused) return aPaused ? 1 : -1;
       return a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' });
     });
@@ -264,7 +264,7 @@ export const SearchableMaterialCombobox: React.FC<SearchableMaterialComboboxProp
                   filteredMaterials.map((mat, idx) => {
                     const isSelected = mat.id === selectedMaterialId;
                     const isActive = idx === activeIndex;
-                    const isLowStock = mat.currentStock <= mat.minStock;
+                    const isLowStock = !mat.isPaused && mat.minStock > 0 && mat.currentStock <= mat.minStock;
 
                     return (
                       <li
