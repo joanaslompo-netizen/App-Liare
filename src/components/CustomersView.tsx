@@ -28,7 +28,8 @@ import {
   formatCurrency, 
   formatDate, 
   formatBirthday, 
-  isBirthdayInMonth 
+  isBirthdayInMonth,
+  matchesSearchText
 } from '../utils/formatters';
 
 interface CustomersViewProps {
@@ -124,12 +125,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
         // Search term matching
         if (!searchTerm.trim()) return true;
-        const q = searchTerm.toLowerCase();
         return (
-          c.name.toLowerCase().includes(q) ||
-          c.phone.toLowerCase().includes(q) ||
-          (c.email && c.email.toLowerCase().includes(q)) ||
-          (c.notes && c.notes.toLowerCase().includes(q))
+          matchesSearchText(c.name, searchTerm) ||
+          matchesSearchText(c.phone, searchTerm) ||
+          (c.email && matchesSearchText(c.email, searchTerm)) ||
+          (c.notes && matchesSearchText(c.notes, searchTerm))
         );
       })
       .sort((a, b) => {
