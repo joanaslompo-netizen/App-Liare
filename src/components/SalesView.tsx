@@ -1090,7 +1090,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       return;
     }
 
-    let effectiveUnitCost = material.unitCost;
+    let effectiveUnitCost = material.usageType === 'durable' ? 0 : material.unitCost;
     let categorySelections: Record<string, string> | undefined;
 
     if (material.isVirtualRecipe && material.recipeItems?.length) {
@@ -1120,11 +1120,13 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
         if (recipeItem.selectionMode === 'category' && recipeItem.targetCategory) {
           const chosenId = selections[recipeItem.id];
           const chosen = materials.find((m) => m.id === chosenId);
-          return sum + (chosen?.unitCost || recipeItem.unitCost || 0) * recipeItem.quantity;
+          const chosenCost = chosen?.usageType === 'durable' ? 0 : (chosen?.unitCost || recipeItem.unitCost || 0);
+          return sum + chosenCost * recipeItem.quantity;
         }
 
         const fixedMaterial = materials.find((m) => m.id === recipeItem.targetId);
-        return sum + (fixedMaterial?.unitCost || recipeItem.unitCost || 0) * recipeItem.quantity;
+        const fixedCost = fixedMaterial?.usageType === 'durable' ? 0 : (fixedMaterial?.unitCost || recipeItem.unitCost || 0);
+        return sum + fixedCost * recipeItem.quantity;
       }, 0);
 
       effectiveUnitCost = recipeTotalCost / Math.max(0.0001, material.batchYield || 1);
