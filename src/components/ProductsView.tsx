@@ -24,7 +24,9 @@ import {
   Hammer,
   Package,
   Sparkles,
-  ShoppingBag
+  ShoppingBag,
+  Pause,
+  Play
 } from 'lucide-react';
 import { Product, Material, RecipeItem, RecipeItemType } from '../types';
 import { 
@@ -93,7 +95,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     return products.filter((p) => {
       const minStock = p.minStock ?? 2;
       const currentStock = p.currentStock ?? 0;
-      return !p.isCustomRecipe && minStock > 0 && currentStock <= minStock;
+      return !p.isCustomRecipe && !p.isPaused && minStock > 0 && currentStock <= minStock;
     }).length;
   }, [products]);
 
@@ -194,7 +196,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           (typeFilter === 'final' && !p.isIntermediate);
 
         const isCategoryValid = selectedCategory === 'all' || selectedCategory === 'paused' || visibleCategories.includes(selectedCategory);
-        const matchesCategory = !isCategoryValid || selectedCategory === 'all' || (selectedCategory === 'paused' ? (p.minStock ?? 2) === 0 : p.category === selectedCategory);
+        const matchesCategory = !isCategoryValid || selectedCategory === 'all' || (selectedCategory === 'paused' ? !!p.isPaused : p.category === selectedCategory);
 
         const matchesFamily = selectedFamily === 'all' || p.productFamily === selectedFamily;
         const matchesFragrance = selectedFragrance === 'all' || p.fragrance === selectedFragrance;
@@ -204,16 +206,16 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         const matchesStock =
           stockFilter === 'all' ||
           (stockFilter === 'in_stock' && currentStock > minStock) ||
-          (stockFilter === 'low_stock' && minStock > 0 && currentStock <= minStock) ||
+          (stockFilter === 'low_stock' && !p.isPaused && minStock > 0 && currentStock <= minStock) ||
           (stockFilter === 'out_of_stock' && currentStock <= 0);
 
         return matchesSearch && matchesType && matchesCategory && matchesFamily && matchesFragrance && matchesStock;
       })
       .sort((a, b) => {
-        const aPaused = (a.minStock ?? 2) === 0;
-        const bPaused = (b.minStock ?? 2) === 0;
+        const aPaused = !!a.isPaused;
+        const bPaused = !!b.isPaused;
 
-        // MinStock === 0 goes to the bottom of the list
+        // Itens pausados manualmente vão para o fim da lista
         if (aPaused !== bPaused) {
           return aPaused ? 1 : -1;
         }
@@ -455,7 +457,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                   : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
               }`}
             >
-              Pausados ({scopedProducts.filter((p) => !p.isCustomRecipe && (typeFilter === 'all' || (typeFilter === 'intermediate' && p.isIntermediate) || (typeFilter === 'final' && !p.isIntermediate)) && (p.minStock ?? 2) === 0).length})
+              Pausados ({scopedProducts.filter((p) => !p.isCustomRecipe && (typeFilter === 'all' || (typeFilter === 'intermediate' && p.isIntermediate) || (typeFilter === 'final' && !p.isIntermediate)) && !!p.isPaused).length})
             </button>
             {visibleCategories.map((cat) => (
               <button
@@ -528,7 +530,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             {selectedFamilyVariants.map((variant) => {
               const stock = variant.currentStock ?? 0;
               const min = variant.minStock ?? 2;
-              const isLow = min > 0 && stock <= min;
+              const isLow = !variant.isPaused && min > 0 && stock <= min;
               return (
                 <button
                   key={variant.id}
@@ -586,7 +588,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             const subProductItemsCount = p.items.filter((it) => it.type === 'product').length;
             const hasSubProducts = subProductItemsCount > 0;
 
-            const isPaused = !p.isCustomRecipe && (p.minStock ?? 2) === 0;
+            const isPaused = !p.isCustomRecipe && !!p.isPaused;
 
             return (
               <div
@@ -646,9 +648,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                         )}
 
                         {isPaused && (
-                          <span className="text-[11px] font-medium text-stone-600 bg-stone-200/90 border border-stone-300 px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0" title="Estoque mínimo igual a 0 (Inativo/Pausado)">
+                          <span className="text-[11px] font-medium text-stone-600 bg-stone-200/90 border border-stone-300 px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0" title="Item pausado manualmente">
                             <span className="w-1.5 h-1.5 rounded-full bg-stone-400" />
-                            Inativo/Pausado
+                            Pausado
                           </span>
                         )}
 
@@ -770,7 +772,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                     const currentStock = p.currentStock ?? 0;
                     const minStock = p.minStock !== undefined ? p.minStock : 2;
                     const standardStock = p.standardStock !== undefined && p.standardStock > 0 ? p.standardStock : Math.max(minStock * 2, 10);
-                    const isPaused = minStock === 0;
+                    const isPaused = !!p.isPaused;
+                    const hasNoMinimum = !isPaused && minStock === 0;
                     const isOutOfStock = currentStock <= 0;
                     const isBelowMin = currentStock < minStock;
                     const isBetweenMinAndStandard = currentStock >= minStock && currentStock < standardStock;
@@ -791,7 +794,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                             {isPaused ? (
                               <span className="text-[11px] font-medium text-stone-600 bg-stone-200/90 border border-stone-300 px-2 py-0.5 rounded-full flex items-center gap-1">
                                 <span className="w-1.5 h-1.5 rounded-full bg-stone-400" />
-                                Inativo/Pausado (Alerta: 0 un)
+                                Pausado
+                              </span>
+                            ) : hasNoMinimum ? (
+                              <span className="text-[11px] font-medium text-stone-600 bg-stone-100 border border-stone-200 px-2 py-0.5 rounded-full">
+                                Sem estoque mínimo
                               </span>
                             ) : isOutOfStock ? (
                               <span className="text-[11px] font-bold text-rose-700 bg-rose-100 border border-rose-200 px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -834,8 +841,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                           <div className="flex items-center justify-between text-[10px] text-stone-400">
                             <span>
                               {isPaused
-                                ? 'Alerta de estoque pausado (Mín: 0 un)'
-                                : `Mínimo: ${minStock} un | Meta: ${standardStock} un`}
+                                ? 'Item pausado manualmente'
+                                : hasNoMinimum
+                                  ? `Sem alerta de mínimo | Meta: ${standardStock} un`
+                                  : `Mínimo: ${minStock} un | Meta: ${standardStock} un`}
                             </span>
                             <span>
                               Total em estoque: {formatCurrency(currentStock * p.actualPrice)}
@@ -927,6 +936,26 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                   </button>
 
                   <div className="flex items-center gap-1">
+                    {!p.isCustomRecipe && (
+                      <button
+                        type="button"
+                        id={`btn-pause-product-${p.id}`}
+                        onClick={() => onSaveProduct({
+                          ...p,
+                          isPaused: !p.isPaused,
+                          updatedAt: new Date().toISOString().split('T')[0],
+                        })}
+                        className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer ${
+                          p.isPaused
+                            ? 'text-emerald-700 hover:bg-emerald-50'
+                            : 'text-stone-400 hover:text-stone-700 hover:bg-stone-100'
+                        }`}
+                        title={p.isPaused ? 'Retomar item' : 'Pausar item'}
+                      >
+                        {p.isPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+                        <span>{p.isPaused ? 'Retomar' : 'Pausar'}</span>
+                      </button>
+                    )}
                     <button
                       id={`btn-duplicate-product-${p.id}`}
                       onClick={() => onDuplicateProduct(p)}
@@ -1391,6 +1420,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       calculatedMarginPercent: finalActualPrice > 0 ? ((finalActualPrice - unitCostFromBatch) / finalActualPrice) * 100 : 0,
       currentStock: parsedCurrentStock,
       minStock: parsedMinStock,
+      isPaused: product?.isPaused ?? false,
       standardStock: parsedStandardStock,
       notes: notes.trim() || undefined,
       createdAt: product?.createdAt || new Date().toISOString().split('T')[0],
