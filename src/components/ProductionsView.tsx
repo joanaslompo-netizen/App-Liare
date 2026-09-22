@@ -623,6 +623,9 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
       if (item.type === 'material') {
         const mat = materials.find((m) => m.id === item.targetId);
 
+        // Moldes/ferramentas ficam vinculados à receita, mas não são consumidos.
+        if (mat?.usageType === 'durable') return;
+
         if (mat?.isVirtualRecipe && mat.recipeItems?.length) {
           const virtualYield = Math.max(0.0001, mat.batchYield || 1);
           const scalePerProductBatch = item.quantity / virtualYield;
@@ -642,30 +645,34 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
                 return;
               }
 
-              addIngredient(
-                `${item.id}_${recipeItem.id}`,
-                chosen.id,
-                'material',
-                chosen.name,
-                UNIT_SHORT[chosen.unit] || recipeItem.unit,
-                expandedQuantityPerBatch,
-                chosen.unitCost
-              );
+              if (chosen.usageType !== 'durable') {
+                addIngredient(
+                  `${item.id}_${recipeItem.id}`,
+                  chosen.id,
+                  'material',
+                  chosen.name,
+                  UNIT_SHORT[chosen.unit] || recipeItem.unit,
+                  expandedQuantityPerBatch,
+                  chosen.unitCost
+                );
+              }
               return;
             }
 
             if (recipeItem.type === 'material') {
               const childMat = materials.find((m) => m.id === recipeItem.targetId);
               if (childMat) {
-                addIngredient(
-                  `${item.id}_${recipeItem.id}`,
-                  childMat.id,
-                  'material',
-                  childMat.name,
-                  UNIT_SHORT[childMat.unit] || recipeItem.unit,
-                  expandedQuantityPerBatch,
-                  childMat.unitCost
-                );
+                if (childMat.usageType !== 'durable') {
+                  addIngredient(
+                    `${item.id}_${recipeItem.id}`,
+                    childMat.id,
+                    'material',
+                    childMat.name,
+                    UNIT_SHORT[childMat.unit] || recipeItem.unit,
+                    expandedQuantityPerBatch,
+                    childMat.unitCost
+                  );
+                }
               } else {
                 addIngredient(
                   `${item.id}_${recipeItem.id}`,
