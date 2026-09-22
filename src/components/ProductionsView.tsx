@@ -919,15 +919,34 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
                   <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-0.5">
                     Nº de Bateladas
                   </label>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={batchCount}
-                    onChange={(e) => setBatchCount(e.target.value)}
-                    required
-                    className="w-24 px-3 py-1.5 bg-white border border-amber-300 rounded-lg text-sm font-bold text-center text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-                  />
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setBatchCount(String(Math.max(1, parsedBatchCount - 1)))}
+                      disabled={parsedBatchCount <= 1}
+                      aria-label="Diminuir número de bateladas"
+                      className="w-8 h-8 inline-flex items-center justify-center bg-white border border-amber-300 rounded-lg text-base font-bold text-amber-900 hover:bg-amber-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={batchCount}
+                      onChange={(e) => setBatchCount(e.target.value)}
+                      required
+                      className="w-16 px-2 py-1.5 bg-white border border-amber-300 rounded-lg text-sm font-bold text-center text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setBatchCount(String(parsedBatchCount + 1))}
+                      aria-label="Aumentar número de bateladas"
+                      className="w-8 h-8 inline-flex items-center justify-center bg-white border border-amber-300 rounded-lg text-base font-bold text-amber-900 hover:bg-amber-50 transition-colors"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
 
                 <div className="text-right">
