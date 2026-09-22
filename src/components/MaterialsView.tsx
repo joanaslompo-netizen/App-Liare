@@ -20,7 +20,8 @@ import {
   ShoppingCart,
   Wand2,
   Pause,
-  Play
+  Play,
+  Hammer
 } from 'lucide-react';
 import { Material, Supplier, UnitOfMeasure, MaterialType } from '../types';
 import { 
@@ -57,7 +58,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'internal' | 'for_sale'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'internal' | 'for_sale' | 'durable'>('all');
   const [onlyLowStock, setOnlyLowStock] = useState<boolean>(filterLowStockInitial);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
@@ -85,11 +86,12 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
           matchesSearchText(m.category, searchTerm);
         
         const matchesCategory = selectedCategory === 'all' || (selectedCategory === 'paused' ? !!m.isPaused : m.category === selectedCategory);
-        const matchesLowStock = !onlyLowStock || (!m.isVirtualRecipe && !m.isPaused && m.minStock > 0 && m.currentStock <= m.minStock);
+        const matchesLowStock = !onlyLowStock || (!m.isVirtualRecipe && m.usageType !== 'durable' && !m.isPaused && m.minStock > 0 && m.currentStock <= m.minStock);
         const matchesType = 
           typeFilter === 'all' || 
-          (typeFilter === 'internal' && (!m.materialType || m.materialType === 'internal')) ||
-          (typeFilter === 'for_sale' && m.materialType === 'for_sale');
+          (typeFilter === 'internal' && m.usageType !== 'durable' && (!m.materialType || m.materialType === 'internal')) ||
+          (typeFilter === 'for_sale' && m.usageType !== 'durable' && m.materialType === 'for_sale') ||
+          (typeFilter === 'durable' && m.usageType === 'durable');
 
         return matchesSearch && matchesCategory && matchesLowStock && matchesType;
       })
@@ -234,6 +236,19 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
               <ShoppingBag className="w-3 h-3 text-emerald-600" />
               <span>Venda Direta</span>
             </button>
+            <button
+              type="button"
+              onClick={() => setTypeFilter('durable')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-colors flex items-center gap-1 cursor-pointer ${
+                typeFilter === 'durable'
+                  ? 'bg-white text-purple-900 shadow-2xs font-semibold'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+              title="Moldes, ferramentas e equipamentos reutilizáveis"
+            >
+              <Hammer className="w-3 h-3 text-purple-600" />
+              <span>Itens Duráveis</span>
+            </button>
           </div>
 
           {/* Low stock toggle */}
@@ -325,9 +340,10 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredMaterials.map((mat) => {
             const isVirtual = !!mat.isVirtualRecipe;
+            const isDurable = mat.usageType === 'durable';
             const isPaused = !!mat.isPaused;
-            const isLowStock = !isVirtual && !isPaused && mat.minStock > 0 && mat.currentStock <= mat.minStock;
-            const stockPct = !isVirtual && mat.minStock > 0 ? Math.min(100, (mat.currentStock / (mat.minStock * 2)) * 100) : 100;
+            const isLowStock = !isVirtual && !isDurable && !isPaused && mat.minStock > 0 && mat.currentStock <= mat.minStock;
+            const stockPct = !isVirtual && !isDurable && mat.minStock > 0 ? Math.min(100, (mat.currentStock / (mat.minStock * 2)) * 100) : 100;
 
             return (
               <div
@@ -374,7 +390,12 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                               {mat.isVirtualRecipe ? 'Receita Virtual' : 'Feito no Ateliê'}
                             </span>
                           )}
-                          {mat.materialType === 'for_sale' ? (
+                          {isDurable ? (
+                            <span className="text-[10px] font-bold text-purple-800 bg-purple-50 px-1.5 py-0.5 rounded-md border border-purple-200 shrink-0 flex items-center gap-0.5" title="Item reutilizável: não é consumido na produção">
+                              <Hammer className="w-2.5 h-2.5 text-purple-600" />
+                              {mat.durableKind === 'mold' ? 'Molde' : mat.durableKind === 'equipment' ? 'Equipamento' : mat.durableKind === 'tool' ? 'Ferramenta' : 'Item Durável'}
+                            </span>
+                          ) : mat.materialType === 'for_sale' ? (
                             <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-200 shrink-0 flex items-center gap-0.5" title="Produto final para venda direta">
                               <ShoppingBag className="w-2.5 h-2.5 text-emerald-600" />
                               Venda Direta
@@ -413,7 +434,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                   {/* Pricing and Unit Details */}
                   <div className="px-4 py-2.5 bg-stone-50/80 border-y border-stone-100 flex items-center justify-between text-xs">
                     <div>
-                      <span className="text-[11px] text-stone-500 block">Custo por {UNIT_SHORT[mat.unit]}</span>
+                      <span className="text-[11px] text-stone-500 block">{isDurable ? 'Valor por unidade' : `Custo por ${UNIT_SHORT[mat.unit]}`}</span>
                       <span className="font-bold text-stone-900 text-sm">
                         {formatCurrency(mat.unitCost)}
                         <span className="text-stone-500 font-normal text-xs"> / {UNIT_SHORT[mat.unit]}</span>
@@ -442,6 +463,31 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                           Esta receita não possui estoque próprio. Os ingredientes reais são baixados quando você lança a produção da peça.
                         </p>
                       </div>
+                    </div>
+                  ) : isDurable ? (
+                    <div className="p-4 pt-3 space-y-2">
+                      <div className="rounded-lg border border-purple-200 bg-purple-50/60 px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs font-semibold text-purple-900">Quantidade possuída</span>
+                          <span className="text-sm font-extrabold text-stone-900">{formatNumber(mat.currentStock)} un</span>
+                        </div>
+                        <p className="text-[10px] text-purple-700 mt-1">Item reutilizável: não gera alerta de estoque baixo e não é consumido nas receitas.</p>
+                        {mat.moldShapes && mat.moldShapes.length > 0 && (
+                          <p className="text-[10px] text-stone-600 mt-1.5"><strong>Formatos:</strong> {mat.moldShapes.join(' • ')}</p>
+                        )}
+                      </div>
+                      {adjustingId === mat.id ? (
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <input type="number" step="1" min="0" placeholder="Nova quantidade" value={adjustDelta} onChange={(e) => setAdjustDelta(e.target.value)} className="w-24 text-xs px-2 py-1 bg-white border border-stone-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500 text-stone-900" autoFocus />
+                          <button onClick={() => handleConfirmAdjust(mat.id)} className="p-1 bg-stone-900 text-white rounded hover:bg-stone-800 text-xs font-medium px-2">Ok</button>
+                          <button onClick={() => setAdjustingId(null)} className="p-1 text-stone-500 hover:text-stone-700 text-xs">Cancelar</button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between pt-1">
+                          <span className="text-[11px] text-stone-400">Valor cadastrado: {formatCurrency(mat.currentStock * mat.unitCost)}</span>
+                          <button onClick={() => { setAdjustingId(mat.id); setAdjustDelta(String(mat.currentStock)); }} className="text-[11px] text-purple-800 hover:text-purple-900 font-medium underline cursor-pointer">Ajustar Quantidade</button>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="p-4 pt-3 space-y-2">
@@ -625,6 +671,13 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
 
   const [name, setName] = useState(material?.name || '');
   const [materialType, setMaterialType] = useState<MaterialType>(material?.materialType || 'internal');
+  const [usageType, setUsageType] = useState<'consumable' | 'durable'>(material?.usageType || 'consumable');
+  const [durableKind, setDurableKind] = useState<'mold' | 'tool' | 'equipment' | 'other'>(material?.durableKind || 'mold');
+  const [durableMaterial, setDurableMaterial] = useState(material?.durableMaterial || '');
+  const [durableDimensions, setDurableDimensions] = useState(material?.durableDimensions || '');
+  const [durableCavities, setDurableCavities] = useState(material?.durableCavities?.toString() || '1');
+  const [moldShapesText, setMoldShapesText] = useState((material?.moldShapes || []).join('\n'));
+  const [durableCapacityGrams, setDurableCapacityGrams] = useState(material?.durableCapacityGrams?.toString() || '');
   const [category, setCategory] = useState(material?.category || (existingCategories[0] || 'Tecidos & Forros'));
   const [newCategoryInput, setNewCategoryInput] = useState('');
   const [isCustomCategory, setIsCustomCategory] = useState(false);
@@ -749,26 +802,40 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
       return;
     }
 
-    const finalUnit = isMadeInAtelier ? inferredRecipeUnit : unit;
+    const isDurable = usageType === 'durable';
+    const finalUnit: UnitOfMeasure = isDurable ? 'un' : (isMadeInAtelier ? inferredRecipeUnit : unit);
+    const parsedDurableCavities = Math.max(1, parseInt(durableCavities, 10) || 1);
+    const parsedCapacityGrams = parseFloat(durableCapacityGrams);
+    const parsedMoldShapes = moldShapesText
+      .split(/\n|,/)
+      .map((value) => value.trim())
+      .filter(Boolean);
 
     const newOrUpdated: Material = {
       id: material?.id || `mat_${Date.now()}`,
       name: name.trim(),
       category: finalCategory,
-      materialType,
+      materialType: isDurable ? 'internal' : materialType,
+      usageType,
+      durableKind: isDurable ? durableKind : undefined,
+      durableMaterial: isDurable ? (durableMaterial.trim() || undefined) : undefined,
+      durableDimensions: isDurable ? (durableDimensions.trim() || undefined) : undefined,
+      durableCavities: isDurable ? parsedDurableCavities : undefined,
+      moldShapes: isDurable && durableKind === 'mold' ? parsedMoldShapes : undefined,
+      durableCapacityGrams: isDurable && Number.isFinite(parsedCapacityGrams) ? parsedCapacityGrams : undefined,
       unit: finalUnit,
-      packageQuantity: isMadeInAtelier ? parsedRecipeYield : parsedPkgQty,
-      packageUnit: isMadeInAtelier ? finalUnit : packageUnit,
-      packagePrice: isMadeInAtelier ? 0 : parsedPrice,
-      unitCost: isMadeInAtelier ? recipeUnitCost : calculatedUnitCostPreview,
-      isMadeInAtelier,
-      isVirtualRecipe: isMadeInAtelier ? isVirtualRecipe : false,
-      recipeItems: isMadeInAtelier ? normalizedRecipeItems : undefined,
-      batchYield: isMadeInAtelier ? parsedRecipeYield : undefined,
-      recipeTotalCost: isMadeInAtelier ? recipeTotalCost : undefined,
-      unitCostFromBatch: isMadeInAtelier ? recipeUnitCost : undefined,
-      currentStock: isMadeInAtelier && isVirtualRecipe ? 0 : (parseFloat(currentStock) || 0),
-      minStock: isMadeInAtelier && isVirtualRecipe ? 0 : (parseFloat(minStock) || 0),
+      packageQuantity: isDurable ? Math.max(1, parsedPkgQty) : (isMadeInAtelier ? parsedRecipeYield : parsedPkgQty),
+      packageUnit: isDurable ? 'un' : (isMadeInAtelier ? finalUnit : packageUnit),
+      packagePrice: isMadeInAtelier && !isDurable ? 0 : parsedPrice,
+      unitCost: isDurable ? (parsedPrice / Math.max(1, parsedPkgQty)) : (isMadeInAtelier ? recipeUnitCost : calculatedUnitCostPreview),
+      isMadeInAtelier: isDurable ? false : isMadeInAtelier,
+      isVirtualRecipe: isDurable ? false : (isMadeInAtelier ? isVirtualRecipe : false),
+      recipeItems: isDurable ? undefined : (isMadeInAtelier ? normalizedRecipeItems : undefined),
+      batchYield: isDurable ? undefined : (isMadeInAtelier ? parsedRecipeYield : undefined),
+      recipeTotalCost: isDurable ? undefined : (isMadeInAtelier ? recipeTotalCost : undefined),
+      unitCostFromBatch: isDurable ? undefined : (isMadeInAtelier ? recipeUnitCost : undefined),
+      currentStock: isMadeInAtelier && isVirtualRecipe && !isDurable ? 0 : (parseFloat(currentStock) || 0),
+      minStock: isDurable ? 0 : (isMadeInAtelier && isVirtualRecipe ? 0 : (parseFloat(minStock) || 0)),
       isPaused: material?.isPaused ?? false,
       supplierId: isMadeInAtelier ? undefined : (supplierId || undefined),
       supplierName: isMadeInAtelier ? undefined : (selectedSupplier ? selectedSupplier.name : undefined),
@@ -861,11 +928,50 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                 <button
                   type="button"
                   role="switch"
+                  aria-checked={usageType === 'durable'}
+                  onClick={() => {
+                    const makeDurable = usageType !== 'durable';
+                    setUsageType(makeDurable ? 'durable' : 'consumable');
+                    if (makeDurable) {
+                      setMaterialType('internal');
+                      setIsMadeInAtelier(false);
+                      setIsVirtualRecipe(false);
+                      setUnit('un');
+                      setPackageUnit('un');
+                      setMinStock('0');
+                      if (!material) {
+                        setCurrentStock('1');
+                        setPackageQuantity('1');
+                      }
+                    }
+                  }}
+                  className={`w-full flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left cursor-pointer transition-all focus:outline-none focus:ring-2 focus:ring-purple-500/30 ${
+                    usageType === 'durable'
+                      ? 'bg-purple-50/80 border-purple-400 ring-1 ring-purple-400/40'
+                      : 'bg-white border-stone-200 hover:bg-stone-50'
+                  }`}
+                  title="Moldes, ferramentas e equipamentos reutilizáveis"
+                >
+                  <span className="min-w-0 text-xs font-bold text-stone-900 flex items-center gap-1.5">
+                    <Hammer className="w-3.5 h-3.5 text-purple-700 shrink-0" />
+                    <span>Item Durável / Ferramenta</span>
+                  </span>
+                  <span aria-hidden="true" className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${usageType === 'durable' ? 'bg-purple-600' : 'bg-stone-300'}`}>
+                    <span className={`inline-block h-4.5 w-4.5 rounded-full bg-white shadow-sm transition-transform ${usageType === 'durable' ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  role="switch"
                   aria-checked={isMadeInAtelier}
                   onClick={() => {
                     const willBeMadeInAtelier = !isMadeInAtelier;
                     setIsMadeInAtelier(willBeMadeInAtelier);
-                    if (willBeMadeInAtelier) setMaterialType('internal');
+                    if (willBeMadeInAtelier) {
+                      setMaterialType('internal');
+                      setUsageType('consumable');
+                    }
                   }}
                   className={`w-full flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left cursor-pointer transition-all focus:outline-none focus:ring-2 focus:ring-purple-500/30 ${
                     isMadeInAtelier
@@ -899,7 +1005,10 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                   onClick={() => {
                     const willBeForSale = materialType !== 'for_sale';
                     setMaterialType(willBeForSale ? 'for_sale' : 'internal');
-                    if (willBeForSale) setIsMadeInAtelier(false);
+                    if (willBeForSale) {
+                      setIsMadeInAtelier(false);
+                      setUsageType('consumable');
+                    }
                   }}
                   className={`w-full flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left cursor-pointer transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${
                     materialType === 'for_sale'
@@ -992,7 +1101,55 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
             </div>
           </div>
 
-          {isMadeInAtelier && (
+          {usageType === 'durable' && (
+            <div className="bg-purple-50/60 border border-purple-200 rounded-xl p-4 space-y-4">
+              <div>
+                <h4 className="text-xs font-bold text-purple-950 uppercase tracking-wider flex items-center gap-1.5">
+                  <Hammer className="w-3.5 h-3.5 text-purple-700" />
+                  Dados do Item Durável
+                </h4>
+                <p className="text-[11px] text-purple-800 mt-1">Ele poderá ser usado nas receitas sem baixar estoque e sem somar o preço de compra ao custo de cada peça.</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="text-[11px] font-bold text-stone-700">
+                  Tipo
+                  <select value={durableKind} onChange={(e) => setDurableKind(e.target.value as 'mold' | 'tool' | 'equipment' | 'other')} className="mt-1 w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900">
+                    <option value="mold">Molde</option>
+                    <option value="tool">Ferramenta</option>
+                    <option value="equipment">Equipamento</option>
+                    <option value="other">Outro item durável</option>
+                  </select>
+                </label>
+                <label className="text-[11px] font-bold text-stone-700">
+                  Material do item
+                  <input value={durableMaterial} onChange={(e) => setDurableMaterial(e.target.value)} placeholder="Ex: silicone, policarbonato..." className="mt-1 w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900" />
+                </label>
+                <label className="text-[11px] font-bold text-stone-700">
+                  Medidas
+                  <input value={durableDimensions} onChange={(e) => setDurableDimensions(e.target.value)} placeholder="Ex: 12 × 8 × 5 cm" className="mt-1 w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900" />
+                </label>
+                <label className="text-[11px] font-bold text-stone-700">
+                  Quantidade de cavidades
+                  <input type="number" min="1" step="1" value={durableCavities} onChange={(e) => setDurableCavities(e.target.value)} className="mt-1 w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900" />
+                </label>
+              </div>
+              {durableKind === 'mold' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="text-[11px] font-bold text-stone-700 sm:col-span-2">
+                    Formatos disponíveis neste molde
+                    <textarea value={moldShapesText} onChange={(e) => setMoldShapesText(e.target.value)} rows={3} placeholder={"Um formato por linha. Ex:\nCoelho sentado\nCoelho em pé\nCenoura"} className="mt-1 w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900 resize-y" />
+                    <span className="block text-[10px] text-purple-700 mt-1">Um único cadastro pode conter vários formatos. Na receita você escolhe qual deles está usando.</span>
+                  </label>
+                  <label className="text-[11px] font-bold text-stone-700">
+                    Capacidade aproximada (g)
+                    <input type="number" min="0" step="0.1" value={durableCapacityGrams} onChange={(e) => setDurableCapacityGrams(e.target.value)} placeholder="Opcional" className="mt-1 w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-stone-900" />
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+
+          {isMadeInAtelier && usageType !== 'durable' && (
             <div className="bg-purple-50/70 border border-purple-200 rounded-xl p-4 space-y-4">
               <div>
                 <h4 className="text-xs font-bold text-purple-950 uppercase tracking-wider flex items-center gap-1.5">
@@ -1197,14 +1354,14 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
           <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-4 space-y-4">
             <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
               <DollarSign className="w-3.5 h-3.5 text-amber-700" />
-              Preço de Compra & Cálculo do Custo Unitário
+              {usageType === 'durable' ? 'Preço de Compra do Item Durável' : 'Preço de Compra & Cálculo do Custo Unitário'}
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* How bought: quantity */}
               <div>
                 <label className="block text-[11px] font-medium text-stone-700 mb-1">
-                  Quantidade do Pacote / Lote
+                  {usageType === 'durable' ? 'Quantidade Adquirida' : 'Quantidade do Pacote / Lote'}
                 </label>
                 <input
                   type="number"
@@ -1244,7 +1401,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
               {/* Package price */}
               <div>
                 <label className="block text-[11px] font-medium text-stone-700 mb-1">
-                  Valor Pago no Pacote (R$)
+                  {usageType === 'durable' ? 'Valor Pago no Total (R$)' : 'Valor Pago no Pacote (R$)'}
                 </label>
                 <input
                   type="number"
@@ -1261,6 +1418,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
 
 
             {/* Base unit for recipes + calculated unit cost */}
+            {usageType !== 'durable' ? (
             <div className="pt-2 border-t border-amber-200/60">
               <label className="block text-[11px] font-bold text-stone-800 mb-1.5">
                 Unidade que você usa nas Receitas das Peças:
@@ -1290,11 +1448,23 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                 </span>
               </div>
             </div>
+            ) : (
+              <div className="pt-2 border-t border-purple-200/60 flex items-center justify-between gap-3">
+                <span className="text-[11px] text-stone-600">Valor por unidade durável</span>
+                <span className="text-base font-extrabold text-stone-900">{formatCurrency(parsedPrice / Math.max(1, parsedPkgQty))}</span>
+              </div>
+            )}
           </div>
           )}
 
           {/* Stock Levels */}
-          {!(isMadeInAtelier && isVirtualRecipe) ? (
+          {usageType === 'durable' ? (
+            <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-4">
+              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">Quantidade que você possui</label>
+              <input type="number" step="1" min="0" value={currentStock} onChange={(e) => setCurrentStock(e.target.value)} className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-stone-900" />
+              <p className="text-[10px] text-purple-700 mt-1.5">Itens duráveis não usam estoque mínimo e não geram alerta de reposição.</p>
+            </div>
+          ) : !(isMadeInAtelier && isVirtualRecipe) ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
