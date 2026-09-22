@@ -96,8 +96,8 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
     }
 
     return [...list].sort((a, b) => {
-      const aPaused = (a.minStock ?? 2) === 0;
-      const bPaused = (b.minStock ?? 2) === 0;
+      const aPaused = !!a.isPaused;
+      const bPaused = !!b.isPaused;
       if (aPaused !== bPaused) return aPaused ? 1 : -1;
       if (activeFamily) {
         return (a.fragrance || a.name).localeCompare(b.fragrance || b.name, 'pt-BR', { sensitivity: 'base' });
@@ -232,7 +232,7 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
                 {mode === 'production' ? (
                   <span>
                     Rendimento: <strong className="text-stone-900 font-bold">{selectedProduct.batchYield || 1} un/batelada</strong>
-                    {' '}• Estoque atual: <strong className={`font-bold ${(selectedProduct.currentStock ?? 0) <= (selectedProduct.minStock ?? 0) ? 'text-amber-800' : 'text-stone-800'}`}>{selectedProduct.currentStock ?? 0} un</strong>
+                    {' '}• Estoque atual: <strong className={`font-bold ${!selectedProduct.isPaused && (selectedProduct.minStock ?? 0) > 0 && (selectedProduct.currentStock ?? 0) <= (selectedProduct.minStock ?? 0) ? 'text-amber-800' : 'text-stone-800'}`}>{selectedProduct.currentStock ?? 0} un</strong>
                     {' '}• Custo: {formatCurrency(selectedProduct.unitCostFromBatch > 0 ? selectedProduct.unitCostFromBatch : selectedProduct.totalCost)}
                   </span>
                 ) : (
@@ -458,7 +458,7 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
                                 </span>
                                 <span>•</span>
                                 <span>
-                                  Estoque: <strong className={`font-semibold ${(prod.currentStock ?? 0) <= (prod.minStock ?? 0) ? 'text-amber-800' : 'text-stone-800'}`}>{prod.currentStock ?? 0} un</strong>
+                                  Estoque: <strong className={`font-semibold ${!prod.isPaused && (prod.minStock ?? 0) > 0 && (prod.currentStock ?? 0) <= (prod.minStock ?? 0) ? 'text-amber-800' : 'text-stone-800'}`}>{prod.currentStock ?? 0} un</strong>
                                 </span>
                                 <span>•</span>
                                 <span>
