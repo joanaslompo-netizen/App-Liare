@@ -1251,6 +1251,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   const [itemTypeToAdd, setItemTypeToAdd] = useState<RecipeItemType>('material');
   const [selectedTargetId, setSelectedTargetId] = useState<string>('');
   const [itemQuantity, setItemQuantity] = useState<string>('1');
+  const [durableOptionToAdd, setDurableOptionToAdd] = useState<string>('');
   const [recipeVariableSelections, setRecipeVariableSelections] = useState<Record<string, string>>({});
 
   const selectedMaterialToAdd = useMemo(
@@ -1303,7 +1304,13 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   const parsedYield = Math.max(1, parseFloat(batchYield) || 1);
 
   // Materials cost sum
-  const materialsCost = items.reduce((acc, it) => acc + (it.totalCost || 0), 0);
+  const materialsCost = items.reduce((acc, it) => {
+    if (it.type === 'material') {
+      const material = allMaterials.find((m) => m.id === it.targetId);
+      if (material?.usageType === 'durable') return acc;
+    }
+    return acc + (it.totalCost || 0);
+  }, 0);
   const laborCost = (parsedMinutes / 60) * parsedHourlyRate;
   const baseCost = materialsCost + laborCost;
   const fixedCost = baseCost * (parsedFixedPct / 100);
@@ -1347,8 +1354,18 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       const mat = allMaterials.find((m) => m.id === selectedTargetId);
       if (!mat) return;
 
-      let effectiveUnitCost = mat.unitCost;
+      const isDurable = mat.usageType === 'durable';
+      let effectiveUnitCost = isDurable ? 0 : mat.unitCost;
       let categorySelections: Record<string, string> | undefined;
+      let durableOption: string | undefined;
+
+      if (isDurable && mat.moldShapes?.length) {
+        durableOption = durableOptionToAdd.trim() || (mat.moldShapes.length === 1 ? mat.moldShapes[0] : undefined);
+        if (!durableOption) {
+          alert('Escolha qual formato deste molde será usado na receita.');
+          return;
+        }
+      }
 
       if (mat.isVirtualRecipe && mat.recipeItems?.length) {
         const selections: Record<string, string> = {};
@@ -1376,18 +1393,20 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
 
           if (recipeItem.selectionMode === 'category' && recipeItem.targetCategory) {
             const chosen = allMaterials.find((m) => m.id === selections[recipeItem.id]);
-            return sum + (chosen?.unitCost || recipeItem.unitCost || 0) * recipeItem.quantity;
+            const chosenCost = chosen?.usageType === 'durable' ? 0 : (chosen?.unitCost || recipeItem.unitCost || 0);
+            return sum + chosenCost * recipeItem.quantity;
           }
 
           const fixedMaterial = allMaterials.find((m) => m.id === recipeItem.targetId);
-          return sum + (fixedMaterial?.unitCost || recipeItem.unitCost || 0) * recipeItem.quantity;
+          const fixedCost = fixedMaterial?.usageType === 'durable' ? 0 : (fixedMaterial?.unitCost || recipeItem.unitCost || 0);
+          return sum + fixedCost * recipeItem.quantity;
         }, 0);
 
         effectiveUnitCost = recipeTotalCost / Math.max(0.0001, mat.batchYield || 1);
         categorySelections = selections;
       }
 
-      const total = effectiveUnitCost * qty;
+      const total = isDurable ? 0 : effectiveUnitCost * qty;
       const newItem: RecipeItem = {
         id: `ri_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
         type: 'material',
@@ -1398,6 +1417,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
         unitCost: effectiveUnitCost,
         totalCost: total,
         categorySelections,
+        durableOption,
       };
       setItems([...items, newItem]);
     } else {
@@ -1422,6 +1442,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     // Reset picker
     setSelectedTargetId('');
     setItemQuantity('1');
+    setDurableOptionToAdd('');
     setRecipeVariableSelections({});
   };
 
@@ -1926,6 +1947,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                         selectedMaterialId={selectedTargetId}
                         onSelectMaterial={(mat) => {
                           setSelectedTargetId(mat ? mat.id : '');
+                          setDurableOptionToAdd('');
                           setRecipeVariableSelections({});
                         }}
                         placeholder="Digite para buscar material (ex: cera coco, essência, pavio)..."
@@ -1971,6 +1993,32 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {selectedMaterialToAdd?.usageType === 'durable' && (
+                  <div className="rounded-xl border border-purple-200 bg-purple-50/60 p-3">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <div>
+                        <span className="text-[11px] font-bold text-purple-950">Item durável — não será consumido</span>
+                        <p className="text-[10px] text-purple-700 mt-0.5">O item ficará vinculado à receita, mas não terá custo de consumo nem baixa de estoque na produção.</p>
+                      </div>
+                    </div>
+                    {selectedMaterialToAdd.moldShapes && selectedMaterialToAdd.moldShapes.length > 0 && (
+                      <label className="block text-[10px] font-bold text-stone-700">
+                        Formato usado nesta receita *
+                        <select
+                          value={durableOptionToAdd}
+                          onChange={(e) => setDurableOptionToAdd(e.target.value)}
+                          className="mt-1 w-full px-3 py-2 text-sm bg-white border border-purple-200 rounded-lg text-stone-900"
+                        >
+                          <option value="">Selecione o formato...</option>
+                          {selectedMaterialToAdd.moldShapes.map((shape) => (
+                            <option key={shape} value={shape}>{shape}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </div>
+                )}
 
                 {selectedMaterialToAdd?.isVirtualRecipe && selectedVirtualRequirements.length > 0 && (
                   <div className="rounded-xl border border-purple-200 bg-purple-50/70 p-3 space-y-2">
@@ -2026,8 +2074,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   <thead className="bg-stone-50 text-stone-500 font-semibold border-b border-stone-200">
                     <tr>
                       <th className="py-2.5 px-3">Item / Descrição</th>
-                      <th className="py-2.5 px-3 text-right">Qtd Consumida</th>
-                      <th className="py-2.5 px-3 text-right">Custo Unitário</th>
+                      <th className="py-2.5 px-3 text-right">Quantidade / Uso</th>
+                      <th className="py-2.5 px-3 text-right">Custo na Receita</th>
                       <th className="py-2.5 px-3 text-right">Subtotal</th>
                       <th className="py-2.5 px-3 text-center">Ação</th>
                     </tr>
@@ -2036,7 +2084,15 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                     {items.map((it) => (
                       <tr key={it.id} className="hover:bg-stone-50/60">
                         <td className="py-2.5 px-3 font-medium text-stone-900">
-                          <div>{it.name}</div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span>{it.name}</span>
+                            {it.type === 'material' && allMaterials.find((m) => m.id === it.targetId)?.usageType === 'durable' && (
+                              <span className="text-[9px] font-bold bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">item durável</span>
+                            )}
+                          </div>
+                          {it.durableOption && (
+                            <div className="text-[10px] text-purple-700 mt-0.5">Formato: <strong>{it.durableOption}</strong></div>
+                          )}
                           {it.categorySelections && Object.keys(it.categorySelections).length > 0 && (
                             <div className="text-[10px] text-purple-700 mt-0.5 space-x-2">
                               {Object.entries(it.categorySelections).map(([recipeItemId, materialId]) => {
@@ -2055,10 +2111,14 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                           {formatNumber(it.quantity)} {it.unit}
                         </td>
                         <td className="py-2.5 px-3 text-right text-stone-500">
-                          {formatCurrency(it.unitCost)}
+                          {it.type === 'material' && allMaterials.find((m) => m.id === it.targetId)?.usageType === 'durable'
+                            ? <span className="text-purple-700 font-semibold">Não consumido</span>
+                            : formatCurrency(it.unitCost)}
                         </td>
                         <td className="py-2.5 px-3 text-right font-bold text-stone-900">
-                          {formatCurrency(it.totalCost)}
+                          {it.type === 'material' && allMaterials.find((m) => m.id === it.targetId)?.usageType === 'durable'
+                            ? <span className="text-purple-700">R$ 0,00</span>
+                            : formatCurrency(it.totalCost)}
                         </td>
                         <td className="py-2.5 px-3 text-center">
                           <button
