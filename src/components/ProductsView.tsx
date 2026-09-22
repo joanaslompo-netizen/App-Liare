@@ -40,6 +40,14 @@ import { processImageFile } from '../utils/imageHelper';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
 import { SearchableProductCombobox } from './SearchableProductCombobox';
 
+const buildAutomaticProductName = (productFamily?: string, fragrance?: string): string => {
+  const family = productFamily?.trim() || '';
+  const variation = fragrance?.trim() || '';
+
+  if (family && variation) return `${family} — ${variation}`;
+  return family || variation;
+};
+
 interface ProductsViewProps {
   products: Product[];
   materials: Material[];
@@ -1104,7 +1112,13 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
 }) => {
   const isEditing = !!product;
 
-  const [name, setName] = useState(product?.name || '');
+  const initialAutomaticDisplayName = buildAutomaticProductName(product?.productFamily, product?.fragrance);
+  const inferredInitialCustomName =
+    product?.customName ??
+    (product?.name && initialAutomaticDisplayName && product.name.trim() === initialAutomaticDisplayName
+      ? ''
+      : product?.name || '');
+  const [name, setName] = useState(inferredInitialCustomName);
   const [localCategories, setLocalCategories] = useState<string[]>([]);
   const [newCategoryInput, setNewCategoryInput] = useState('');
   const [isCustomCategory, setIsCustomCategory] = useState(false);
@@ -1170,6 +1184,11 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
 
   const [fragrance, setFragrance] = useState(product?.fragrance || '');
   const [fragranceMode, setFragranceMode] = useState<'auto' | 'manual'>(inferredInitialFragranceMode);
+
+  const automaticDisplayName = useMemo(
+    () => buildAutomaticProductName(productFamily, fragrance),
+    [productFamily, fragrance]
+  );
 
   const familySuggestions = useMemo(() => {
     const set = new Set<string>();
@@ -1423,8 +1442,11 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      alert('Informe o nome da peça ou produto.');
+    const customDisplayName = name.trim();
+    const finalDisplayName = customDisplayName || buildAutomaticProductName(productFamily, fragrance);
+
+    if (!finalDisplayName) {
+      alert('Informe um nome personalizado ou preencha Produto-base / Família e Variação.');
       return;
     }
     if (items.length === 0) {
@@ -1451,7 +1473,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
 
     const savedProduct: Product = {
       id: product?.id || `prod_${Date.now()}`,
-      name: name.trim(),
+      name: finalDisplayName,
+      customName: customDisplayName || undefined,
       category: (finalCategory || 'Acessórios & Bolsas').trim(),
       productFamily: productFamily.trim() || undefined,
       fragrance: fragrance.trim() || undefined,
@@ -1561,17 +1584,23 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                    Nome da Peça / Produto *
+                    Nome personalizado <span className="normal-case font-medium text-stone-400">(opcional)</span>
                   </label>
                   <input
                     id="input-product-name"
                     type="text"
-                    required
-                    placeholder="Ex: Necessaire Floral com Zíper Metálico"
+                    placeholder="Deixe em branco para usar Produto-base — Variação"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
                   />
+                  <p className="text-[10px] text-stone-500 mt-1">
+                    {name.trim()
+                      ? <>Nome de apresentação: <strong>{name.trim()}</strong> <span className="text-stone-400">(personalizado)</span></>
+                      : automaticDisplayName
+                        ? <>Nome de apresentação automático: <strong>{automaticDisplayName}</strong></>
+                        : <>Se ficar em branco, o app usa automaticamente <strong>Produto-base — Variação</strong>.</>}
+                  </p>
                 </div>
 
                 <div>
