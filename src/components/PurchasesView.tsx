@@ -19,7 +19,8 @@ import {
   formatCurrency, 
   formatDate, 
   formatNumber, 
-  UNIT_SHORT 
+  UNIT_SHORT,
+  matchesSearchText
 } from '../utils/formatters';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
 
@@ -50,10 +51,10 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
     return purchases
       .filter((p) => {
         const matchesSearch =
-          p.supplierName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (p.invoiceNumber && p.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (p.notes && p.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          p.items.some((it) => it.materialName.toLowerCase().includes(searchTerm.toLowerCase()));
+          matchesSearchText(p.supplierName, searchTerm) ||
+          (p.invoiceNumber && matchesSearchText(p.invoiceNumber, searchTerm)) ||
+          (p.notes && matchesSearchText(p.notes, searchTerm)) ||
+          p.items.some((it) => matchesSearchText(it.materialName, searchTerm));
 
         const matchesSupplier =
           selectedSupplierFilter === 'all' || p.supplierId === selectedSupplierFilter;
