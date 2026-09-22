@@ -1039,6 +1039,45 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 // Product Recipe Builder Modal
 // ==========================================
 
+const isFragranceCategory = (category?: string) => {
+  const normalized = (category || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  return normalized.includes('essenc') || normalized.includes('aroma');
+};
+
+const getAutomaticFragranceFromRecipe = (items: RecipeItem[], materials: Material[]) => {
+  for (const item of items) {
+    if (item.type !== 'material' || !item.categorySelections) continue;
+
+    const virtualMaterial = materials.find((material) => material.id === item.targetId);
+    if (!virtualMaterial?.recipeItems?.length) continue;
+
+    for (const recipeItem of virtualMaterial.recipeItems) {
+      if (
+        recipeItem.type !== 'material' ||
+        recipeItem.selectionMode !== 'category' ||
+        !recipeItem.targetCategory ||
+        !isFragranceCategory(recipeItem.targetCategory)
+      ) {
+        continue;
+      }
+
+      const selectedMaterialId = item.categorySelections[recipeItem.id];
+      if (!selectedMaterialId) continue;
+
+      const selectedMaterial = materials.find((material) => material.id === selectedMaterialId);
+      if (selectedMaterial?.name?.trim()) {
+        return selectedMaterial.name.trim();
+      }
+    }
+  }
+
+  return '';
+};
+
 interface ProductRecipeModalProps {
   isOpen: boolean;
   product: Product | null;
@@ -1122,7 +1161,15 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   };
 
   const [productFamily, setProductFamily] = useState(product?.productFamily || '');
+
+  const initialRecipeItems = Array.isArray(product?.items) ? product.items.filter(Boolean) : [];
+  const initialAutomaticFragrance = getAutomaticFragranceFromRecipe(initialRecipeItems, allMaterials);
+  const inferredInitialFragranceMode: 'auto' | 'manual' =
+    product?.fragranceMode ??
+    (!product?.fragrance?.trim() || product.fragrance.trim() === initialAutomaticFragrance ? 'auto' : 'manual');
+
   const [fragrance, setFragrance] = useState(product?.fragrance || '');
+  const [fragranceMode, setFragranceMode] = useState<'auto' | 'manual'>(inferredInitialFragranceMode);
 
   const familySuggestions = useMemo(() => {
     const set = new Set<string>();
@@ -1168,9 +1215,18 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   const [notes, setNotes] = useState(product?.notes || '');
 
   // Recipe items (BOM)
-  const [items, setItems] = useState<RecipeItem[]>(
-    Array.isArray(product?.items) ? product.items.filter(Boolean) : []
+  const [items, setItems] = useState<RecipeItem[]>(initialRecipeItems);
+
+  const automaticFragrance = useMemo(
+    () => getAutomaticFragranceFromRecipe(items, allMaterials),
+    [items, allMaterials]
   );
+
+  useEffect(() => {
+    if (fragranceMode === 'auto') {
+      setFragrance(automaticFragrance);
+    }
+  }, [automaticFragrance, fragranceMode]);
 
   // Adding item form state
   const [itemTypeToAdd, setItemTypeToAdd] = useState<RecipeItemType>('material');
@@ -1399,6 +1455,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       category: (finalCategory || 'Acessórios & Bolsas').trim(),
       productFamily: productFamily.trim() || undefined,
       fragrance: fragrance.trim() || undefined,
+      fragranceMode,
       description: description.trim() || undefined,
       imageUrl: imageUrl || undefined,
       isIntermediate: !isFinalProduct,
@@ -1622,22 +1679,48 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                    Aroma / Variação
+                    Variação
                   </label>
                   <input
                     type="text"
                     list="product-fragrance-suggestions"
                     value={fragrance}
-                    onChange={(e) => setFragrance(e.target.value)}
-                    placeholder="Ex: Chá Branco"
+                    onChange={(e) => {
+                      setFragrance(e.target.value);
+                      setFragranceMode('manual');
+                    }}
+                    placeholder="Ex: Chá Branco ou Coco com Maracujá"
                     className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
                   />
                   <datalist id="product-fragrance-suggestions">
                     {fragranceSuggestions.map((item) => <option key={item} value={item} />)}
                   </datalist>
-                  <p className="text-[10px] text-stone-500 mt-1">
-                    Cada aroma continua com receita e estoque próprios.
-                  </p>
+
+                  {fragranceMode === 'auto' ? (
+                    <p className="text-[10px] text-purple-700 mt-1">
+                      {automaticFragrance
+                        ? <>Preenchida automaticamente pelo primeiro aroma da receita: <strong>{automaticFragrance}</strong>.</>
+                        : 'Será preenchida automaticamente quando você inserir o primeiro material com seleção de essência/aroma.'}
+                    </p>
+                  ) : (
+                    <div className="mt-1 space-y-1">
+                      <p className="text-[10px] text-stone-500">
+                        Variação manual. Você pode escolher uma existente ou digitar uma nova, como “Coco com Maracujá”.
+                      </p>
+                      {automaticFragrance && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFragranceMode('auto');
+                            setFragrance(automaticFragrance);
+                          }}
+                          className="text-[10px] font-semibold text-purple-700 hover:text-purple-900 underline underline-offset-2"
+                        >
+                          Usar sugestão automática: {automaticFragrance}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 

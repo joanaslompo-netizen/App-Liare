@@ -91,6 +91,8 @@ export interface Product {
   productFamily?: string;
   /** Aroma/variação desta receita dentro da família (ex: Chá Branco). */
   fragrance?: string;
+  /** Define se a variação acompanha automaticamente o primeiro aroma da receita ou foi escolhida manualmente. */
+  fragranceMode?: 'auto' | 'manual';
   description?: string;
   imageUrl?: string;
   isIntermediate: boolean; // True if this item is a sub-component (like "Etiqueta", "Tag Kraft", "Laço")
