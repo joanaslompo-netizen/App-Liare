@@ -158,9 +158,16 @@ export const SearchableMaterialCombobox: React.FC<SearchableMaterialComboboxProp
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-stone-200/80 text-stone-700">
                   {selectedMaterial.category}
                 </span>
+                {selectedMaterial.usageType === 'durable' && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-purple-100 text-purple-800">
+                    Durável
+                  </span>
+                )}
               </div>
               <p className="text-[11px] text-stone-500 mt-0.5">
-                Ref. pacote: <span className="font-semibold text-stone-800">{formatCurrency(selectedMaterial.packagePrice)}</span> por {formatNumber(selectedMaterial.packageQuantity)} {UNIT_SHORT[selectedMaterial.packageUnit] || selectedMaterial.packageUnit} • Estoque atual: {formatNumber(selectedMaterial.currentStock)} {UNIT_SHORT[selectedMaterial.unit]}
+                {selectedMaterial.usageType === 'durable'
+                  ? <>Valor cadastrado: <span className="font-semibold text-stone-800">{formatCurrency(selectedMaterial.packagePrice)}</span> • Quantidade possuída: {formatNumber(selectedMaterial.currentStock)} un</>
+                  : <>Ref. pacote: <span className="font-semibold text-stone-800">{formatCurrency(selectedMaterial.packagePrice)}</span> por {formatNumber(selectedMaterial.packageQuantity)} {UNIT_SHORT[selectedMaterial.packageUnit] || selectedMaterial.packageUnit} • Estoque atual: {formatNumber(selectedMaterial.currentStock)} {UNIT_SHORT[selectedMaterial.unit]}</>}
               </p>
             </div>
           </div>
@@ -264,7 +271,7 @@ export const SearchableMaterialCombobox: React.FC<SearchableMaterialComboboxProp
                   filteredMaterials.map((mat, idx) => {
                     const isSelected = mat.id === selectedMaterialId;
                     const isActive = idx === activeIndex;
-                    const isLowStock = !mat.isPaused && mat.minStock > 0 && mat.currentStock <= mat.minStock;
+                    const isLowStock = mat.usageType !== 'durable' && !mat.isPaused && mat.minStock > 0 && mat.currentStock <= mat.minStock;
 
                     return (
                       <li
@@ -297,6 +304,11 @@ export const SearchableMaterialCombobox: React.FC<SearchableMaterialComboboxProp
                               <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-stone-100 text-stone-600 border border-stone-200">
                                 {mat.category}
                               </span>
+                              {mat.usageType === 'durable' && (
+                                <span className="text-[10px] font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded-full">
+                                  Durável
+                                </span>
+                              )}
                               {mat.supplierName && (
                                 <span className="text-[10px] text-stone-400 truncate hidden sm:inline">
                                   • {mat.supplierName}
@@ -311,7 +323,7 @@ export const SearchableMaterialCombobox: React.FC<SearchableMaterialComboboxProp
                               <span>•</span>
                               <span className={`inline-flex items-center gap-0.5 ${isLowStock ? 'text-amber-700 font-semibold' : 'text-stone-600'}`}>
                                 {isLowStock && <AlertCircle className="w-3 h-3 text-amber-600 shrink-0" />}
-                                Estoque: {formatNumber(mat.currentStock)} {UNIT_SHORT[mat.unit]}
+                                {mat.usageType === 'durable' ? 'Quantidade: ' : 'Estoque: '}{formatNumber(mat.currentStock)} {mat.usageType === 'durable' ? 'un' : UNIT_SHORT[mat.unit]}
                               </span>
                             </div>
                           </div>
