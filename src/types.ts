@@ -112,6 +112,8 @@ export interface Product {
   unitCostFromBatch: number; // totalCost / batchYield
   currentStock?: number; // Estoque atual disponível (peças/unidades prontas)
   minStock?: number; // Estoque mínimo de segurança para alerta
+  /** Pausa manual do item. Independente do estoque mínimo/recomendado. */
+  isPaused?: boolean;
   standardStock?: number; // Estoque padrão (meta ideal de peças em pronta-entrega)
   notes?: string; // Notas ou observações da receita/peça
   /** Receita criada a partir de um item personalizado de pedido; fica fora do catálogo normal. */
