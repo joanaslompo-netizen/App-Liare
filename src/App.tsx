@@ -33,7 +33,6 @@ import {
 } from './types';
 import { isBirthdayInMonth } from './utils/formatters';
 import { AtelierPreset } from './utils/presets';
-import { SidebarDrawer } from './components/SidebarDrawer';
 import { HomeView } from './components/HomeView';
 import { MaterialsView } from './components/MaterialsView';
 import { ProductsView } from './components/ProductsView';
@@ -63,7 +62,7 @@ import {
   CloudSyncStatus,
   CloudSyncConflictError
 } from './services/cloudSync';
-import { CheckCircle2, X, ShoppingBag, Hammer, MoreHorizontal, ShoppingCart, Package, Tag } from 'lucide-react';
+import { CheckCircle2, X, ShoppingBag, Hammer, Package, Tag, BarChart3, Plus, Settings, AlertTriangle, ClipboardList } from 'lucide-react';
 
 const withDefaultDiscountCodes = (incoming: AtelierSettings): AtelierSettings => ({
   ...incoming,
@@ -93,9 +92,6 @@ export default function App() {
   const [todos, setTodos] = useState<TodoItem[]>(initialData.todos || DEFAULT_TODOS);
   const [projects, setProjects] = useState<ProductionProject[]>(initialData.projects || []);
 
-  // Lateral Sidebar Drawer State
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-
   // Cloud Sync & Auth State
   const [user, setUser] = useState<User | null>(null);
   const [syncStatus, setSyncStatus] = useState<CloudSyncStatus>('offline');
@@ -120,6 +116,7 @@ export default function App() {
   const [isQuickMoreOpen, setIsQuickMoreOpen] = useState(false);
   const [quickNewSaleSignal, setQuickNewSaleSignal] = useState(0);
   const [quickNewProductionSignal, setQuickNewProductionSignal] = useState(0);
+  const [quickNewMaterialSignal, setQuickNewMaterialSignal] = useState(0);
 
   // Auto-dismiss notification toast
   useEffect(() => {
@@ -1455,35 +1452,55 @@ export default function App() {
         </div>
       )}
 
-      {/* Lateral Menu Drawer & Sticky Top Bar */}
-      <SidebarDrawer
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-        onOpen={() => setIsSidebarOpen(true)}
-        activeTab={activeTab}
-        onSelectTab={(tab) => {
-          setActiveTab(tab);
-          if (tab !== 'materials') setFilterLowStockInitial(false);
-        }}
-        lowStockCount={lowStockCount}
-        productsCount={products.length}
-        materialsCount={materials.length}
-        salesCount={sales.length}
-        purchasesCount={purchases.length}
-        productionsCount={productions.length}
-        projectsCount={projects.length}
-        customersCount={customers.length}
-        birthdayCustomersCount={birthdayCustomersCount}
-        atelierName={settings.atelierName}
-        artisanName={settings.artisanName}
-        user={user}
-        syncStatus={syncStatus}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenCloudSync={() => setIsCloudSyncOpen(true)}
-      />
+      {/* Minimal app header: atelier name is the Home shortcut */}
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#eadfd6] shadow-xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('home');
+              setFilterLowStockInitial(false);
+              setIsQuickMoreOpen(false);
+            }}
+            className="min-w-0 text-left cursor-pointer group"
+            title="Voltar ao Início"
+            aria-label="Voltar ao Início"
+          >
+            <span className="block text-sm sm:text-base font-bold text-[#352f2b] group-hover:text-[#a86149] transition-colors truncate max-w-[65vw] sm:max-w-none">
+              {settings.atelierName || 'Liare'}
+            </span>
+          </button>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {lowStockCount > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('materials');
+                  setFilterLowStockInitial(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-[#e8c7b7] bg-[#fbf1eb] text-[#9a5b43] text-xs font-bold cursor-pointer"
+                title="Ver itens com estoque baixo"
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>{lowStockCount}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-2 rounded-xl text-[#6f655f] hover:text-[#352f2b] hover:bg-[#f4ece6] transition-colors cursor-pointer"
+              title="Configurações do Ateliê"
+              aria-label="Configurações do Ateliê"
+            >
+              <Settings className="w-4.5 h-4.5" />
+            </button>
+          </div>
+        </div>
+      </header>
 
       {/* Main Workspace Canvas */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-28 2xl:py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-28">
         {activeTab === 'home' && (
           <HomeView
             artisanName={settings.artisanName}
@@ -1528,6 +1545,7 @@ export default function App() {
             onProduceMaterial={handleProduceMaterial}
             onOpenPurchaseHistory={() => setActiveTab('purchases')}
             filterLowStockInitial={filterLowStockInitial}
+            openNewMaterialSignal={quickNewMaterialSignal}
           />
         )}
 
@@ -1601,6 +1619,7 @@ export default function App() {
             initialCustomerForNewOrder={customerForNewSale}
             onClearInitialCustomer={() => setCustomerForNewSale(null)}
             openNewSaleSignal={quickNewSaleSignal}
+            onOpenCustomers={() => setActiveTab('customers')}
           />
         )}
 
@@ -1638,99 +1657,155 @@ export default function App() {
         )}
       </main>
 
-      {/* Quick actions for atelier use on phones and tablets */}
+      {/* Central quick action menu */}
       {isQuickMoreOpen && (
-        <div className="fixed inset-0 z-30 2xl:hidden" onClick={() => setIsQuickMoreOpen(false)}>
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setIsQuickMoreOpen(false)}
+        >
           <div className="absolute inset-0 bg-stone-900/20 backdrop-blur-[1px]" />
           <div
-            className="absolute left-4 right-4 mx-auto max-w-md bg-white rounded-2xl border border-stone-200 shadow-2xl p-3"
-            style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}
+            className="absolute left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-sm rounded-3xl border border-[#eadfd6] bg-white shadow-2xl p-3"
+            style={{ bottom: 'calc(6.6rem + env(safe-area-inset-bottom))' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => {
-                  setActiveTab('purchases');
+                  setCustomerForNewSale(null);
+                  setSalesInitialFilter('all');
+                  setActiveTab('sales');
+                  setQuickNewSaleSignal((value) => value + 1);
                   setIsQuickMoreOpen(false);
                 }}
-                className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-stone-200 bg-stone-50 px-2 py-3 text-[11px] font-semibold text-stone-700 active:bg-stone-100"
+                className="flex items-center gap-2.5 rounded-2xl bg-[#fbf7f2] border border-[#eadfd6] px-3 py-3 text-left text-xs font-semibold text-[#4f4640] active:scale-[0.98]"
               >
-                <ShoppingCart className="w-4 h-4 text-amber-700" />
-                Compras
+                <span className="w-9 h-9 rounded-full bg-[#f5e8df] text-[#a86149] flex items-center justify-center shrink-0">
+                  <ShoppingBag className="w-4 h-4" />
+                </span>
+                Novo pedido
               </button>
+
               <button
                 type="button"
                 onClick={() => {
-                  setActiveTab('materials');
+                  setProductionInitialProduct(null);
+                  setActiveTab('productions');
+                  setQuickNewProductionSignal((value) => value + 1);
+                  setIsQuickMoreOpen(false);
+                }}
+                className="flex items-center gap-2.5 rounded-2xl bg-[#fbf7f2] border border-[#eadfd6] px-3 py-3 text-left text-xs font-semibold text-[#4f4640] active:scale-[0.98]"
+              >
+                <span className="w-9 h-9 rounded-full bg-[#eef1e6] text-[#66704f] flex items-center justify-center shrink-0">
+                  <Hammer className="w-4 h-4" />
+                </span>
+                Nova produção
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
                   setFilterLowStockInitial(false);
+                  setActiveTab('materials');
+                  setQuickNewMaterialSignal((value) => value + 1);
                   setIsQuickMoreOpen(false);
                 }}
-                className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-stone-200 bg-stone-50 px-2 py-3 text-[11px] font-semibold text-stone-700 active:bg-stone-100"
+                className="flex items-center gap-2.5 rounded-2xl bg-[#fbf7f2] border border-[#eadfd6] px-3 py-3 text-left text-xs font-semibold text-[#4f4640] active:scale-[0.98]"
               >
-                <Package className="w-4 h-4 text-amber-700" />
-                Materiais
+                <span className="w-9 h-9 rounded-full bg-[#f5eee8] text-[#9a654d] flex items-center justify-center shrink-0">
+                  <Package className="w-4 h-4" />
+                </span>
+                Novo material
               </button>
+
               <button
                 type="button"
                 onClick={() => {
-                  setActiveTab('products');
+                  setActiveTab('projects');
                   setIsQuickMoreOpen(false);
                 }}
-                className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-stone-200 bg-stone-50 px-2 py-3 text-[11px] font-semibold text-stone-700 active:bg-stone-100"
+                className="flex items-center gap-2.5 rounded-2xl bg-[#fbf7f2] border border-[#eadfd6] px-3 py-3 text-left text-xs font-semibold text-[#4f4640] active:scale-[0.98]"
               >
-                <Tag className="w-4 h-4 text-amber-700" />
-                Receitas
+                <span className="w-9 h-9 rounded-full bg-[#f0ece8] text-[#6f655f] flex items-center justify-center shrink-0">
+                  <ClipboardList className="w-4 h-4" />
+                </span>
+                Projetos
               </button>
             </div>
           </div>
         </div>
       )}
 
-      <div
-        className="fixed inset-x-0 bottom-0 z-40 2xl:hidden border-t border-stone-200/90 bg-white/95 backdrop-blur-lg shadow-[0_-8px_30px_rgba(0,0,0,0.08)]"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.5rem)' }}
+      {/* Fixed bottom navigation */}
+      <nav
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-[#eadfd6] bg-white/96 backdrop-blur-xl shadow-[0_-8px_30px_rgba(83,62,49,0.08)]"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.35rem)' }}
+        aria-label="Navegação principal"
       >
-        <div className="mx-auto grid max-w-2xl grid-cols-[1fr_1fr_auto] items-center gap-2 px-3 pt-2">
+        <div className="mx-auto grid max-w-2xl grid-cols-5 items-end px-3 pt-2">
           <button
             type="button"
             onClick={() => {
+              setActiveTab('products');
               setIsQuickMoreOpen(false);
-              setCustomerForNewSale(null);
+            }}
+            className={`flex min-h-12 flex-col items-center justify-center gap-0.5 text-[10px] sm:text-xs font-semibold transition-colors ${activeTab === 'products' ? 'text-[#b96f55]' : 'text-[#8a817a]'}`}
+          >
+            <Tag className="w-5 h-5" />
+            <span>Receitas</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
               setSalesInitialFilter('all');
               setActiveTab('sales');
-              setQuickNewSaleSignal((value) => value + 1);
+              setIsQuickMoreOpen(false);
             }}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-stone-900 px-3 py-2.5 text-xs font-bold text-white shadow-sm active:scale-[0.98]"
+            className={`flex min-h-12 flex-col items-center justify-center gap-0.5 text-[10px] sm:text-xs font-semibold transition-colors ${activeTab === 'sales' || activeTab === 'customers' ? 'text-[#b96f55]' : 'text-[#8a817a]'}`}
           >
-            <ShoppingBag className="w-4 h-4 text-amber-400" />
-            Novo Pedido
+            <ShoppingBag className="w-5 h-5" />
+            <span>Pedidos</span>
+          </button>
+
+          <div className="flex items-end justify-center">
+            <button
+              type="button"
+              aria-label={isQuickMoreOpen ? 'Fechar atalhos rápidos' : 'Abrir atalhos rápidos'}
+              onClick={() => setIsQuickMoreOpen((open) => !open)}
+              className={`-mt-7 flex h-15 w-15 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-[#b96f55] text-white shadow-[0_8px_24px_rgba(185,111,85,0.38)] border-4 border-[#f6f0e9] transition-transform active:scale-95 ${isQuickMoreOpen ? 'rotate-45' : ''}`}
+            >
+              <Plus className="w-7 h-7" />
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('materials');
+              setFilterLowStockInitial(false);
+              setIsQuickMoreOpen(false);
+            }}
+            className={`flex min-h-12 flex-col items-center justify-center gap-0.5 text-[10px] sm:text-xs font-semibold transition-colors ${activeTab === 'materials' || activeTab === 'purchases' || activeTab === 'suppliers' ? 'text-[#b96f55]' : 'text-[#8a817a]'}`}
+          >
+            <Package className="w-5 h-5" />
+            <span>Materiais</span>
           </button>
 
           <button
             type="button"
             onClick={() => {
+              setActiveTab('reports');
               setIsQuickMoreOpen(false);
-              setProductionInitialProduct(null);
-              setActiveTab('productions');
-              setQuickNewProductionSignal((value) => value + 1);
             }}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-xs font-bold text-stone-800 shadow-sm active:scale-[0.98]"
+            className={`flex min-h-12 flex-col items-center justify-center gap-0.5 text-[10px] sm:text-xs font-semibold transition-colors ${activeTab === 'reports' ? 'text-[#b96f55]' : 'text-[#8a817a]'}`}
           >
-            <Hammer className="w-4 h-4 text-amber-700" />
-            Produção
-          </button>
-
-          <button
-            type="button"
-            aria-label="Mais atalhos"
-            onClick={() => setIsQuickMoreOpen((open) => !open)}
-            className="flex h-11 w-11 items-center justify-center rounded-xl border border-stone-300 bg-white text-stone-700 shadow-sm active:scale-[0.98]"
-          >
-            <MoreHorizontal className="w-5 h-5" />
+            <BarChart3 className="w-5 h-5" />
+            <span>Relatórios</span>
           </button>
         </div>
-      </div>
+      </nav>
 
       {/* Settings & Backup Modal */}
       <SettingsModal
