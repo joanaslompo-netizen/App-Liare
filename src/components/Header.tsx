@@ -30,7 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSidebar,
 }) => {
   // Low stock materials count
-  const lowStockCount = materials.filter((m) => !m.isVirtualRecipe && m.minStock > 0 && m.currentStock <= m.minStock).length;
+  const lowStockCount = materials.filter((m) => !m.isVirtualRecipe && !m.isPaused && m.minStock > 0 && m.currentStock <= m.minStock).length;
 
   // Current month revenue
   const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
