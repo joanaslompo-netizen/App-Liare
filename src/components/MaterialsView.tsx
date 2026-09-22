@@ -18,7 +18,9 @@ import {
   Layers,
   ShoppingBag,
   ShoppingCart,
-  Wand2
+  Wand2,
+  Pause,
+  Play
 } from 'lucide-react';
 import { Material, Supplier, UnitOfMeasure, MaterialType } from '../types';
 import { 
@@ -82,8 +84,8 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
           (m.supplierName && matchesSearchText(m.supplierName, searchTerm)) ||
           matchesSearchText(m.category, searchTerm);
         
-        const matchesCategory = selectedCategory === 'all' || (selectedCategory === 'paused' ? (!m.isVirtualRecipe && (m.minStock ?? 0) === 0) : m.category === selectedCategory);
-        const matchesLowStock = !onlyLowStock || (!m.isVirtualRecipe && m.minStock > 0 && m.currentStock <= m.minStock);
+        const matchesCategory = selectedCategory === 'all' || (selectedCategory === 'paused' ? !!m.isPaused : m.category === selectedCategory);
+        const matchesLowStock = !onlyLowStock || (!m.isVirtualRecipe && !m.isPaused && m.minStock > 0 && m.currentStock <= m.minStock);
         const matchesType = 
           typeFilter === 'all' || 
           (typeFilter === 'internal' && (!m.materialType || m.materialType === 'internal')) ||
@@ -92,10 +94,10 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
         return matchesSearch && matchesCategory && matchesLowStock && matchesType;
       })
       .sort((a, b) => {
-        const aPaused = !a.isVirtualRecipe && (a.minStock ?? 0) === 0;
-        const bPaused = !b.isVirtualRecipe && (b.minStock ?? 0) === 0;
+        const aPaused = !!a.isPaused;
+        const bPaused = !!b.isPaused;
 
-        // MinStock === 0 goes to the bottom of the list
+        // Paused materials go to the bottom of the list
         if (aPaused !== bPaused) {
           return aPaused ? 1 : -1;
         }
@@ -274,7 +276,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                 : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
             }`}
           >
-            Pausados ({materials.filter((m) => !m.isVirtualRecipe && (m.minStock ?? 0) === 0).length})
+            Pausados ({materials.filter((m) => !!m.isPaused).length})
           </button>
           {categories.map((cat) => {
             const count = materials.filter((m) => m.category === cat).length;
@@ -323,8 +325,8 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredMaterials.map((mat) => {
             const isVirtual = !!mat.isVirtualRecipe;
-            const isPaused = !isVirtual && (mat.minStock ?? 0) === 0;
-            const isLowStock = !isVirtual && !isPaused && mat.currentStock <= mat.minStock;
+            const isPaused = !!mat.isPaused;
+            const isLowStock = !isVirtual && !isPaused && mat.minStock > 0 && mat.currentStock <= mat.minStock;
             const stockPct = !isVirtual && mat.minStock > 0 ? Math.min(100, (mat.currentStock / (mat.minStock * 2)) * 100) : 100;
 
             return (
@@ -385,9 +387,9 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                           )}
                         </div>
                         {isPaused ? (
-                          <span className="text-[10px] font-medium text-stone-600 bg-stone-200/90 border border-stone-300 px-1.5 py-0.5 rounded flex items-center gap-1 shrink-0" title="Estoque mínimo igual a 0 (Inativo/Pausado)">
+                          <span className="text-[10px] font-medium text-stone-600 bg-stone-200/90 border border-stone-300 px-1.5 py-0.5 rounded flex items-center gap-1 shrink-0" title="Material pausado manualmente">
                             <span className="w-1.5 h-1.5 rounded-full bg-stone-400" />
-                            Inativo/Pausado
+                            Pausado
                           </span>
                         ) : isLowStock ? (
                           <span className="text-[10px] font-bold text-amber-900 bg-amber-200 px-1.5 py-0.5 rounded flex items-center gap-1 shrink-0">
@@ -450,7 +452,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                         <span className={`font-semibold ${isPaused ? 'text-stone-500' : isLowStock ? 'text-amber-700' : 'text-stone-800'}`}>
                           {formatNumber(mat.currentStock)} {UNIT_SHORT[mat.unit]}
                           <span className="text-stone-400 font-normal ml-1">
-                            {isPaused ? '(Pausado - Mín: 0)' : `(Mín: ${formatNumber(mat.minStock)} ${UNIT_SHORT[mat.unit]})`}
+                            {isPaused ? `(Pausado · Mín: ${formatNumber(mat.minStock)} ${UNIT_SHORT[mat.unit]})` : `(Mín: ${formatNumber(mat.minStock)} ${UNIT_SHORT[mat.unit]})`}
                           </span>
                         </span>
                       </div>
@@ -514,6 +516,24 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                     ID: {mat.id}
                   </span>
                   <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      id={`btn-pause-material-${mat.id}`}
+                      onClick={() => onSaveMaterial({
+                        ...mat,
+                        isPaused: !mat.isPaused,
+                        updatedAt: new Date().toISOString().split('T')[0],
+                      })}
+                      className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer ${
+                        mat.isPaused
+                          ? 'text-emerald-700 hover:bg-emerald-50'
+                          : 'text-stone-400 hover:text-stone-700 hover:bg-stone-100'
+                      }`}
+                      title={mat.isPaused ? 'Retomar material' : 'Pausar material'}
+                    >
+                      {mat.isPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+                      <span>{mat.isPaused ? 'Retomar' : 'Pausar'}</span>
+                    </button>
                     {mat.isMadeInAtelier && !mat.isVirtualRecipe && onProduceMaterial && (
                       <button type="button" onClick={() => {
                         const raw = prompt("Quantos lotes de \"" + mat.name + "\" deseja produzir?", "1");
@@ -749,6 +769,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
       unitCostFromBatch: isMadeInAtelier ? recipeUnitCost : undefined,
       currentStock: isMadeInAtelier && isVirtualRecipe ? 0 : (parseFloat(currentStock) || 0),
       minStock: isMadeInAtelier && isVirtualRecipe ? 0 : (parseFloat(minStock) || 0),
+      isPaused: material?.isPaused ?? false,
       supplierId: isMadeInAtelier ? undefined : (supplierId || undefined),
       supplierName: isMadeInAtelier ? undefined : (selectedSupplier ? selectedSupplier.name : undefined),
       imageUrl: imageUrl || undefined,
