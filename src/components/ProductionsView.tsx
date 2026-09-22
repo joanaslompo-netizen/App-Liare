@@ -26,7 +26,8 @@ import {
   formatCurrency, 
   formatDate, 
   formatNumber, 
-  UNIT_SHORT 
+  UNIT_SHORT,
+  matchesSearchText
 } from '../utils/formatters';
 import { SearchableProductCombobox } from './SearchableProductCombobox';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
@@ -77,10 +78,10 @@ export const ProductionsView: React.FC<ProductionsViewProps> = ({
     return productions
       .filter((p) => {
         const matchesSearch =
-          p.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (p.productCategory && p.productCategory.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (p.notes && p.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          p.deductedItems.some((it) => it.name.toLowerCase().includes(searchTerm.toLowerCase()));
+          matchesSearchText(p.productName, searchTerm) ||
+          (p.productCategory && matchesSearchText(p.productCategory, searchTerm)) ||
+          (p.notes && matchesSearchText(p.notes, searchTerm)) ||
+          p.deductedItems.some((it) => matchesSearchText(it.name, searchTerm));
 
         const matchesType =
           typeFilter === 'all' ||
