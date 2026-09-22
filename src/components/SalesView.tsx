@@ -35,7 +35,8 @@ import {
   formatPercent, 
   formatDate,
   formatBirthday,
-  isBirthdayInMonth
+  isBirthdayInMonth,
+  matchesSearchText
 } from '../utils/formatters';
 import { SearchableProductCombobox } from './SearchableProductCombobox';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
@@ -161,11 +162,11 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
         // Search term matching
         const matchesSearch =
-          s.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (s.customerName && s.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (s.customerContact && s.customerContact.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (s.channel && s.channel.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (s.notes && s.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+          matchesSearchText(s.productName, searchTerm) ||
+          (s.customerName && matchesSearchText(s.customerName, searchTerm)) ||
+          (s.customerContact && matchesSearchText(s.customerContact, searchTerm)) ||
+          (s.channel && matchesSearchText(s.channel, searchTerm)) ||
+          (s.notes && matchesSearchText(s.notes, searchTerm));
         return matchesSearch;
       })
       .sort((a, b) => {
