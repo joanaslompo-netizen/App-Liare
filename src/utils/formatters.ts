@@ -22,6 +22,18 @@ export const formatNumber = (val: number, maxDecimals: number = 2): string => {
   });
 };
 
+export const normalizeSearchText = (value?: string | null): string => {
+  return (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+};
+
+export const matchesSearchText = (value: string | null | undefined, query: string): boolean => {
+  return normalizeSearchText(value).includes(normalizeSearchText(query));
+};
+
 export const formatDate = (dateString: string): string => {
   if (!dateString) return '';
   const parts = dateString.split('-');
