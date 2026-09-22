@@ -1879,8 +1879,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                 Nenhum ingrediente adicionado à receita ainda. Selecione um material ou sub-produto acima.
               </div>
             ) : (
-              <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-                <table className="w-full text-xs text-left">
+              <div className="bg-white rounded-xl border border-stone-200 overflow-x-auto overscroll-x-contain">
+                <table className="w-full min-w-[720px] text-xs text-left">
                   <thead className="bg-stone-50 text-stone-500 font-semibold border-b border-stone-200">
                     <tr>
                       <th className="py-2.5 px-3">Tipo</th>
