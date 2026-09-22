@@ -63,6 +63,7 @@ interface SalesViewProps {
   initialCustomerForNewOrder?: Customer | null;
   onClearInitialCustomer?: () => void;
   openNewSaleSignal?: number;
+  onOpenCustomers?: () => void;
 }
 
 export const SalesView: React.FC<SalesViewProps> = ({
@@ -83,6 +84,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   initialCustomerForNewOrder,
   onClearInitialCustomer,
   openNewSaleSignal = 0,
+  onOpenCustomers,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTabFilter, setActiveTabFilter] = useState<'all' | 'pending_delivery' | 'pending_payment' | 'completed'>(initialFilter);
@@ -254,14 +256,26 @@ export const SalesView: React.FC<SalesViewProps> = ({
           </p>
         </div>
 
-        <button
-          id="btn-add-sale"
-          onClick={handleOpenNew}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-sm font-semibold rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap active:scale-98"
-        >
-          <Plus className="w-4 h-4 text-amber-400" />
-          <span>Registrar Novo Pedido / Venda</span>
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {onOpenCustomers && (
+            <button
+              type="button"
+              onClick={onOpenCustomers}
+              className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 bg-white hover:bg-stone-50 text-stone-700 text-sm font-semibold rounded-xl border border-stone-200 shadow-xs transition-all cursor-pointer whitespace-nowrap"
+            >
+              <Users className="w-4 h-4 text-[#a86149]" />
+              <span>Clientes</span>
+            </button>
+          )}
+          <button
+            id="btn-add-sale"
+            onClick={handleOpenNew}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-sm font-semibold rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap active:scale-98"
+          >
+            <Plus className="w-4 h-4 text-amber-400" />
+            <span>Registrar Novo Pedido / Venda</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards: Visão Financeira e Operacional */}
