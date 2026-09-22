@@ -60,7 +60,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   );
 
   const lowStockProducts = useMemo(
-    () => products.filter((p) => (p.minStock ?? 0) > 0 && (p.currentStock ?? 0) <= (p.minStock ?? 0)),
+    () => products.filter((p) => !p.isPaused && (p.minStock ?? 0) > 0 && (p.currentStock ?? 0) <= (p.minStock ?? 0)),
     [products]
   );
 
