@@ -2019,6 +2019,8 @@ export const estimateMaterialUnitCost = (
   visited: Set<string> = new Set(),
   categorySelections?: Record<string, string>
 ): number => {
+  if (material.usageType === 'durable') return 0;
+
   if (!material.isMadeInAtelier || !material.recipeItems?.length || !material.batchYield) {
     return material.unitCost || 0;
   }
@@ -2040,10 +2042,10 @@ export const estimateMaterialUnitCost = (
           : undefined;
 
         if (selected) {
-          unitCost = selected.unitCost || 0;
+          unitCost = selected.usageType === 'durable' ? 0 : (selected.unitCost || 0);
         } else {
           const options = allMaterials.filter(
-            (m) => !m.isVirtualRecipe && m.category === item.targetCategory
+            (m) => !m.isVirtualRecipe && m.usageType !== 'durable' && m.category === item.targetCategory
           );
           if (options.length > 0) {
             unitCost = options.reduce((acc, m) => acc + (m.unitCost || 0), 0) / options.length;
@@ -2052,7 +2054,9 @@ export const estimateMaterialUnitCost = (
       } else {
         const child = allMaterials.find((m) => m.id === item.targetId);
         if (child) {
-          unitCost = estimateMaterialUnitCost(child, allMaterials, nextVisited);
+          unitCost = child.usageType === 'durable'
+            ? 0
+            : estimateMaterialUnitCost(child, allMaterials, nextVisited);
         }
       }
     }
@@ -2079,7 +2083,9 @@ export const recalculateProductPricing = (
     if (item.type === 'material') {
       const mat = allMaterials.find((m) => m.id === item.targetId);
       if (mat) {
-        unitCost = estimateMaterialUnitCost(mat, allMaterials, new Set(), item.categorySelections);
+        unitCost = mat.usageType === 'durable'
+          ? 0
+          : estimateMaterialUnitCost(mat, allMaterials, new Set(), item.categorySelections);
         name = mat.name;
       }
     } else if (item.type === 'product') {
