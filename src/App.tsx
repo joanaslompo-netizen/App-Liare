@@ -434,7 +434,7 @@ export default function App() {
   };
 
   // Low stock counter
-  const lowStockCount = materials.filter((m) => !m.isVirtualRecipe && m.minStock > 0 && m.currentStock <= m.minStock).length;
+  const lowStockCount = materials.filter((m) => !m.isVirtualRecipe && !m.isPaused && m.minStock > 0 && m.currentStock <= m.minStock).length;
 
   // Birthday customers count for this month
   const birthdayCustomersCount = useMemo(() => {
