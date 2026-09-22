@@ -1743,14 +1743,14 @@ export default function App() {
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.35rem)' }}
         aria-label="Navegação principal"
       >
-        <div className="mx-auto grid max-w-2xl grid-cols-5 items-end px-3 pt-2">
+        <div className="mx-auto grid min-h-[72px] max-w-2xl grid-cols-5 items-center px-3 pt-3">
           <button
             type="button"
             onClick={() => {
               setActiveTab('products');
               setIsQuickMoreOpen(false);
             }}
-            className={`flex min-h-12 flex-col items-center justify-center gap-0.5 text-[10px] sm:text-xs font-semibold transition-colors ${activeTab === 'products' ? 'text-[#b96f55]' : 'text-[#8a817a]'}`}
+            className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[10px] sm:text-xs font-semibold transition-colors ${activeTab === 'products' ? 'text-[#b96f55]' : 'text-[#8a817a]'}`}
           >
             <Tag className="w-5 h-5" />
             <span>Receitas</span>
@@ -1763,7 +1763,7 @@ export default function App() {
               setActiveTab('sales');
               setIsQuickMoreOpen(false);
             }}
-            className={`flex min-h-12 flex-col items-center justify-center gap-0.5 text-[10px] sm:text-xs font-semibold transition-colors ${activeTab === 'sales' || activeTab === 'customers' ? 'text-[#b96f55]' : 'text-[#8a817a]'}`}
+            className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[10px] sm:text-xs font-semibold transition-colors ${activeTab === 'sales' || activeTab === 'customers' ? 'text-[#b96f55]' : 'text-[#8a817a]'}`}
           >
             <ShoppingBag className="w-5 h-5" />
             <span>Pedidos</span>
@@ -1774,7 +1774,7 @@ export default function App() {
               type="button"
               aria-label={isQuickMoreOpen ? 'Fechar atalhos rápidos' : 'Abrir atalhos rápidos'}
               onClick={() => setIsQuickMoreOpen((open) => !open)}
-              className={`-mt-7 flex h-15 w-15 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-[#b96f55] text-white shadow-[0_8px_24px_rgba(185,111,85,0.38)] border-4 border-[#f6f0e9] transition-transform active:scale-95 ${isQuickMoreOpen ? 'rotate-45' : ''}`}
+              className={`-mt-8 flex h-15 w-15 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-[#b96f55] text-white shadow-[0_8px_24px_rgba(185,111,85,0.38)] border-4 border-[#f6f0e9] transition-transform active:scale-95 ${isQuickMoreOpen ? 'rotate-45' : ''}`}
             >
               <Plus className="w-7 h-7" />
             </button>
@@ -1787,7 +1787,7 @@ export default function App() {
               setFilterLowStockInitial(false);
               setIsQuickMoreOpen(false);
             }}
-            className={`flex min-h-12 flex-col items-center justify-center gap-0.5 text-[10px] sm:text-xs font-semibold transition-colors ${activeTab === 'materials' || activeTab === 'purchases' || activeTab === 'suppliers' ? 'text-[#b96f55]' : 'text-[#8a817a]'}`}
+            className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[10px] sm:text-xs font-semibold transition-colors ${activeTab === 'materials' || activeTab === 'purchases' || activeTab === 'suppliers' ? 'text-[#b96f55]' : 'text-[#8a817a]'}`}
           >
             <Package className="w-5 h-5" />
             <span>Materiais</span>
@@ -1799,7 +1799,7 @@ export default function App() {
               setActiveTab('reports');
               setIsQuickMoreOpen(false);
             }}
-            className={`flex min-h-12 flex-col items-center justify-center gap-0.5 text-[10px] sm:text-xs font-semibold transition-colors ${activeTab === 'reports' ? 'text-[#b96f55]' : 'text-[#8a817a]'}`}
+            className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[10px] sm:text-xs font-semibold transition-colors ${activeTab === 'reports' ? 'text-[#b96f55]' : 'text-[#8a817a]'}`}
           >
             <BarChart3 className="w-5 h-5" />
             <span>Relatórios</span>
