@@ -63,7 +63,7 @@ import {
   CloudSyncStatus,
   CloudSyncConflictError
 } from './services/cloudSync';
-import { CheckCircle2, X } from 'lucide-react';
+import { CheckCircle2, X, ShoppingBag, Hammer, MoreHorizontal, ShoppingCart, Package, Tag } from 'lucide-react';
 
 const withDefaultDiscountCodes = (incoming: AtelierSettings): AtelierSettings => ({
   ...incoming,
@@ -117,6 +117,9 @@ export default function App() {
   // Modals state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isExampleSelectorOpen, setIsExampleSelectorOpen] = useState(false);
+  const [isQuickMoreOpen, setIsQuickMoreOpen] = useState(false);
+  const [quickNewSaleSignal, setQuickNewSaleSignal] = useState(0);
+  const [quickNewProductionSignal, setQuickNewProductionSignal] = useState(0);
 
   // Auto-dismiss notification toast
   useEffect(() => {
@@ -1480,7 +1483,7 @@ export default function App() {
       />
 
       {/* Main Workspace Canvas */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-28 2xl:py-6">
         {activeTab === 'home' && (
           <HomeView
             artisanName={settings.artisanName}
@@ -1575,6 +1578,7 @@ export default function App() {
             onNavigateToProducts={() => setActiveTab('products')}
             initialSelectedProduct={productionInitialProduct}
             onClearInitialProduct={() => setProductionInitialProduct(null)}
+            openNewProductionSignal={quickNewProductionSignal}
           />
         )}
 
@@ -1596,6 +1600,7 @@ export default function App() {
             initialFilter={salesInitialFilter}
             initialCustomerForNewOrder={customerForNewSale}
             onClearInitialCustomer={() => setCustomerForNewSale(null)}
+            openNewSaleSignal={quickNewSaleSignal}
           />
         )}
 
@@ -1632,6 +1637,100 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* Quick actions for atelier use on phones and tablets */}
+      {isQuickMoreOpen && (
+        <div className="fixed inset-0 z-30 2xl:hidden" onClick={() => setIsQuickMoreOpen(false)}>
+          <div className="absolute inset-0 bg-stone-900/20 backdrop-blur-[1px]" />
+          <div
+            className="absolute left-4 right-4 mx-auto max-w-md bg-white rounded-2xl border border-stone-200 shadow-2xl p-3"
+            style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('purchases');
+                  setIsQuickMoreOpen(false);
+                }}
+                className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-stone-200 bg-stone-50 px-2 py-3 text-[11px] font-semibold text-stone-700 active:bg-stone-100"
+              >
+                <ShoppingCart className="w-4 h-4 text-amber-700" />
+                Compras
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('materials');
+                  setFilterLowStockInitial(false);
+                  setIsQuickMoreOpen(false);
+                }}
+                className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-stone-200 bg-stone-50 px-2 py-3 text-[11px] font-semibold text-stone-700 active:bg-stone-100"
+              >
+                <Package className="w-4 h-4 text-amber-700" />
+                Materiais
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('products');
+                  setIsQuickMoreOpen(false);
+                }}
+                className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-stone-200 bg-stone-50 px-2 py-3 text-[11px] font-semibold text-stone-700 active:bg-stone-100"
+              >
+                <Tag className="w-4 h-4 text-amber-700" />
+                Receitas
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div
+        className="fixed inset-x-0 bottom-0 z-40 2xl:hidden border-t border-stone-200/90 bg-white/95 backdrop-blur-lg shadow-[0_-8px_30px_rgba(0,0,0,0.08)]"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.5rem)' }}
+      >
+        <div className="mx-auto grid max-w-2xl grid-cols-[1fr_1fr_auto] items-center gap-2 px-3 pt-2">
+          <button
+            type="button"
+            onClick={() => {
+              setIsQuickMoreOpen(false);
+              setCustomerForNewSale(null);
+              setSalesInitialFilter('all');
+              setActiveTab('sales');
+              setQuickNewSaleSignal((value) => value + 1);
+            }}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-stone-900 px-3 py-2.5 text-xs font-bold text-white shadow-sm active:scale-[0.98]"
+          >
+            <ShoppingBag className="w-4 h-4 text-amber-400" />
+            Novo Pedido
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setIsQuickMoreOpen(false);
+              setProductionInitialProduct(null);
+              setActiveTab('productions');
+              setQuickNewProductionSignal((value) => value + 1);
+            }}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-xs font-bold text-stone-800 shadow-sm active:scale-[0.98]"
+          >
+            <Hammer className="w-4 h-4 text-amber-700" />
+            Produção
+          </button>
+
+          <button
+            type="button"
+            aria-label="Mais atalhos"
+            onClick={() => setIsQuickMoreOpen((open) => !open)}
+            className="flex h-11 w-11 items-center justify-center rounded-xl border border-stone-300 bg-white text-stone-700 shadow-sm active:scale-[0.98]"
+          >
+            <MoreHorizontal className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
 
       {/* Settings & Backup Modal */}
       <SettingsModal
