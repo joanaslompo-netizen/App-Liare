@@ -1880,10 +1880,9 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
               </div>
             ) : (
               <div className="bg-white rounded-xl border border-stone-200 overflow-x-auto overscroll-x-contain">
-                <table className="w-full min-w-[720px] text-xs text-left">
+                <table className="w-full min-w-[640px] text-xs text-left">
                   <thead className="bg-stone-50 text-stone-500 font-semibold border-b border-stone-200">
                     <tr>
-                      <th className="py-2.5 px-3">Tipo</th>
                       <th className="py-2.5 px-3">Item / Descrição</th>
                       <th className="py-2.5 px-3 text-right">Qtd Consumida</th>
                       <th className="py-2.5 px-3 text-right">Custo Unitário</th>
@@ -1894,29 +1893,16 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   <tbody className="divide-y divide-stone-100">
                     {items.map((it) => (
                       <tr key={it.id} className="hover:bg-stone-50/60">
-                        <td className="py-2.5 px-3">
-                          {it.type === 'product' ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded">
-                              <Layers className="w-3 h-3 text-amber-700" />
-                              Sub-produto
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-stone-100 text-stone-700 px-1.5 py-0.5 rounded">
-                              Material
-                            </span>
-                          )}
-                        </td>
                         <td className="py-2.5 px-3 font-medium text-stone-900">
                           <div>{it.name}</div>
                           {it.categorySelections && Object.keys(it.categorySelections).length > 0 && (
                             <div className="text-[10px] text-purple-700 mt-0.5 space-x-2">
                               {Object.entries(it.categorySelections).map(([recipeItemId, materialId]) => {
                                 const virtualMaterial = allMaterials.find((m) => m.id === it.targetId);
-                                const variableItem = virtualMaterial?.recipeItems?.find((ri) => ri.id === recipeItemId);
                                 const chosenMaterial = allMaterials.find((m) => m.id === materialId);
                                 return (
                                   <span key={recipeItemId}>
-                                    {variableItem?.targetCategory || 'Escolha'}: <strong>{chosenMaterial?.name || 'não encontrado'}</strong>
+                                    <strong>{chosenMaterial?.name || 'não encontrado'}</strong>
                                   </span>
                                 );
                               })}
@@ -1947,7 +1933,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   </tbody>
                   <tfoot className="bg-stone-50 border-t border-stone-200 font-bold">
                     <tr>
-                      <td colSpan={4} className="py-2.5 px-3 text-stone-700 text-right">
+                      <td colSpan={3} className="py-2.5 px-3 text-stone-700 text-right">
                         Custo Total de Insumos da Receita:
                       </td>
                       <td className="py-2.5 px-3 text-right text-stone-900 text-sm">
