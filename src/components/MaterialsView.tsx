@@ -717,7 +717,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
 
   const getRecipeItemCurrentCost = (item: import('../types').RecipeItem) => {
     if (item.selectionMode === 'category' && item.targetCategory) {
-      const options = materials.filter((m) => !m.isVirtualRecipe && m.category === item.targetCategory);
+      const options = materials.filter((m) => !m.isVirtualRecipe && m.usageType !== 'durable' && m.category === item.targetCategory);
       if (options.length === 0) return { unitCost: item.unitCost || 0, unit: item.unit };
       const avg = options.reduce((sum, m) => sum + m.unitCost, 0) / options.length;
       const units = Array.from(new Set(options.map((m) => m.unit)));
@@ -726,18 +726,20 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
 
     const fixed = materials.find((m) => m.id === item.targetId);
     return fixed
-      ? { unitCost: fixed.unitCost, unit: UNIT_SHORT[fixed.unit] }
+      ? { unitCost: fixed.usageType === 'durable' ? 0 : fixed.unitCost, unit: UNIT_SHORT[fixed.unit] }
       : { unitCost: item.unitCost || 0, unit: item.unit };
   };
 
   const getRecipeItemUnitOfMeasure = (item: import('../types').RecipeItem): UnitOfMeasure | null => {
     if (item.selectionMode === 'category' && item.targetCategory) {
-      const options = materials.filter((m) => !m.isVirtualRecipe && m.category === item.targetCategory);
+      const options = materials.filter((m) => !m.isVirtualRecipe && m.usageType !== 'durable' && m.category === item.targetCategory);
       const units = Array.from(new Set(options.map((m) => m.unit)));
       return units.length === 1 ? units[0] : null;
     }
 
-    return materials.find((m) => m.id === item.targetId)?.unit || null;
+    const fixed = materials.find((m) => m.id === item.targetId);
+    if (fixed?.usageType === 'durable') return null;
+    return fixed?.unit || null;
   };
 
   const normalizedRecipeItems = recipeItems.map((item) => {
@@ -760,8 +762,13 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
   const inferredRecipeUnit: UnitOfMeasure = recipeUnits.length === 1
     ? recipeUnits[0]
     : unit;
-  const hasMixedRecipeUnits = recipeItems.length > 0 && recipeUnits.length !== 1;
-  const automaticRecipeYield = recipeItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+  const consumableRecipeItems = recipeItems.filter((item) => {
+    if (item.type !== 'material') return true;
+    if (item.selectionMode === 'category') return true;
+    return materials.find((m) => m.id === item.targetId)?.usageType !== 'durable';
+  });
+  const hasMixedRecipeUnits = consumableRecipeItems.length > 0 && recipeUnits.length !== 1;
+  const automaticRecipeYield = consumableRecipeItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
   const parsedRecipeYield = Math.max(0.0001, automaticRecipeYield || 1);
   const recipeTotalCost = normalizedRecipeItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
   const recipeUnitCost = recipeTotalCost / parsedRecipeYield;
@@ -1261,6 +1268,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                 } else {
                   const target = materials.find(m => m.id === recipeTargetId);
                   if (!target) { alert('Selecione um ingrediente.'); return; }
+                  const durable = target.usageType === 'durable';
                   setRecipeItems(prev => [...prev, {
                     id: 'mri_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
                     type: 'material',
@@ -1268,8 +1276,8 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                     name: target.name,
                     quantity: qty,
                     unit: UNIT_SHORT[target.unit],
-                    unitCost: target.unitCost,
-                    totalCost: target.unitCost * qty,
+                    unitCost: durable ? 0 : target.unitCost,
+                    totalCost: durable ? 0 : target.unitCost * qty,
                     selectionMode: 'fixed',
                   }]);
                   setRecipeTargetId('');
