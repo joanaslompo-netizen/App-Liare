@@ -38,7 +38,7 @@ interface ProjectsViewProps {
 
 type Requirement = {
   key: string;
-  type: 'material' | 'product' | 'category';
+  type: 'material' | 'product' | 'category' | 'durable';
   targetId?: string;
   name: string;
   unit: string;
@@ -62,6 +62,7 @@ const getCustomLineUnitCost = (
   const batchCost = (line.customRecipeItems || []).reduce((sum, item) => {
     if (item.type === 'material') {
       const material = materials.find((m) => m.id === item.targetId);
+      if (material?.usageType === 'durable') return sum;
       return sum + item.quantity * (material?.unitCost ?? item.unitCost ?? 0);
     }
     const product = products.find((p) => p.id === item.targetId);
@@ -102,7 +103,9 @@ const buildRequirements = (
   const add = (req: Requirement) => {
     const current = map.get(req.key);
     if (current) {
-      current.required += req.required;
+      current.required = req.type === 'durable'
+        ? Math.max(current.required, req.required)
+        : current.required + req.required;
       return;
     }
     map.set(req.key, { ...req });
@@ -124,6 +127,21 @@ const buildRequirements = (
       }
 
       const material = materials.find((m) => m.id === item.targetId);
+
+      if (material?.usageType === 'durable') {
+        add({
+          key: `durable:${item.targetId}:${item.durableOption || ''}`,
+          type: 'durable',
+          targetId: item.targetId,
+          name: item.durableOption ? `${material.name} — ${item.durableOption}` : material.name,
+          unit: 'un',
+          required: Math.max(1, item.quantity || 1),
+          available: material.currentStock ?? 0,
+          unitCost: 0,
+        });
+        return;
+      }
+
       if (
         material?.isVirtualRecipe &&
         material.recipeItems?.length &&
@@ -497,7 +515,7 @@ const ProjectDetails = ({
                     <td className="px-3 py-2.5">
                       <div className="font-semibold text-stone-800">{req.name}</div>
                       <div className="text-[10px] text-stone-400">
-                        {req.type === 'product' ? 'Subproduto' : req.type === 'category' ? 'Escolha variável' : 'Material'}
+                        {req.type === 'product' ? 'Subproduto' : req.type === 'category' ? 'Escolha variável' : req.type === 'durable' ? 'Item durável / reutilizável' : 'Material'}
                       </div>
                     </td>
                     <td className="px-3 py-2.5 text-right font-semibold text-stone-800">
@@ -638,8 +656,8 @@ const ProjectModal = ({
           name: selectedMaterial.name,
           quantity: qty,
           unit: selectedMaterial.unit,
-          unitCost: selectedMaterial.unitCost,
-          totalCost: selectedMaterial.unitCost * qty,
+          unitCost: selectedMaterial.usageType === 'durable' ? 0 : selectedMaterial.unitCost,
+          totalCost: selectedMaterial.usageType === 'durable' ? 0 : selectedMaterial.unitCost * qty,
         },
       ]);
       setSelectedMaterial(null);
