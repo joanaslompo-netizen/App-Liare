@@ -30,7 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSidebar,
 }) => {
   // Low stock materials count
-  const lowStockCount = materials.filter((m) => !m.isVirtualRecipe && !m.isPaused && m.minStock > 0 && m.currentStock <= m.minStock).length;
+  const lowStockCount = materials.filter((m) => !m.isVirtualRecipe && m.usageType !== 'durable' && !m.isPaused && m.minStock > 0 && m.currentStock <= m.minStock).length;
 
   // Current month revenue
   const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
@@ -40,7 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
   const monthMargin = monthRevenue > 0 ? (monthProfit / monthRevenue) * 100 : 0;
 
   // Stock inventory total value
-  const totalStockValue = materials.reduce((acc, m) => acc + (m.currentStock * m.unitCost), 0);
+  const totalStockValue = materials.reduce((acc, m) => m.usageType === 'durable' ? acc : acc + (m.currentStock * m.unitCost), 0);
 
   return (
     <header className="bg-stone-900 text-stone-100 border-b border-stone-800 sticky top-0 z-30 shadow-md">
