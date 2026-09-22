@@ -62,6 +62,7 @@ interface SalesViewProps {
   initialFilter?: 'all' | 'pending_delivery' | 'pending_payment';
   initialCustomerForNewOrder?: Customer | null;
   onClearInitialCustomer?: () => void;
+  openNewSaleSignal?: number;
 }
 
 export const SalesView: React.FC<SalesViewProps> = ({
@@ -81,6 +82,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   initialFilter = 'all',
   initialCustomerForNewOrder,
   onClearInitialCustomer,
+  openNewSaleSignal = 0,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTabFilter, setActiveTabFilter] = useState<'all' | 'pending_delivery' | 'pending_payment' | 'completed'>(initialFilter);
@@ -93,6 +95,13 @@ export const SalesView: React.FC<SalesViewProps> = ({
       setIsModalOpen(true);
     }
   }, [initialCustomerForNewOrder]);
+
+  useEffect(() => {
+    if (openNewSaleSignal > 0) {
+      setEditingSale(null);
+      setIsModalOpen(true);
+    }
+  }, [openNewSaleSignal]);
 
   const getStockProductId = (item: SaleItem) =>
     item.isCustom ? item.customProductId : item.productId;
