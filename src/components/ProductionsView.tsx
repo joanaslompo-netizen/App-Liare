@@ -42,6 +42,7 @@ interface ProductionsViewProps {
   initialProductToProduce?: Product | null;
   initialSelectedProduct?: Product | null;
   onClearInitialProduct?: () => void;
+  openNewProductionSignal?: number;
 }
 
 export const ProductionsView: React.FC<ProductionsViewProps> = ({
@@ -54,6 +55,7 @@ export const ProductionsView: React.FC<ProductionsViewProps> = ({
   initialProductToProduce = null,
   initialSelectedProduct = null,
   onClearInitialProduct,
+  openNewProductionSignal = 0,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'final' | 'intermediate'>('all');
@@ -72,6 +74,13 @@ export const ProductionsView: React.FC<ProductionsViewProps> = ({
       setIsModalOpen(true);
     }
   }, [initialProductToProduce, initialSelectedProduct]);
+
+  useEffect(() => {
+    if (openNewProductionSignal > 0) {
+      setSelectedProductForProduction(null);
+      setIsModalOpen(true);
+    }
+  }, [openNewProductionSignal]);
 
   // Filter productions
   const filteredProductions = useMemo(() => {
