@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Plus, 
   Search, 
@@ -44,6 +44,7 @@ interface MaterialsViewProps {
   onProduceMaterial?: (materialId: string, batchCount: number) => void;
   onOpenPurchaseHistory?: () => void;
   filterLowStockInitial?: boolean;
+  openNewMaterialSignal?: number;
 }
 
 export const MaterialsView: React.FC<MaterialsViewProps> = ({
@@ -55,6 +56,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
   onProduceMaterial,
   onOpenPurchaseHistory,
   filterLowStockInitial = false,
+  openNewMaterialSignal = 0,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -118,6 +120,12 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
     setEditingMaterial(mat);
     setIsModalOpen(true);
   };
+
+  useEffect(() => {
+    if (openNewMaterialSignal > 0) {
+      handleOpenAdd();
+    }
+  }, [openNewMaterialSignal]);
 
   const handleConfirmAdjust = (id: string) => {
     const newStock = parseFloat(adjustDelta);
