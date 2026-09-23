@@ -27,12 +27,26 @@ export interface WorkspaceData {
   lastModifiedBy?: string;
 }
 
-export type CloudSyncStatus = 'offline' | 'idle' | 'syncing' | 'synced' | 'error';
+type WorkspaceEntityKey = 'materials' | 'products' | 'productions' | 'projects' | 'purchases' | 'sales' | 'customers' | 'suppliers' | 'todos';
+
+export interface WorkspaceSyncBase {
+  schema: 1;
+  entities: Record<WorkspaceEntityKey, Record<string, string>>;
+  paymentMethods: string;
+  settings: string;
+}
+
+export type CloudSyncStatus = 'offline' | 'idle' | 'pending' | 'syncing' | 'synced' | 'error';
 
 export class CloudSyncConflictError extends Error {
-  constructor(public cloudRevision: number, public expectedRevision: number) {
+  cloudRevision: number;
+  expectedRevision: number;
+
+  constructor(cloudRevision: number, expectedRevision: number) {
     super('O backup da nuvem mudou desde a última sincronização. Nada foi sobrescrito.');
     this.name = 'CloudSyncConflictError';
+    this.cloudRevision = cloudRevision;
+    this.expectedRevision = expectedRevision;
   }
 }
 
@@ -69,6 +83,84 @@ function workspaceFromData(data: any): WorkspaceData {
     paymentMethods: data.paymentMethods || [], suppliers: data.suppliers || [], settings: data.settings,
     todos: data.todos || [], version: data.version, revision: data.revision || 0,
     updatedAt: data.updatedAt, lastModifiedBy: data.lastModifiedBy,
+  };
+}
+
+const fingerprint = (value: unknown) => JSON.stringify(value === undefined ? '__missing__' : value);
+
+function mergeEntityList<T extends { id: string }>(base: Record<string, string>, local: T[] = [], cloud: T[] = []): T[] {
+  const localById = new Map(local.map((item) => [item.id, item]));
+  const cloudById = new Map(cloud.map((item) => [item.id, item]));
+  const orderedIds = [
+    ...local.map((item) => item.id),
+    ...cloud.map((item) => item.id).filter((id) => !localById.has(id)),
+    ...Object.keys(base).filter((id) => !localById.has(id) && !cloudById.has(id)),
+  ];
+
+  return orderedIds.flatMap((id) => {
+    const localItem = localById.get(id);
+    const cloudItem = cloudById.get(id);
+    const localChanged = fingerprint(localItem) !== (base[id] ?? fingerprint(undefined));
+
+    // A mudança pendente deste aparelho vence apenas para o registro alterado aqui.
+    // Nos demais registros, preservamos a versão mais nova recebida da nuvem.
+    const selected = localChanged ? localItem : cloudItem;
+    return selected ? [selected] : [];
+  });
+}
+
+function mergeValue<T>(baseFingerprint: string, local: T, cloud: T): T {
+  return fingerprint(local) !== baseFingerprint ? local : cloud;
+}
+
+export function createWorkspaceSyncBase(workspace: WorkspaceData): WorkspaceSyncBase {
+  const entities = {} as WorkspaceSyncBase['entities'];
+  const lists: Record<WorkspaceEntityKey, Array<{ id: string }>> = {
+    materials: workspace.materials,
+    products: workspace.products,
+    productions: workspace.productions || [],
+    projects: workspace.projects || [],
+    purchases: workspace.purchases,
+    sales: workspace.sales,
+    customers: workspace.customers || [],
+    suppliers: workspace.suppliers,
+    todos: workspace.todos || [],
+  };
+
+  (Object.keys(lists) as WorkspaceEntityKey[]).forEach((key) => {
+    entities[key] = Object.fromEntries(lists[key].map((item) => [item.id, fingerprint(item)]));
+  });
+
+  return {
+    schema: 1,
+    entities,
+    paymentMethods: fingerprint(workspace.paymentMethods || []),
+    settings: fingerprint(workspace.settings),
+  };
+}
+
+/**
+ * Mesclagem em três vias: compara a cópia que este aparelho recebeu por último
+ * com o estado local pendente e com a revisão atual da nuvem.
+ */
+export function mergeWorkspaceData(
+  base: WorkspaceSyncBase,
+  local: WorkspaceData,
+  cloud: WorkspaceData
+): WorkspaceData {
+  return {
+    ...cloud,
+    materials: mergeEntityList(base.entities.materials, local.materials, cloud.materials),
+    products: mergeEntityList(base.entities.products, local.products, cloud.products),
+    productions: mergeEntityList(base.entities.productions, local.productions || [], cloud.productions || []),
+    projects: mergeEntityList(base.entities.projects, local.projects || [], cloud.projects || []),
+    purchases: mergeEntityList(base.entities.purchases, local.purchases, cloud.purchases),
+    sales: mergeEntityList(base.entities.sales, local.sales, cloud.sales),
+    customers: mergeEntityList(base.entities.customers, local.customers || [], cloud.customers || []),
+    suppliers: mergeEntityList(base.entities.suppliers, local.suppliers, cloud.suppliers),
+    todos: mergeEntityList(base.entities.todos, local.todos || [], cloud.todos || []),
+    paymentMethods: mergeValue(base.paymentMethods, local.paymentMethods || [], cloud.paymentMethods || []),
+    settings: mergeValue(base.settings, local.settings, cloud.settings),
   };
 }
 
@@ -137,6 +229,12 @@ export async function uploadWorkspaceToCloud(
 export async function fetchWorkspaceFromCloud(userId: string): Promise<WorkspaceData | null> {
   if (!userId) return null;
   const snap = await getDoc(doc(db, 'users', userId, 'workspaces', 'default'));
+  return snap.exists() ? workspaceFromData(snap.data()) : null;
+}
+
+export async function fetchPreviousWorkspaceFromCloud(userId: string): Promise<WorkspaceData | null> {
+  if (!userId) return null;
+  const snap = await getDoc(doc(db, 'users', userId, 'workspaces', 'previous'));
   return snap.exists() ? workspaceFromData(snap.data()) : null;
 }
 
