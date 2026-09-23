@@ -284,7 +284,12 @@ export const ProductionsView: React.FC<ProductionsViewProps> = ({
           </button>
         </div>
       ) : (
-        <div className="space-y-3">
+        <section className="bg-white rounded-3xl border border-[#eadfd6] p-5 shadow-xs">
+          <h3 className="text-xs font-bold text-[#352f2b] uppercase tracking-wider mb-3 pb-2 border-b border-[#f0e7e0] flex items-center gap-1.5">
+            <Package className="w-3.5 h-3.5 text-[#766b64]" />
+            Histórico de produção
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {filteredProductions.map((prod) => {
             const isExpanded = expandedProductionIds.has(prod.id);
             const matchingProduct = products.find((p) => p.id === prod.productId);
@@ -293,127 +298,53 @@ export const ProductionsView: React.FC<ProductionsViewProps> = ({
               <div
                 key={prod.id}
                 id={`production-item-${prod.id}`}
-                className="bg-white rounded-xl border border-stone-200 shadow-2xs hover:border-stone-300 transition-all overflow-hidden"
+                className="min-w-0 bg-[#fbf8f5] rounded-xl border border-[#f0e7e0] hover:border-[#ddc9b9] transition-colors overflow-hidden"
               >
                 {/* Main Row */}
-                <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-start gap-3.5">
-                    {/* Thumbnail */}
-                    <div className="w-14 h-14 rounded-lg bg-stone-100 border border-stone-200 shrink-0 overflow-hidden flex items-center justify-center">
-                      {prod.productImageUrl || matchingProduct?.imageUrl ? (
+                <button
+                  type="button"
+                  onClick={() => toggleExpand(prod.id)}
+                  aria-expanded={isExpanded}
+                  className="w-full flex items-center justify-between gap-3 p-3 text-left cursor-pointer"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="font-semibold text-[#352f2b] text-xs block truncate">{prod.productName}</span>
+                    <span className="text-[11px] text-[#9d9189] block truncate">
+                      {prod.quantityProduced} {prod.quantityProduced === 1 ? 'unidade' : 'unidades'} · {formatDate(prod.date)}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="font-bold text-[#352f2b] text-xs block">{formatCurrency(prod.totalCost)}</span>
+                    <span className="text-[10px] font-semibold text-[#a86149] flex items-center justify-end gap-1">
+                      Detalhes {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    </span>
+                  </span>
+                </button>
+
+                {isExpanded && (
+                  <div id={`production-details-${prod.id}`} className="px-3 pb-3 border-t border-[#f0e7e0] text-xs text-[#5e5149]">
+                    <div className="flex items-start gap-3 pt-3">
+                      {(prod.productImageUrl || matchingProduct?.imageUrl) && (
                         <img
                           src={prod.productImageUrl || matchingProduct?.imageUrl}
-                          alt={prod.productName}
-                          className="w-full h-full object-cover"
+                          alt=""
+                          className="w-10 h-10 rounded-lg object-cover shrink-0"
                           referrerPolicy="no-referrer"
                         />
-                      ) : (
-                        <ImageIcon className="w-6 h-6 text-stone-400" />
                       )}
+                      <div className="min-w-0 space-y-1">
+                        <p>{prod.productCategory ? `${prod.productCategory} · ` : ''}{prod.isIntermediate ? 'Componente / Sub-produto' : 'Produto Final'}</p>
+                        <p>{prod.batchCount} {prod.batchCount === 1 ? 'batelada' : 'bateladas'}{prod.batchYield > 1 ? ` · ${prod.batchYield} un/batelada` : ''} · {formatCurrency(prod.costPerUnit)} / un</p>
+                        <p>{prod.deductedItems.length} insumos baixados</p>
+                        {prod.notes && <p className="italic break-words">{prod.notes}</p>}
+                      </div>
                     </div>
-
-                    {/* Information */}
-                    <div>
-                      <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                        <span className="text-[11px] font-semibold text-stone-600 bg-stone-100 px-2 py-0.5 rounded">
-                          {formatDate(prod.date)}
-                        </span>
-
-                        {prod.productCategory && (
-                          <span className="text-[11px] font-medium text-stone-600 bg-stone-50 border border-stone-200 px-2 py-0.5 rounded">
-                            {prod.productCategory}
-                          </span>
-                        )}
-
-                        {prod.isIntermediate ? (
-                          <span className="text-[10px] font-semibold text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                            Componente / Sub-produto
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                            Produto Final
-                          </span>
-                        )}
-                      </div>
-
-                      <h4 className="text-base font-bold text-stone-900 leading-snug">
-                        {prod.productName}
-                      </h4>
-
-                      <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-stone-500">
-                        <span className="font-semibold text-stone-800">
-                          {prod.quantityProduced} {prod.quantityProduced === 1 ? 'unidade produzida' : 'unidades produzidas'}
-                        </span>
-                        <span>•</span>
-                        <span>{prod.batchCount} {prod.batchCount === 1 ? 'batelada' : 'bateladas'}</span>
-                        {prod.batchYield > 1 && (
-                          <span className="text-stone-400">({prod.batchYield} un/batelada)</span>
-                        )}
-                        <span>•</span>
-                        <span className="text-amber-800 font-medium">
-                          {prod.deductedItems.length} insumos baixados
-                        </span>
-                      </div>
-
-                      {prod.notes && (
-                        <p className="text-xs text-stone-500 italic mt-1.5 bg-stone-50 px-2.5 py-1 rounded border border-stone-100 inline-block">
-                          {prod.notes}
-                        </p>
-                      )}
+                    <div className="flex gap-2 mt-3">
+                      <button type="button" onClick={() => setViewingProduction(prod)} className="px-3 py-2 rounded-lg bg-white border border-[#eadfd6] text-[#352f2b] font-medium cursor-pointer">Ver ordem completa</button>
+                      <button type="button" onClick={() => handleDelete(prod)} className="px-3 py-2 rounded-lg bg-white border border-rose-200 text-rose-700 font-medium cursor-pointer">Excluir</button>
                     </div>
                   </div>
-
-                  {/* Financial & Actions */}
-                  <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center border-t sm:border-t-0 pt-3 sm:pt-0 border-stone-100 gap-2">
-                    <div className="text-left sm:text-right">
-                      <span className="text-xs text-stone-500 block uppercase font-medium">
-                        Custo Total do Lote
-                      </span>
-                      <span className="text-lg font-extrabold text-stone-900 block">
-                        {formatCurrency(prod.totalCost)}
-                      </span>
-                      <span className="text-[11px] text-stone-500 block">
-                        {formatCurrency(prod.costPerUnit)} / un
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1 mt-1">
-                      <button
-                        onClick={() => toggleExpand(prod.id)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-stone-700 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-lg transition-colors cursor-pointer"
-                        title="Ver insumos que foram baixados do estoque"
-                      >
-                        {isExpanded ? (
-                          <>
-                            <ChevronUp className="w-3.5 h-3.5" />
-                            <span>Ocultar Insumos</span>
-                          </>
-                        ) : (
-                          <>
-                            <ChevronDown className="w-3.5 h-3.5" />
-                            <span>Ver Insumos ({prod.deductedItems.length})</span>
-                          </>
-                        )}
-                      </button>
-
-                      <button
-                        onClick={() => setViewingProduction(prod)}
-                        className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
-                        title="Ver detalhes completos da ordem"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        onClick={() => handleDelete(prod)}
-                        className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                        title="Excluir produção e estornar estoque"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                )}
 
                 {/* Expanded Deducted Items Drawer */}
                 {isExpanded && (
@@ -476,7 +407,8 @@ export const ProductionsView: React.FC<ProductionsViewProps> = ({
               </div>
             );
           })}
-        </div>
+          </div>
+        </section>
       )}
 
       {/* Production Modal */}
