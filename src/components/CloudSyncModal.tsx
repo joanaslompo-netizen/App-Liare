@@ -8,9 +8,10 @@ import {
   Laptop, 
   Smartphone, 
   Tablet, 
-  CheckCircle2, 
   ShieldCheck, 
-  AlertCircle 
+  AlertCircle,
+  Download,
+  History
 } from 'lucide-react';
 import { User } from '../lib/firebase';
 import { CloudSyncStatus } from '../services/cloudSync';
@@ -24,6 +25,8 @@ interface CloudSyncModalProps {
   onLoginGoogle: () => void;
   onLogout: () => void;
   onForceSync: () => void;
+  onImportFromCloud: () => void;
+  onRestorePreviousBackup: () => void;
   itemCounts: {
     materials: number;
     products: number;
@@ -44,6 +47,8 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
   onLoginGoogle,
   onLogout,
   onForceSync,
+  onImportFromCloud,
+  onRestorePreviousBackup,
   itemCounts,
 }) => {
   if (!isOpen) return null;
@@ -128,17 +133,21 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                   <div className="flex items-center gap-2">
                     {syncStatus === 'syncing' ? (
                       <RefreshCw className="w-4 h-4 text-amber-600 animate-spin" />
+                    ) : syncStatus === 'pending' ? (
+                      <Cloud className="w-4 h-4 text-amber-600" />
                     ) : syncStatus === 'error' ? (
                       <AlertCircle className="w-4 h-4 text-rose-600" />
                     ) : (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <CloudCheck className="w-4 h-4 text-emerald-600" />
                     )}
                     <span className="text-xs font-bold text-stone-900">
                       {syncStatus === 'syncing'
                         ? 'Sincronizando com a nuvem...'
+                        : syncStatus === 'pending'
+                        ? 'Alteração salva neste aparelho — envio pendente'
                         : syncStatus === 'error'
                         ? 'Erro na sincronização'
-                        : 'Sincronizado e Atualizado na Nuvem'}
+                        : 'Salvo na nuvem'}
                     </span>
                   </div>
 
@@ -149,7 +158,32 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                     className="px-2.5 py-1 text-xs font-semibold text-stone-700 hover:text-stone-900 bg-white hover:bg-stone-100 border border-stone-300 rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
                   >
                     <RefreshCw className={`w-3 h-3 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
-                    <span>Sincronizar Agora</span>
+                    <span>Enviar agora</span>
+                  </button>
+                </div>
+
+                <p className="text-[11px] text-stone-500">
+                  As alterações são salvas imediatamente neste aparelho e enviadas automaticamente após 5 segundos sem novas edições.
+                </p>
+
+                <div className="flex flex-wrap gap-2 pt-1 border-t border-stone-200">
+                  <button
+                    type="button"
+                    onClick={onImportFromCloud}
+                    disabled={syncStatus === 'syncing'}
+                    className="px-2.5 py-1.5 text-xs font-semibold text-stone-700 bg-white hover:bg-stone-100 border border-stone-300 rounded-lg inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Importar da nuvem
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onRestorePreviousBackup}
+                    disabled={syncStatus === 'syncing'}
+                    className="px-2.5 py-1.5 text-xs font-semibold text-stone-700 bg-white hover:bg-stone-100 border border-stone-300 rounded-lg inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    Restaurar backup anterior
                   </button>
                 </div>
 

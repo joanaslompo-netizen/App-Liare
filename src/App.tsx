@@ -59,6 +59,11 @@ import {
   subscribeToWorkspace, 
   syncUserProfile, 
   fetchWorkspaceFromCloud, 
+  fetchPreviousWorkspaceFromCloud,
+  mergeWorkspaceData,
+  createWorkspaceSyncBase,
+  WorkspaceData,
+  WorkspaceSyncBase,
   CloudSyncStatus,
   CloudSyncConflictError
 } from './services/cloudSync';
@@ -71,6 +76,36 @@ const withDefaultDiscountCodes = (incoming: AtelierSettings): AtelierSettings =>
       ? incoming.discountCodes
       : (DEFAULT_SETTINGS.discountCodes || []),
 });
+
+const CLOUD_SYNC_PENDING_KEY = 'atelie_cloud_sync_pending_v1';
+const CLOUD_SYNC_BASE_KEY = 'atelie_cloud_sync_base_v1';
+const CLOUD_SYNC_RECOVERY_KEY = 'atelie_cloud_sync_recovery_v1';
+
+const readStoredCloudBase = (): WorkspaceSyncBase | null => {
+  try {
+    const stored = localStorage.getItem(CLOUD_SYNC_BASE_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+};
+
+const storeCloudBase = (workspace: WorkspaceData) => {
+  try {
+    localStorage.setItem(CLOUD_SYNC_BASE_KEY, JSON.stringify(createWorkspaceSyncBase(workspace)));
+  } catch (error) {
+    console.warn('Não foi possível guardar a base local da sincronização:', error);
+  }
+};
+
+const storePendingSync = (pending: boolean) => {
+  try {
+    if (pending) localStorage.setItem(CLOUD_SYNC_PENDING_KEY, 'true');
+    else localStorage.removeItem(CLOUD_SYNC_PENDING_KEY);
+  } catch (error) {
+    console.warn('Não foi possível atualizar o estado local da sincronização:', error);
+  }
+};
 
 export default function App() {
   // Load initial data from localStorage (or sample seeds)
@@ -103,7 +138,17 @@ export default function App() {
   const syncTimeoutRef = useRef<any>(null);
   const cloudRevisionRef = useRef<number | undefined>(undefined);
   const hasLoadedCloudRef = useRef(false);
-  const hasLocalChangesRef = useRef(false);
+  const hasLocalChangesRef = useRef(localStorage.getItem(CLOUD_SYNC_PENDING_KEY) === 'true');
+  const cloudBaseRef = useRef<WorkspaceSyncBase | null>(readStoredCloudBase());
+  const workspaceRef = useRef<WorkspaceData>({
+    materials, products, purchases, productions, sales, customers,
+    paymentMethods, suppliers, settings, todos, projects,
+  });
+  const localChangeVersionRef = useRef(0);
+  const syncInFlightRef = useRef(false);
+  const syncAgainRef = useRef(false);
+  const performCloudSyncRef = useRef<(showFeedback?: boolean) => Promise<void>>(async () => {});
+  const hasObservedWorkspaceRef = useRef(false);
 
   // Active navigation tab - default to 'home' (initial dashboard screen)
   const [activeTab, setActiveTab] = useState<NavTab>('home');
@@ -118,6 +163,37 @@ export default function App() {
   const [quickNewProductionSignal, setQuickNewProductionSignal] = useState(0);
   const [quickNewMaterialSignal, setQuickNewMaterialSignal] = useState(0);
 
+  workspaceRef.current = {
+    materials, products, purchases, productions, sales, customers,
+    paymentMethods, suppliers, settings, todos, projects,
+  };
+
+  const applyWorkspaceData = useCallback((workspace: WorkspaceData) => {
+    isIncomingCloudSyncRef.current = true;
+    setMaterials(workspace.materials || []);
+    setProducts(workspace.products || []);
+    setPurchases(workspace.purchases || []);
+    setProductions(workspace.productions || []);
+    setSales(workspace.sales || []);
+    setCustomers(workspace.customers || []);
+    setPaymentMethods(workspace.paymentMethods || []);
+    setSuppliers(workspace.suppliers || []);
+    if (workspace.settings) setSettings(withDefaultDiscountCodes(workspace.settings));
+    setTodos(workspace.todos || []);
+    setProjects(workspace.projects || []);
+  }, []);
+
+  const protectCurrentWorkspace = useCallback(() => {
+    try {
+      localStorage.setItem(CLOUD_SYNC_RECOVERY_KEY, JSON.stringify({
+        savedAt: new Date().toISOString(),
+        workspace: workspaceRef.current,
+      }));
+    } catch (error) {
+      console.warn('Não foi possível criar a cópia local de segurança:', error);
+    }
+  }, []);
+
   // Auto-dismiss notification toast
   useEffect(() => {
     if (!syncNotification) return;
@@ -126,6 +202,104 @@ export default function App() {
     }, 6000);
     return () => clearTimeout(timer);
   }, [syncNotification]);
+
+  const performCloudSync = useCallback(async (showFeedback = false) => {
+    if (!user || !hasLoadedCloudRef.current) return;
+
+    if (syncInFlightRef.current) {
+      syncAgainRef.current = true;
+      return;
+    }
+
+    syncInFlightRef.current = true;
+    syncAgainRef.current = false;
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    setSyncStatus('syncing');
+
+    const startedAtVersion = localChangeVersionRef.current;
+    const localSnapshot = workspaceRef.current;
+    const mergeBase = cloudBaseRef.current;
+
+    try {
+      let uploaded: WorkspaceData | null = null;
+      let lastConflict: CloudSyncConflictError | null = null;
+
+      for (let attempt = 0; attempt < 3 && !uploaded; attempt += 1) {
+        const cloud = await fetchWorkspaceFromCloud(user.uid);
+
+        if (!hasLocalChangesRef.current && cloud) {
+          uploaded = cloud;
+          break;
+        }
+
+        const workspaceToUpload = cloud
+          ? mergeWorkspaceData(mergeBase || createWorkspaceSyncBase(cloud), localSnapshot, cloud)
+          : localSnapshot;
+
+        try {
+          uploaded = await uploadWorkspaceToCloud(
+            user.uid,
+            workspaceToUpload,
+            'Web',
+            cloud?.revision
+          );
+        } catch (error) {
+          if (error instanceof CloudSyncConflictError) {
+            lastConflict = error;
+            continue;
+          }
+          throw error;
+        }
+      }
+
+      if (!uploaded) throw lastConflict || new Error('Não foi possível concluir a sincronização.');
+
+      cloudRevisionRef.current = uploaded.revision || 0;
+      setLastSyncedAt(new Date());
+
+      if (localChangeVersionRef.current === startedAtVersion) {
+        hasLocalChangesRef.current = false;
+        storePendingSync(false);
+        cloudBaseRef.current = createWorkspaceSyncBase(uploaded);
+        storeCloudBase(uploaded);
+        applyWorkspaceData(uploaded);
+        setSyncStatus('synced');
+        if (showFeedback) {
+          setSyncNotification({
+            message: 'Alterações enviadas com segurança. A versão anterior foi preservada como backup.',
+            type: 'success',
+          });
+        }
+      } else {
+        hasLocalChangesRef.current = true;
+        storePendingSync(true);
+        setSyncStatus('pending');
+        syncAgainRef.current = true;
+      }
+    } catch (error) {
+      console.warn('Erro ao enviar dados para a nuvem:', error);
+      hasLocalChangesRef.current = true;
+      storePendingSync(true);
+      setSyncStatus(error instanceof CloudSyncConflictError ? 'pending' : 'error');
+      setSyncNotification({
+        message: error instanceof CloudSyncConflictError
+          ? 'Sua alteração continua salva neste aparelho e será enviada novamente automaticamente.'
+          : 'Não foi possível acessar a nuvem agora. Sua alteração continua salva neste aparelho.',
+        type: error instanceof CloudSyncConflictError ? 'info' : 'error',
+      });
+      syncAgainRef.current = true;
+    } finally {
+      syncInFlightRef.current = false;
+      if (syncAgainRef.current) {
+        syncAgainRef.current = false;
+        syncTimeoutRef.current = setTimeout(() => {
+          void performCloudSyncRef.current(false);
+        }, 5000);
+      }
+    }
+  }, [applyWorkspaceData, user]);
+
+  performCloudSyncRef.current = performCloudSync;
 
   // Firebase Auth State Listener & Cloud Sync Subscription
   useEffect(() => {
@@ -143,30 +317,31 @@ export default function App() {
           const cloudData = await fetchWorkspaceFromCloud(currentUser.uid);
           
           if (cloudData) {
-            // Existing cloud backup is authoritative on login. Never overwrite it blindly.
             cloudRevisionRef.current = cloudData.revision || 0;
             hasLoadedCloudRef.current = true;
-            hasLocalChangesRef.current = false;
-            // Cloud data already exists, update local state
-            isIncomingCloudSyncRef.current = true;
-            if (cloudData.materials) setMaterials(cloudData.materials);
-            if (cloudData.products) setProducts(cloudData.products);
-            if (cloudData.purchases) setPurchases(cloudData.purchases);
-            if (cloudData.productions) setProductions(cloudData.productions);
-            if (cloudData.sales) setSales(cloudData.sales);
-            if (cloudData.customers) setCustomers(cloudData.customers);
-            if (cloudData.paymentMethods) setPaymentMethods(cloudData.paymentMethods);
-            if (cloudData.suppliers) setSuppliers(cloudData.suppliers);
-            if (cloudData.settings) setSettings(withDefaultDiscountCodes(cloudData.settings));
-            if (cloudData.todos) setTodos(cloudData.todos);
-            if (cloudData.projects) setProjects(cloudData.projects);
 
-            setSyncStatus('synced');
-            setLastSyncedAt(new Date());
-            setSyncNotification({
-              message: `Conectado como ${currentUser.email}! Dados sincronizados com seu Notebook, Celular e Tablet.`,
-              type: 'success',
-            });
+            if (hasLocalChangesRef.current) {
+              // Existe trabalho local ainda não enviado: mantenha-o visível e use a
+              // nuvem apenas como referência para a próxima mesclagem automática.
+              if (!cloudBaseRef.current) {
+                cloudBaseRef.current = createWorkspaceSyncBase(cloudData);
+                storeCloudBase(cloudData);
+              }
+              setSyncStatus('pending');
+              syncTimeoutRef.current = setTimeout(() => {
+                void performCloudSyncRef.current(false);
+              }, 5000);
+            } else {
+              cloudBaseRef.current = createWorkspaceSyncBase(cloudData);
+              storeCloudBase(cloudData);
+              applyWorkspaceData(cloudData);
+              setSyncStatus('synced');
+              setLastSyncedAt(new Date());
+              setSyncNotification({
+                message: `Conectado como ${currentUser.email}! Dados sincronizados com seu Notebook, Celular e Tablet.`,
+                type: 'success',
+              });
+            }
           } else {
             // First time this user connects: upload their current local workspace to cloud so nothing is lost!
             const createdCloud = await uploadWorkspaceToCloud(currentUser.uid, {
@@ -185,6 +360,10 @@ export default function App() {
             cloudRevisionRef.current = createdCloud.revision || 1;
             hasLoadedCloudRef.current = true;
             hasLocalChangesRef.current = false;
+            storePendingSync(false);
+            cloudBaseRef.current = createWorkspaceSyncBase(createdCloud);
+            storeCloudBase(createdCloud);
+            isIncomingCloudSyncRef.current = true;
             setSyncStatus('synced');
             setLastSyncedAt(new Date());
             setSyncNotification({
@@ -203,30 +382,22 @@ export default function App() {
           (updatedData) => {
             if (updatedData) {
               const incomingRevision = updatedData.revision || 0;
-              // If this device has unsent edits and cloud advanced elsewhere, do not destroy either side.
-              if (hasLocalChangesRef.current && hasLoadedCloudRef.current && incomingRevision !== cloudRevisionRef.current) {
-                setSyncStatus('error');
-                setSyncNotification({
-                  message: 'Conflito detectado: a nuvem mudou enquanto este aparelho tinha alterações locais. Nada foi sobrescrito. Clique em Sincronizar para carregar a versão mais recente da nuvem.',
-                  type: 'error',
-                });
+              if (incomingRevision === cloudRevisionRef.current && !hasLocalChangesRef.current) return;
+
+              // Uma revisão recebida nunca substitui trabalho local ainda pendente.
+              // A próxima sincronização fará a mesclagem automaticamente.
+              if (hasLocalChangesRef.current && hasLoadedCloudRef.current) {
+                setSyncStatus('pending');
+                if (incomingRevision !== cloudRevisionRef.current) syncAgainRef.current = true;
                 return;
               }
               cloudRevisionRef.current = incomingRevision;
               hasLoadedCloudRef.current = true;
               hasLocalChangesRef.current = false;
-              isIncomingCloudSyncRef.current = true;
-              if (updatedData.materials) setMaterials(updatedData.materials);
-              if (updatedData.products) setProducts(updatedData.products);
-              if (updatedData.purchases) setPurchases(updatedData.purchases);
-              if (updatedData.productions) setProductions(updatedData.productions);
-              if (updatedData.sales) setSales(updatedData.sales);
-              if (updatedData.customers) setCustomers(updatedData.customers);
-              if (updatedData.paymentMethods) setPaymentMethods(updatedData.paymentMethods);
-              if (updatedData.suppliers) setSuppliers(updatedData.suppliers);
-              if (updatedData.settings) setSettings(withDefaultDiscountCodes(updatedData.settings));
-              if (updatedData.todos) setTodos(updatedData.todos);
-              if (updatedData.projects) setProjects(updatedData.projects);
+              storePendingSync(false);
+              cloudBaseRef.current = createWorkspaceSyncBase(updatedData);
+              storeCloudBase(updatedData);
+              applyWorkspaceData(updatedData);
               setSyncStatus('synced');
               setLastSyncedAt(new Date());
             }
@@ -245,54 +416,38 @@ export default function App() {
       unsubscribeAuth();
       if (unsubscribeDoc) unsubscribeDoc();
     };
-  }, []);
+  }, [applyWorkspaceData]);
 
-  // Debounced auto-upload to cloud when user is logged in
+  // Alterações ficam salvas localmente na hora e entram em uma fila de envio.
+  // A nuvem só é atualizada após 5 segundos sem novas mudanças.
   useEffect(() => {
-    if (!user || !hasLoadedCloudRef.current) return;
-    
+    if (!hasObservedWorkspaceRef.current) {
+      hasObservedWorkspaceRef.current = true;
+      return;
+    }
+
     // Skip re-upload if this state change was just triggered by an incoming cloud update
     if (isIncomingCloudSyncRef.current) {
       isIncomingCloudSyncRef.current = false;
       return;
     }
 
+    localChangeVersionRef.current += 1;
     hasLocalChangesRef.current = true;
+    storePendingSync(true);
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-    setSyncStatus('syncing');
+    setSyncStatus('pending');
 
-    syncTimeoutRef.current = setTimeout(async () => {
-      try {
-        const uploaded = await uploadWorkspaceToCloud(user.uid, {
-          materials,
-          products,
-          purchases,
-          productions,
-          sales,
-          customers,
-          paymentMethods,
-          suppliers,
-          settings,
-          todos,
-          projects,
-        }, 'Web', cloudRevisionRef.current);
-        cloudRevisionRef.current = uploaded.revision;
-        hasLocalChangesRef.current = false;
-        setSyncStatus('synced');
-        setLastSyncedAt(new Date());
-      } catch (err) {
-        console.warn('Erro ao enviar dados para a nuvem:', err);
-        setSyncStatus('error');
-        if (err instanceof CloudSyncConflictError) {
-          setSyncNotification({ message: 'Sincronização bloqueada: existe uma versão mais nova na nuvem. Seus dados locais não sobrescreveram o backup.', type: 'error' });
-        }
-      }
-    }, 800);
+    if (!user || !hasLoadedCloudRef.current) return;
+
+    syncTimeoutRef.current = setTimeout(() => {
+      void performCloudSyncRef.current(false);
+    }, 5000);
 
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
-  }, [materials, products, purchases, productions, sales, customers, paymentMethods, suppliers, settings, todos, projects, user]);
+  }, [materials, products, purchases, productions, sales, customers, paymentMethods, suppliers, settings, todos, projects]);
 
   // Auto-persist changes to local storage cache as well (offline fallback)
   useEffect(() => {
@@ -378,58 +533,75 @@ export default function App() {
       handleLoginGoogle();
       return;
     }
+    await performCloudSync(true);
+  };
+
+  const handleImportFromCloud = async () => {
+    if (!user) return;
+    if (!confirm('Importar o backup atual da nuvem? Uma cópia temporária dos dados deste aparelho será guardada antes da substituição.')) return;
+    if (syncInFlightRef.current) return;
+
+    syncInFlightRef.current = true;
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     try {
       setSyncStatus('syncing');
-      // Manual sync always reads cloud first. If cloud advanced, download it instead of overwriting it.
       const cloud = await fetchWorkspaceFromCloud(user.uid);
-      const cloudRevision = cloud?.revision || 0;
+      if (!cloud) throw new Error('Nenhum backup foi encontrado na nuvem.');
 
-      if (cloud && cloudRevision !== (cloudRevisionRef.current ?? cloudRevision)) {
-        isIncomingCloudSyncRef.current = true;
-        cloudRevisionRef.current = cloudRevision;
-        hasLoadedCloudRef.current = true;
-        hasLocalChangesRef.current = false;
-        setMaterials(cloud.materials || []);
-        setProducts(cloud.products || []);
-        setProductions(cloud.productions || []);
-        setPurchases(cloud.purchases || []);
-        setSales(cloud.sales || []);
-        setCustomers(cloud.customers || []);
-        setPaymentMethods(cloud.paymentMethods || []);
-        setSuppliers(cloud.suppliers || []);
-        if (cloud.settings) setSettings(withDefaultDiscountCodes(cloud.settings));
-        setTodos(cloud.todos || []);
-        setProjects(cloud.projects || []);
-        setSyncStatus('synced');
-        setLastSyncedAt(new Date());
-        setSyncNotification({ message: 'A nuvem tinha uma versão mais recente. Ela foi baixada para este dispositivo sem sobrescrever o backup.', type: 'info' });
-        return;
-      }
-
-      if (!hasLocalChangesRef.current && cloud) {
-        setSyncStatus('synced');
-        setLastSyncedAt(new Date());
-        setSyncNotification({ message: 'Este dispositivo já está com a versão mais recente da nuvem.', type: 'success' });
-        return;
-      }
-
-      const uploaded = await uploadWorkspaceToCloud(user.uid, {
-        materials, products, productions, purchases, sales, customers,
-        paymentMethods, suppliers, settings, todos, projects,
-      }, 'Web', cloud ? cloudRevision : undefined);
-      cloudRevisionRef.current = uploaded.revision;
-      hasLoadedCloudRef.current = true;
+      protectCurrentWorkspace();
+      cloudRevisionRef.current = cloud.revision || 0;
+      cloudBaseRef.current = createWorkspaceSyncBase(cloud);
+      storeCloudBase(cloud);
       hasLocalChangesRef.current = false;
+      storePendingSync(false);
+      applyWorkspaceData(cloud);
       setSyncStatus('synced');
       setLastSyncedAt(new Date());
-      setSyncNotification({ message: 'Dados mais recentes enviados com segurança. A versão anterior foi preservada como backup.', type: 'success' });
-    } catch (err: any) {
+      setSyncNotification({ message: 'Backup da nuvem importado com segurança.', type: 'success' });
+    } catch (error: any) {
       setSyncStatus('error');
-      if (err instanceof CloudSyncConflictError) {
-        setSyncNotification({ message: 'Conflito detectado. Nada foi sobrescrito. Clique novamente em Sincronizar para carregar a versão mais recente da nuvem.', type: 'error' });
-      } else {
-        alert('Erro ao sincronizar: ' + err?.message);
-      }
+      alert('Erro ao importar da nuvem: ' + (error?.message || 'erro desconhecido'));
+    } finally {
+      syncInFlightRef.current = false;
+    }
+  };
+
+  const handleRestorePreviousCloudBackup = async () => {
+    if (!user) return;
+    if (!confirm('Restaurar o backup anterior? O backup atual será preservado como a nova versão anterior, permitindo desfazer esta restauração.')) return;
+    if (syncInFlightRef.current) return;
+
+    syncInFlightRef.current = true;
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    try {
+      setSyncStatus('syncing');
+      const [previous, current] = await Promise.all([
+        fetchPreviousWorkspaceFromCloud(user.uid),
+        fetchWorkspaceFromCloud(user.uid),
+      ]);
+      if (!previous) throw new Error('Ainda não existe um backup anterior para restaurar.');
+
+      protectCurrentWorkspace();
+      const restored = await uploadWorkspaceToCloud(
+        user.uid,
+        previous,
+        'Restauração',
+        current?.revision
+      );
+      cloudRevisionRef.current = restored.revision || 0;
+      cloudBaseRef.current = createWorkspaceSyncBase(restored);
+      storeCloudBase(restored);
+      hasLocalChangesRef.current = false;
+      storePendingSync(false);
+      applyWorkspaceData(restored);
+      setSyncStatus('synced');
+      setLastSyncedAt(new Date());
+      setSyncNotification({ message: 'Backup anterior restaurado com sucesso.', type: 'success' });
+    } catch (error: any) {
+      setSyncStatus('error');
+      alert('Erro ao restaurar o backup anterior: ' + (error?.message || 'erro desconhecido'));
+    } finally {
+      syncInFlightRef.current = false;
     }
   };
 
@@ -1854,6 +2026,8 @@ export default function App() {
         onLoginGoogle={handleLoginGoogle}
         onLogout={handleLogout}
         onForceSync={handleForceSync}
+        onImportFromCloud={handleImportFromCloud}
+        onRestorePreviousBackup={handleRestorePreviousCloudBackup}
         itemCounts={{
           materials: materials.length,
           products: products.length,
