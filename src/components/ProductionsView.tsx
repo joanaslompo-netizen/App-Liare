@@ -163,9 +163,6 @@ export const ProductionsView: React.FC<ProductionsViewProps> = ({
               Baixa Automática de Insumos
             </span>
           </div>
-          <p className="text-sm text-stone-500 mt-1">
-            Lance lotes das suas receitas. O sistema deduz os materiais do estoque e adiciona as peças prontas ao seu estoque de produtos.
-          </p>
         </div>
 
         <button
@@ -179,45 +176,41 @@ export const ProductionsView: React.FC<ProductionsViewProps> = ({
       </div>
 
       {/* Summary Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+        <div className="bg-white p-3 sm:p-4 rounded-xl border border-stone-200 shadow-2xs min-w-0">
           <span className="text-xs text-stone-500 block uppercase font-medium">
             Lotes Produzidos
           </span>
           <span className="text-2xl font-extrabold text-stone-900 mt-0.5 block">
             {filteredProductions.length}
           </span>
-          <span className="text-[11px] text-stone-400 mt-0.5 block">ordens no histórico</span>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs">
+        <div className="bg-white p-3 sm:p-4 rounded-xl border border-stone-200 shadow-2xs min-w-0">
           <span className="text-xs text-stone-500 block uppercase font-medium">
             Peças / Unidades Prontas
           </span>
           <span className="text-2xl font-extrabold text-amber-600 mt-0.5 block">
             {totalUnitsProduced} un
           </span>
-          <span className="text-[11px] text-stone-400 mt-0.5 block">adicionadas ao estoque</span>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs">
+        <div className="bg-white p-3 sm:p-4 rounded-xl border border-stone-200 shadow-2xs min-w-0">
           <span className="text-xs text-stone-500 block uppercase font-medium">
             Custo Total de Produção
           </span>
           <span className="text-2xl font-extrabold text-stone-900 mt-0.5 block">
             {formatCurrency(totalProductionCost)}
           </span>
-          <span className="text-[11px] text-stone-400 mt-0.5 block">materiais + mão de obra</span>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs">
+        <div className="bg-white p-3 sm:p-4 rounded-xl border border-stone-200 shadow-2xs min-w-0">
           <span className="text-xs text-stone-500 block uppercase font-medium">
             Movimentações de Insumos
           </span>
           <span className="text-2xl font-extrabold text-emerald-700 mt-0.5 block">
             {totalDeductedCount}
           </span>
-          <span className="text-[11px] text-stone-400 mt-0.5 block">baixas efetuadas</span>
         </div>
       </div>
 
