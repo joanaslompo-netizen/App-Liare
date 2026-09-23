@@ -801,11 +801,18 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
     if (hasStockShortage && updateStock) {
       const proceed = window.confirm(
         'Atenção: Alguns insumos da receita não possuem saldo suficiente no estoque atual.\n\n' +
-        'O estoque ficará negativo para esses itens caso prossiga.\n\n' +
+        'Ao prosseguir, o estoque desses itens será ajustado automaticamente para zero.\n\n' +
         'Deseja lançar a produção mesmo assim?'
       );
       if (!proceed) return;
     }
+
+    const recordedDeductions = updateStock
+      ? deductions.map((deduction) => ({
+          ...deduction,
+          stockAfter: Math.max(0, Number(deduction.stockAfter.toFixed(4))),
+        }))
+      : deductions;
 
     const newProduction: Production = {
       id: `prod_exec_${Date.now()}`,
@@ -820,7 +827,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
       quantityProduced,
       costPerUnit: unitCost,
       totalCost,
-      deductedItems: deductions,
+      deductedItems: recordedDeductions,
       notes: notes.trim() || undefined,
       createdAt: new Date().toISOString().split('T')[0],
     };
