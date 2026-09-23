@@ -1231,7 +1231,11 @@ export default function App() {
       const previousItem = previousSale?.items?.find((prevItem) => prevItem.id === item.id);
       const stockProductId = item.isCustom ? item.customProductId : item.productId;
 
-      const legacyConsumed = previousItem?.customStockConsumed ? (previousItem.quantity || 0) : 0;
+      // Older delivered orders did not record stockConsumedQuantity for regular items.
+      // Their stock was already deducted at delivery, so an edit must not deduct it again.
+      const legacyConsumed = previousSale?.deliveryStatus === 'entregue'
+        ? (previousItem?.quantity || 0)
+        : previousItem?.customStockConsumed ? (previousItem.quantity || 0) : 0;
       const previousConsumed = previousItem?.stockConsumedQuantity ?? legacyConsumed;
       const targetConsumed = sale.deliveryStatus === 'entregue' ? item.quantity : 0;
       const deltaToConsume = targetConsumed - previousConsumed;
