@@ -732,9 +732,13 @@ export default function App() {
             return prevMaterials.map((mat) => {
               const deduction = materialDeductions.find((it) => it.targetId === mat.id);
               if (deduction && mat.usageType !== 'durable') {
+                const quantityActuallyDeducted = Math.max(
+                  0,
+                  Number((deduction.stockBefore - Math.max(0, deduction.stockAfter)).toFixed(4))
+                );
                 return {
                   ...mat,
-                  currentStock: Number((mat.currentStock + deduction.quantityTotal).toFixed(4)),
+                  currentStock: Number((mat.currentStock + quantityActuallyDeducted).toFixed(4)),
                   updatedAt: new Date().toISOString().split('T')[0],
                 };
               }
@@ -751,9 +755,13 @@ export default function App() {
               const deduction = productDeductions.find((it) => it.targetId === p.id);
               if (deduction && p.id !== prodToRevert.productId) {
                 const current = p.currentStock ?? 0;
+                const quantityActuallyDeducted = Math.max(
+                  0,
+                  Number((deduction.stockBefore - Math.max(0, deduction.stockAfter)).toFixed(4))
+                );
                 return {
                   ...p,
-                  currentStock: Number((current + deduction.quantityTotal).toFixed(4)),
+                  currentStock: Number((current + quantityActuallyDeducted).toFixed(4)),
                   updatedAt: new Date().toISOString().split('T')[0],
                 };
               }
