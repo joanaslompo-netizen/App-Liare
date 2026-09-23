@@ -64,6 +64,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   atelierName,
   artisanName,
   user,
+  syncStatus,
   onOpenSettings,
   onOpenCloudSync,
 }) => {
@@ -334,8 +335,14 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
               <span>Sincronização Nuvem</span>
             </div>
             {user ? (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
-                Ativa
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
+                syncStatus === 'pending'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                  : syncStatus === 'error'
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                  : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+              }`}>
+                {syncStatus === 'pending' ? 'Pendente' : syncStatus === 'syncing' ? 'Enviando' : syncStatus === 'error' ? 'Atenção' : 'Salvo'}
               </span>
             ) : (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-700 text-stone-400">
