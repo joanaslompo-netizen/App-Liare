@@ -788,7 +788,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       {/* Net Profit & Margin */}
                       <div className="text-left sm:text-center">
                         <span className="text-[11px] uppercase tracking-wider text-emerald-800 block font-semibold">
-                          Lucro Líquido
+                          Fica para você
                         </span>
                         <span className="text-sm font-bold text-emerald-600">
                           +{formatCurrency(p.netProfit)}
@@ -1365,8 +1365,11 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
 
   // Actual price chosen or suggested
   const currentActualPrice = parseFloat(actualPrice) || suggestedPrice;
-  const netProfit = currentActualPrice - unitCostFromBatch;
-  const calculatedMarginPercent = currentActualPrice > 0 ? (netProfit / currentActualPrice) * 100 : 0;
+  const businessUnitCost = materialsUnitCost + fixedUnitCost + otherCostsUnit;
+  const ownerEarnings = currentActualPrice - businessUnitCost;
+  const commercialProfit = ownerEarnings - laborUnitCost;
+  const netProfit = ownerEarnings;
+  const calculatedMarginPercent = currentActualPrice > 0 ? (ownerEarnings / currentActualPrice) * 100 : 0;
 
   // Filter products available to be added as ingredients:
   // Exclude current product and products that already use this product (to avoid cyclic loops)
@@ -1559,8 +1562,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       profitMarginPercent: parsedMargin,
       suggestedPrice,
       actualPrice: finalActualPrice,
-      netProfit: finalActualPrice - unitCostFromBatch,
-      calculatedMarginPercent: finalActualPrice > 0 ? ((finalActualPrice - unitCostFromBatch) / finalActualPrice) * 100 : 0,
+      netProfit: finalActualPrice - businessUnitCost,
+      calculatedMarginPercent: finalActualPrice > 0 ? ((finalActualPrice - businessUnitCost) / finalActualPrice) * 100 : 0,
       currentStock: parsedCurrentStock,
       minStock: parsedMinStock,
       isPaused: product?.isPaused ?? false,
@@ -2349,10 +2352,10 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
             <div className="bg-white rounded-xl p-4 border border-amber-300 shadow-xs grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
               <div className="border-r border-stone-100">
                 <span className="text-[10px] uppercase tracking-wider text-stone-500 block">
-                  Custo Unitário da Peça
+                  Custo real da peça
                 </span>
                 <span className="text-sm font-bold text-stone-900">
-                  {formatCurrency(unitCostFromBatch)}
+                  {formatCurrency(businessUnitCost)}
                 </span>
               </div>
 
@@ -2367,19 +2370,32 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
 
               <div className="border-r border-stone-100">
                 <span className="text-[10px] uppercase tracking-wider text-emerald-800 block font-semibold">
-                  Lucro Líquido por Peça
+                  Total que fica para você
                 </span>
                 <span className="text-base font-extrabold text-emerald-600">
-                  +{formatCurrency(netProfit)}
+                  {netProfit >= 0 ? '+' : ''}{formatCurrency(netProfit)}
                 </span>
               </div>
 
               <div>
                 <span className="text-[10px] uppercase tracking-wider text-emerald-800 block font-semibold">
-                  Margem Real Praticada
+                  Margem real sem mão de obra
                 </span>
                 <span className="text-base font-extrabold text-stone-900">
                   {formatPercent(calculatedMarginPercent)}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div className="bg-white/80 border border-amber-200 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
+                <span className="text-stone-600">Remuneração pelo seu trabalho:</span>
+                <span className="font-bold text-stone-900">{formatCurrency(laborUnitCost)}</span>
+              </div>
+              <div className="bg-white/80 border border-amber-200 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
+                <span className="text-stone-600">Lucro além da mão de obra:</span>
+                <span className={`font-bold ${commercialProfit < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                  {commercialProfit >= 0 ? '+' : ''}{formatCurrency(commercialProfit)}
                 </span>
               </div>
             </div>
