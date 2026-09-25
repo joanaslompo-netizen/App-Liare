@@ -1167,6 +1167,11 @@ export default function App() {
     const productionId = `production_custom_${now}_${Math.random().toString(36).slice(2, 6)}`;
     const materialsCost = deductedItems.reduce((sum, d) => sum + d.totalCost, 0);
     const unitCost = materialsCost;
+    const customBusinessCost =
+      materialsCost +
+      (existingCustomProduct?.fixedCost ?? 0) +
+      (existingCustomProduct?.otherCosts ?? 0);
+    const customLaborRemuneration = existingCustomProduct?.laborCost ?? 0;
 
     const customProduct: Product = {
       id: productId,
@@ -1187,8 +1192,8 @@ export default function App() {
       profitMarginPercent: existingCustomProduct?.profitMarginPercent ?? 0,
       suggestedPrice: existingCustomProduct?.suggestedPrice ?? item.unitPrice,
       actualPrice: item.unitPrice,
-      calculatedMarginPercent: item.unitPrice > 0 ? ((item.unitPrice - unitCost) / item.unitPrice) * 100 : 0,
-      netProfit: item.unitPrice - unitCost,
+      calculatedMarginPercent: item.unitPrice > 0 ? ((item.unitPrice - customBusinessCost) / item.unitPrice) * 100 : 0,
+      netProfit: item.unitPrice - customBusinessCost,
       batchYield: 1,
       unitCostFromBatch: unitCost,
       currentStock: (existingCustomProduct?.currentStock ?? 0) + 1,
@@ -1280,6 +1285,8 @@ export default function App() {
                   (saleItem.reservedQuantity || 0) + 1
                 ),
                 unitCost,
+                unitBusinessCost: customBusinessCost,
+                unitLaborRemuneration: customLaborRemuneration,
                 totalCost: unitCost * saleItem.quantity,
               }
             : saleItem
@@ -1289,12 +1296,24 @@ export default function App() {
           0
         );
         const saleCost = updatedItems.reduce((sum, saleItem) => sum + saleItem.totalCost, 0);
-        const saleProfit = saleRevenue - saleCost;
+        const saleBusinessCost = updatedItems.reduce(
+          (sum, saleItem) => sum + (saleItem.unitBusinessCost ?? saleItem.unitCost) * saleItem.quantity,
+          0
+        );
+        const saleLaborRemuneration = updatedItems.reduce(
+          (sum, saleItem) => sum + (saleItem.unitLaborRemuneration ?? 0) * saleItem.quantity,
+          0
+        );
+        const saleProfit = saleRevenue - saleBusinessCost;
+        const commercialProfit = saleProfit - saleLaborRemuneration;
 
         return {
           ...sale,
           items: updatedItems,
           totalCost: saleCost,
+          totalBusinessCost: saleBusinessCost,
+          totalLaborRemuneration: saleLaborRemuneration,
+          commercialProfit,
           totalProfit: saleProfit,
           marginPercent: saleRevenue > 0 ? (saleProfit / saleRevenue) * 100 : 0,
         };
