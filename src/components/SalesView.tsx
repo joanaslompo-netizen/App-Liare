@@ -40,6 +40,7 @@ import {
 } from '../utils/formatters';
 import { SearchableProductCombobox } from './SearchableProductCombobox';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
+import { getProductFinancialSplit, getSaleFinancials, getSaleItemFinancialSplit } from '../utils/financials';
 
 interface SalesViewProps {
   sales: Sale[];
@@ -202,7 +203,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const totalReceived = sales
     .filter((s) => s.paymentStatus !== 'pendente_pagamento')
     .reduce((acc, s) => acc + s.totalRevenue, 0);
-  const totalProfit = sales.reduce((acc, s) => acc + s.totalProfit, 0);
+  const totalProfit = sales.reduce((acc, s) => acc + getSaleFinancials(s, products).ownerEarnings, 0);
   const isTotalLoss = totalProfit < 0;
   const totalPiecesSold = sales.reduce((acc, s) => acc + s.quantity, 0);
 
@@ -294,13 +295,13 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
         <div className="bg-white p-4.5 rounded-2xl border border-stone-200 shadow-2xs">
           <span className={`text-xs uppercase tracking-wider block font-semibold flex items-center gap-1 ${isTotalLoss ? 'text-red-700' : 'text-emerald-800'}`}>
-            <TrendingUp className={`w-3.5 h-3.5 ${isTotalLoss ? 'text-red-600' : 'text-emerald-600'}`} /> Lucro Líquido Real
+            <TrendingUp className={`w-3.5 h-3.5 ${isTotalLoss ? 'text-red-600' : 'text-emerald-600'}`} /> Total que fica para você
           </span>
           <span className={`text-2xl font-extrabold mt-1 block tracking-tight ${isTotalLoss ? 'text-red-600' : 'text-emerald-600'}`}>
             {totalProfit > 0 ? '+' : ''}{formatCurrency(totalProfit)}
           </span>
           <span className={`text-[11px] font-medium mt-0.5 block ${isTotalLoss ? 'text-red-700' : 'text-emerald-700'}`}>
-            margem calculada sobre custos
+            mão de obra não é tratada como despesa
           </span>
         </div>
 
@@ -723,14 +724,21 @@ export const SalesView: React.FC<SalesViewProps> = ({
                         {formatCurrency(sale.totalRevenue)}
                       </td>
 
-                      {/* Profit & Margin */}
+                      {/* Owner earnings & margin */}
                       <td className="py-3 px-4 text-right">
-                        <span className={`font-bold block ${sale.totalProfit < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                          {sale.totalProfit > 0 ? '+' : ''}{formatCurrency(sale.totalProfit)}
-                        </span>
-                        <span className={`text-[10px] font-semibold ${sale.totalProfit < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
-                          {formatPercent(sale.marginPercent)}
-                        </span>
+                        {(() => {
+                          const financials = getSaleFinancials(sale, products);
+                          return (
+                            <>
+                              <span className={`font-bold block ${financials.ownerEarnings < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                {financials.ownerEarnings > 0 ? '+' : ''}{formatCurrency(financials.ownerEarnings)}
+                              </span>
+                              <span className={`text-[10px] font-semibold ${financials.ownerEarnings < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                                {formatPercent(financials.marginPercent)}
+                              </span>
+                            </>
+                          );
+                        })()}
                       </td>
 
                       {/* Actions */}
@@ -1219,6 +1227,8 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       quantity,
       unitPrice,
       unitCost,
+      unitBusinessCost: unitCost,
+      unitLaborRemuneration: existingCustom?.unitLaborRemuneration ?? 0,
       subtotal: quantity * unitPrice,
       totalCost: quantity * unitCost,
       isCustom: true,
@@ -1340,6 +1350,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       };
       setItems(updated);
     } else {
+      const financialSplit = getProductFinancialSplit(prod);
       const newItem: SaleItem = {
         id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         productId: prod.id,
@@ -1348,6 +1359,8 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
         quantity: q,
         unitPrice: p,
         unitCost: cost,
+        unitBusinessCost: financialSplit.businessCostPerUnit,
+        unitLaborRemuneration: financialSplit.laborRemunerationPerUnit,
         subtotal: q * p,
         totalCost: q * cost,
       };
@@ -1401,6 +1414,14 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   const totalQuantity = items.reduce((acc, it) => acc + it.quantity, 0);
   const subtotalRevenue = items.reduce((acc, it) => acc + (it.subtotal || (it.quantity * it.unitPrice)), 0);
   const totalCost = items.reduce((acc, it) => acc + it.totalCost, 0);
+  const totalBusinessCost = items.reduce((acc, it) => {
+    const split = getSaleItemFinancialSplit(it, products);
+    return acc + split.businessCostPerUnit * it.quantity;
+  }, 0);
+  const totalLaborRemuneration = items.reduce((acc, it) => {
+    const split = getSaleItemFinancialSplit(it, products);
+    return acc + split.laborRemunerationPerUnit * it.quantity;
+  }, 0);
 
   const effectiveDiscountType: DiscountType | undefined =
     discountMode === 'code'
@@ -1420,7 +1441,8 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       ? Math.min(subtotalRevenue, effectiveDiscountValue)
       : 0;
   const totalRevenue = Math.max(0, subtotalRevenue - discountAmount);
-  const totalProfit = totalRevenue - totalCost;
+  const totalProfit = totalRevenue - totalBusinessCost;
+  const commercialProfit = totalProfit - totalLaborRemuneration;
   const marginPercent = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
   const isLoss = totalProfit < 0;
 
@@ -1473,6 +1495,9 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       discountCodeId: discountMode === 'code' ? appliedDiscountCode?.id : undefined,
       totalRevenue,
       totalCost,
+      totalBusinessCost,
+      totalLaborRemuneration,
+      commercialProfit,
       totalProfit,
       marginPercent,
       customerId: customerId || undefined,
