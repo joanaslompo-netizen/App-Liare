@@ -21,7 +21,7 @@ import {
   Clock,
   RotateCcw
 } from 'lucide-react';
-import { Production, Product, Material, ProductionIngredientDeduction } from '../types';
+import { Production, Product, Material, ProductionIngredientDeduction, RecipeItem } from '../types';
 import { 
   formatCurrency, 
   formatDate, 
@@ -37,6 +37,11 @@ interface ProductionsViewProps {
   products: Product[];
   materials: Material[];
   onSaveProduction: (production: Production, updateStock: boolean) => void;
+  onAdvanceProductionStage: (
+    production: Production,
+    deductions: ProductionIngredientDeduction[],
+    finishedQuantityDelta: number
+  ) => void;
   onDeleteProduction: (id: string, revertStock: boolean) => void;
   onNavigateToProducts?: () => void;
   initialProductToProduce?: Product | null;
@@ -50,6 +55,7 @@ export const ProductionsView: React.FC<ProductionsViewProps> = ({
   products,
   materials,
   onSaveProduction,
+  onAdvanceProductionStage,
   onDeleteProduction,
   onNavigateToProducts,
   initialProductToProduce = null,
@@ -59,11 +65,13 @@ export const ProductionsView: React.FC<ProductionsViewProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'final' | 'intermediate'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'in_progress' | 'completed'>('all');
   const [isModalOpen, setIsModalOpen] = useState(!!(initialProductToProduce || initialSelectedProduct));
   const [selectedProductForProduction, setSelectedProductForProduction] = useState<Product | null>(
     initialProductToProduce || initialSelectedProduct || null
   );
   const [viewingProduction, setViewingProduction] = useState<Production | null>(null);
+  const [advancingProduction, setAdvancingProduction] = useState<Production | null>(null);
   const [expandedProductionIds, setExpandedProductionIds] = useState<Set<string>>(new Set());
 
   // Listen to incoming initial product to produce
@@ -97,10 +105,13 @@ export const ProductionsView: React.FC<ProductionsViewProps> = ({
           (typeFilter === 'intermediate' && p.isIntermediate) ||
           (typeFilter === 'final' && !p.isIntermediate);
 
-        return matchesSearch && matchesType;
+        const normalizedStatus = p.status || 'completed';
+        const matchesStatus = statusFilter === 'all' || normalizedStatus === statusFilter;
+
+        return matchesSearch && matchesType && matchesStatus;
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [productions, searchTerm, typeFilter]);
+  }, [productions, searchTerm, typeFilter, statusFilter]);
 
   // Totals calculations
   const totalUnitsProduced = useMemo(() => {
@@ -228,7 +239,40 @@ export const ProductionsView: React.FC<ProductionsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-          <div className="flex bg-stone-100 p-1 rounded-lg border border-stone-200/80 text-xs">
+          <div className="flex bg-amber-50 p-1 rounded-lg border border-amber-200/80 text-xs shrink-0">
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`px-3 py-1.5 rounded-md font-medium transition-all ${
+                statusFilter === 'all'
+                  ? 'bg-white text-stone-900 shadow-2xs font-semibold'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              Todas
+            </button>
+            <button
+              onClick={() => setStatusFilter('in_progress')}
+              className={`px-3 py-1.5 rounded-md font-medium transition-all ${
+                statusFilter === 'in_progress'
+                  ? 'bg-white text-amber-900 shadow-2xs font-semibold'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              Em andamento ({productions.filter((p) => p.status === 'in_progress').length})
+            </button>
+            <button
+              onClick={() => setStatusFilter('completed')}
+              className={`px-3 py-1.5 rounded-md font-medium transition-all ${
+                statusFilter === 'completed'
+                  ? 'bg-white text-emerald-800 shadow-2xs font-semibold'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              Concluídas
+            </button>
+          </div>
+
+          <div className="flex bg-stone-100 p-1 rounded-lg border border-stone-200/80 text-xs shrink-0">
             <button
               onClick={() => setTypeFilter('all')}
               className={`px-3 py-1.5 rounded-md font-medium transition-all ${
@@ -310,7 +354,9 @@ export const ProductionsView: React.FC<ProductionsViewProps> = ({
                   <span className="min-w-0 flex-1">
                     <span className="font-semibold text-[#352f2b] text-xs block truncate">{prod.productName}</span>
                     <span className="text-[11px] text-[#9d9189] block truncate">
-                      {prod.quantityProduced} {prod.quantityProduced === 1 ? 'unidade' : 'unidades'} · {formatDate(prod.date)}
+                      {prod.status === 'in_progress'
+                        ? `${prod.quantityProduced} prontas de ${prod.targetQuantity || prod.batchCount * prod.batchYield} · em andamento`
+                        : `${prod.quantityProduced} ${prod.quantityProduced === 1 ? 'unidade' : 'unidades'} · ${formatDate(prod.date)}`}
                     </span>
                   </span>
                   <span className="shrink-0 text-right">
@@ -332,14 +378,42 @@ export const ProductionsView: React.FC<ProductionsViewProps> = ({
                           referrerPolicy="no-referrer"
                         />
                       )}
-                      <div className="min-w-0 space-y-1">
+                      <div className="min-w-0 space-y-1 flex-1">
                         <p>{prod.productCategory ? `${prod.productCategory} · ` : ''}{prod.isIntermediate ? 'Componente / Sub-produto' : 'Produto Final'}</p>
                         <p>{prod.batchCount} {prod.batchCount === 1 ? 'batelada' : 'bateladas'}{prod.batchYield > 1 ? ` · ${prod.batchYield} un/batelada` : ''} · {formatCurrency(prod.costPerUnit)} / un</p>
                         <p>{prod.deductedItems.length} insumos baixados</p>
+                        {prod.stageProgress && prod.stageProgress.length > 0 && (
+                          <div className="pt-1 space-y-1.5">
+                            {prod.stageProgress.map((stage) => {
+                              const planned = Math.max(1, stage.plannedQuantity);
+                              const pct = Math.min(100, (stage.completedQuantity / planned) * 100);
+                              return (
+                                <div key={stage.stageId}>
+                                  <div className="flex items-center justify-between text-[10px]">
+                                    <span>{stage.order + 1}. {stage.stageName}</span>
+                                    <strong>{formatNumber(stage.completedQuantity)}/{formatNumber(stage.plannedQuantity)}</strong>
+                                  </div>
+                                  <div className="h-1.5 rounded-full bg-stone-200 overflow-hidden">
+                                    <div className="h-full bg-amber-500 transition-all" style={{ width: `${pct}%` }} />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                         {prod.notes && <p className="italic break-words">{prod.notes}</p>}
                       </div>
                     </div>
-                    <div className="flex gap-2 mt-3">
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {prod.status === 'in_progress' && prod.stageProgress && prod.stageProgress.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setAdvancingProduction(prod)}
+                          className="px-3 py-2 rounded-lg bg-stone-900 text-white font-semibold cursor-pointer"
+                        >
+                          Continuar produção
+                        </button>
+                      )}
                       <button type="button" onClick={() => setViewingProduction(prod)} className="px-3 py-2 rounded-lg bg-white border border-[#eadfd6] text-[#352f2b] font-medium cursor-pointer">Ver ordem completa</button>
                       <button type="button" onClick={() => handleDelete(prod)} className="px-3 py-2 rounded-lg bg-white border border-rose-200 text-rose-700 font-medium cursor-pointer">Excluir</button>
                     </div>
@@ -420,6 +494,21 @@ export const ProductionsView: React.FC<ProductionsViewProps> = ({
           presetProduct={selectedProductForProduction}
           onClose={handleCloseModal}
           onSave={onSaveProduction}
+        />
+      )}
+
+      {/* Stage Progress Modal */}
+      {advancingProduction && (
+        <StageProgressModal
+          production={advancingProduction}
+          product={products.find((p) => p.id === advancingProduction.productId) || null}
+          products={products}
+          materials={materials}
+          onClose={() => setAdvancingProduction(null)}
+          onAdvance={(updated, deductions, finishedQuantityDelta) => {
+            onAdvanceProductionStage(updated, deductions, finishedQuantityDelta);
+            setAdvancingProduction(null);
+          }}
         />
       )}
 
