@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, X, Check, Tag, ChevronDown, ChevronLeft, Layers, Sparkles } from 'lucide-react';
 import { Product } from '../types';
 import { formatCurrency, normalizeSearchText } from '../utils/formatters';
+import { getProductFinancialSplit } from '../utils/financials';
 
 interface SearchableProductComboboxProps {
   products: Product[];
@@ -476,7 +477,10 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
                                 </span>
                                 <span>•</span>
                                 <span className="text-emerald-700 font-semibold">
-                                  Lucro: +{formatCurrency(prod.actualPrice - unitCost)}
+                                  Para você: {(() => {
+                                    const ownerEarnings = prod.actualPrice - getProductFinancialSplit(prod).businessCostPerUnit;
+                                    return `${ownerEarnings >= 0 ? '+' : ''}${formatCurrency(ownerEarnings)}`;
+                                  })()}
                                 </span>
                               </div>
                             )}
