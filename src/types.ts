@@ -128,8 +128,8 @@ export interface Product {
   fixedCost: number;
   otherCosts: number; // packaging, shipping boxes, gifts
   totalCost: number;
-  profitMarginPercent: number; // Desired profit margin (e.g. 50%)
-  suggestedPrice: number; // Recommended retail price
+  profitMarginPercent: number; // Desired margin applied to material costs only (e.g. 50%)
+  suggestedPrice: number; // Materials with margin + labor and remaining costs at cost value
   actualPrice: number; // Actual selling price chosen
   calculatedMarginPercent: number; // Actual margin achieved
   netProfit: number; // actualPrice - totalCost
