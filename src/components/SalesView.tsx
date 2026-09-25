@@ -483,7 +483,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                   <th className="py-3 px-4">Status de Entrega</th>
                   <th className="py-3 px-4">Status de Pagamento</th>
                   <th className="py-3 px-4 text-right">Valor Total</th>
-                  <th className="py-3 px-4 text-right">Lucro Líquido</th>
+                  <th className="py-3 px-4 text-right">Para você</th>
                   <th className="py-3 px-4 text-center">Ações</th>
                 </tr>
               </thead>
@@ -2602,11 +2602,21 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                 <span className="font-bold text-stone-900">{formatCurrency(totalRevenue)}</span>
               </div>
               <div className="flex justify-between text-stone-600">
-                <span>Custo de Produção Total dos Itens:</span>
-                <span>{formatCurrency(totalCost)}</span>
+                <span>Custo do negócio (sem sua mão de obra):</span>
+                <span>{formatCurrency(totalBusinessCost)}</span>
+              </div>
+              <div className="flex justify-between text-stone-600">
+                <span>Remuneração do seu trabalho:</span>
+                <span className="font-semibold text-stone-900">{formatCurrency(totalLaborRemuneration)}</span>
+              </div>
+              <div className="flex justify-between text-stone-600">
+                <span>Lucro além da mão de obra:</span>
+                <span className={`font-semibold ${commercialProfit < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                  {commercialProfit >= 0 ? '+' : ''}{formatCurrency(commercialProfit)}
+                </span>
               </div>
               <div className={`pt-2 border-t flex justify-between items-baseline ${isLoss ? 'border-red-200' : 'border-emerald-200'}`}>
-                <span className={`font-bold ${isLoss ? 'text-red-950' : 'text-emerald-950'}`}>Lucro Líquido Real:</span>
+                <span className={`font-bold ${isLoss ? 'text-red-950' : 'text-emerald-950'}`}>Total que fica para você:</span>
                 <div className="text-right">
                   <span className={`text-lg font-extrabold ${isLoss ? 'text-red-700' : 'text-emerald-700'}`}>
                     {totalProfit > 0 ? '+' : ''}{formatCurrency(totalProfit)}
