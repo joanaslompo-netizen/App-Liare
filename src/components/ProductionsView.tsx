@@ -1257,6 +1257,503 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
 };
 
 // ==========================================
+// Stage Progress Modal
+// ==========================================
+
+interface StageProgressModalProps {
+  production: Production;
+  product: Product | null;
+  products: Product[];
+  materials: Material[];
+  onClose: () => void;
+  onAdvance: (
+    production: Production,
+    deductions: ProductionIngredientDeduction[],
+    finishedQuantityDelta: number
+  ) => void;
+}
+
+const mergeDeductionLists = (
+  current: ProductionIngredientDeduction[],
+  additions: ProductionIngredientDeduction[]
+): ProductionIngredientDeduction[] => {
+  const merged = current.map((item) => ({ ...item }));
+
+  additions.forEach((addition) => {
+    const existing = merged.find(
+      (item) => item.type === addition.type && item.targetId === addition.targetId
+    );
+
+    if (!existing) {
+      merged.push({ ...addition });
+      return;
+    }
+
+    existing.quantityTotal = Number((existing.quantityTotal + addition.quantityTotal).toFixed(4));
+    existing.totalCost = Number((existing.totalCost + addition.totalCost).toFixed(4));
+    existing.stockAfter = addition.stockAfter;
+    existing.unitCost = addition.unitCost;
+    existing.quantityPerBatch = Math.max(existing.quantityPerBatch, addition.quantityPerBatch);
+  });
+
+  return merged;
+};
+
+const StageProgressModal: React.FC<StageProgressModalProps> = ({
+  production,
+  product,
+  products,
+  materials,
+  onClose,
+  onAdvance,
+}) => {
+  const sortedStages = useMemo(
+    () => [...(production.stageProgress || [])].sort((a, b) => a.order - b.order),
+    [production.stageProgress]
+  );
+
+  const firstPendingStage = sortedStages.find(
+    (stage) => stage.completedQuantity < stage.plannedQuantity
+  );
+  const [selectedStageId, setSelectedStageId] = useState<string>(
+    firstPendingStage?.stageId || sortedStages[0]?.stageId || ''
+  );
+  const [quantity, setQuantity] = useState<string>('0');
+
+  const selectedStageIndex = sortedStages.findIndex((stage) => stage.stageId === selectedStageId);
+  const selectedStage = selectedStageIndex >= 0 ? sortedStages[selectedStageIndex] : null;
+  const targetQuantity = production.targetQuantity || production.batchCount * production.batchYield;
+  const previousCompleted = selectedStageIndex <= 0
+    ? targetQuantity
+    : sortedStages[selectedStageIndex - 1]?.completedQuantity || 0;
+  const availableToAdvance = selectedStage
+    ? Math.max(0, previousCompleted - selectedStage.completedQuantity)
+    : 0;
+  const isFinalStage = selectedStageIndex === sortedStages.length - 1;
+  const batchYield = Math.max(0.0001, production.batchYield || 1);
+  const recipeItems: RecipeItem[] = production.recipeItemsSnapshot || product?.items || [];
+  const stageRecipeItems = selectedStage
+    ? recipeItems.filter((item) => item.productionStageId === selectedStage.stageId)
+    : [];
+
+  useEffect(() => {
+    setQuantity(availableToAdvance > 0 ? String(availableToAdvance) : '0');
+  }, [selectedStageId, availableToAdvance]);
+
+  const makeVariableKey = (productItemId: string, virtualMaterialId: string, recipeItemId: string) =>
+    `${productItemId}::${virtualMaterialId}::${recipeItemId}`;
+
+  const buildStageDeductions = (quantityToAdvance: number) => {
+    let shortage = false;
+    let missingVariable = false;
+    type PendingDeduction = Omit<ProductionIngredientDeduction, 'quantityTotal' | 'totalCost' | 'stockBefore' | 'stockAfter'>;
+    const aggregated = new Map<string, PendingDeduction>();
+    const batchFactor = quantityToAdvance / batchYield;
+
+    const addIngredient = (
+      id: string,
+      targetId: string,
+      type: 'material' | 'product',
+      name: string,
+      unit: string,
+      quantityPerBatch: number,
+      unitCost: number
+    ) => {
+      const key = `${type}:${targetId}`;
+      const existing = aggregated.get(key);
+      if (existing) {
+        existing.quantityPerBatch += quantityPerBatch;
+        return;
+      }
+      aggregated.set(key, {
+        id,
+        targetId,
+        type,
+        name,
+        unit,
+        quantityPerBatch,
+        unitCost,
+      });
+    };
+
+    stageRecipeItems.forEach((item) => {
+      if (item.type === 'material') {
+        const mat = materials.find((material) => material.id === item.targetId);
+        if (mat?.usageType === 'durable') return;
+
+        if (mat?.isVirtualRecipe && mat.recipeItems?.length) {
+          const virtualYield = Math.max(0.0001, mat.batchYield || 1);
+          const scalePerProductBatch = item.quantity / virtualYield;
+
+          mat.recipeItems.forEach((recipeItem) => {
+            const expandedQuantityPerBatch = recipeItem.quantity * scalePerProductBatch;
+
+            if (
+              recipeItem.type === 'material' &&
+              recipeItem.selectionMode === 'category' &&
+              recipeItem.targetCategory
+            ) {
+              const selectionKey = makeVariableKey(item.id, mat.id, recipeItem.id);
+              const chosenId =
+                item.categorySelections?.[recipeItem.id] ||
+                production.variableSelections?.[selectionKey];
+              const chosen = materials.find(
+                (material) =>
+                  material.id === chosenId &&
+                  !material.isVirtualRecipe &&
+                  material.category === recipeItem.targetCategory
+              );
+
+              if (!chosen) {
+                missingVariable = true;
+                return;
+              }
+
+              if (chosen.usageType !== 'durable') {
+                addIngredient(
+                  `${item.id}_${recipeItem.id}`,
+                  chosen.id,
+                  'material',
+                  chosen.name,
+                  UNIT_SHORT[chosen.unit] || recipeItem.unit,
+                  expandedQuantityPerBatch,
+                  chosen.unitCost
+                );
+              }
+              return;
+            }
+
+            if (recipeItem.type === 'material') {
+              const childMaterial = materials.find(
+                (material) => material.id === recipeItem.targetId
+              );
+              if (childMaterial) {
+                if (childMaterial.usageType !== 'durable') {
+                  addIngredient(
+                    `${item.id}_${recipeItem.id}`,
+                    childMaterial.id,
+                    'material',
+                    childMaterial.name,
+                    UNIT_SHORT[childMaterial.unit] || recipeItem.unit,
+                    expandedQuantityPerBatch,
+                    childMaterial.unitCost
+                  );
+                }
+              } else {
+                addIngredient(
+                  `${item.id}_${recipeItem.id}`,
+                  recipeItem.targetId,
+                  'material',
+                  recipeItem.name,
+                  recipeItem.unit,
+                  expandedQuantityPerBatch,
+                  recipeItem.unitCost
+                );
+              }
+              return;
+            }
+
+            const childProduct = products.find((candidate) => candidate.id === recipeItem.targetId);
+            const childUnitCost = childProduct
+              ? (childProduct.unitCostFromBatch > 0 ? childProduct.unitCostFromBatch : childProduct.totalCost)
+              : recipeItem.unitCost;
+            addIngredient(
+              `${item.id}_${recipeItem.id}`,
+              recipeItem.targetId,
+              'product',
+              childProduct?.name || recipeItem.name,
+              recipeItem.unit,
+              expandedQuantityPerBatch,
+              childUnitCost
+            );
+          });
+          return;
+        }
+
+        addIngredient(
+          item.id,
+          item.targetId,
+          'material',
+          mat?.name || item.name,
+          mat ? (UNIT_SHORT[mat.unit] || item.unit) : item.unit,
+          item.quantity,
+          mat?.unitCost ?? item.unitCost
+        );
+        return;
+      }
+
+      const subProduct = products.find((candidate) => candidate.id === item.targetId);
+      const subUnitCost = subProduct
+        ? (subProduct.unitCostFromBatch > 0 ? subProduct.unitCostFromBatch : subProduct.totalCost)
+        : item.unitCost;
+      addIngredient(
+        item.id,
+        item.targetId,
+        'product',
+        subProduct?.name || item.name,
+        item.unit,
+        item.quantity,
+        subUnitCost
+      );
+    });
+
+    const deductions = Array.from(aggregated.values()).map((item) => {
+      const quantityTotal = item.quantityPerBatch * batchFactor;
+      const stockBefore = item.type === 'material'
+        ? (materials.find((material) => material.id === item.targetId)?.currentStock ?? 0)
+        : (products.find((candidate) => candidate.id === item.targetId)?.currentStock ?? 0);
+      const stockAfter = stockBefore - quantityTotal;
+      if (stockAfter < 0) shortage = true;
+
+      return {
+        ...item,
+        quantityTotal,
+        totalCost: item.unitCost * quantityTotal,
+        stockBefore,
+        stockAfter,
+      };
+    });
+
+    return { deductions, shortage, missingVariable, batchFactor };
+  };
+
+  const parsedQuantity = Math.max(0, Number(quantity) || 0);
+  const preview = buildStageDeductions(Math.min(parsedQuantity, availableToAdvance));
+
+  const handleAdvance = () => {
+    if (!selectedStage || !product) {
+      alert('Não foi possível localizar a receita desta produção.');
+      return;
+    }
+
+    if (parsedQuantity <= 0) {
+      alert('Informe uma quantidade maior que zero.');
+      return;
+    }
+
+    if (parsedQuantity > availableToAdvance + 0.0001) {
+      alert(
+        selectedStageIndex === 0
+          ? 'A quantidade informada ultrapassa o total planejado desta produção.'
+          : 'Esta quantidade ainda não concluiu a etapa anterior.'
+      );
+      return;
+    }
+
+    const result = buildStageDeductions(parsedQuantity);
+    if (result.missingVariable) {
+      alert('Falta uma escolha de material variável nesta ordem de produção.');
+      return;
+    }
+
+    const tracksStock = production.stockTrackingEnabled !== false;
+    if (result.shortage && tracksStock) {
+      const proceed = window.confirm(
+        'Alguns insumos desta etapa não possuem saldo suficiente. Ao continuar, o estoque desses itens será ajustado para zero. Deseja registrar a etapa mesmo assim?'
+      );
+      if (!proceed) return;
+    }
+
+    const recordedDeductions = tracksStock
+      ? result.deductions.map((deduction) => ({
+          ...deduction,
+          stockAfter: Math.max(0, Number(deduction.stockAfter.toFixed(4))),
+        }))
+      : result.deductions;
+
+    const nextCompletedQuantity = Number(
+      (selectedStage.completedQuantity + parsedQuantity).toFixed(4)
+    );
+
+    const nextStageProgress = sortedStages.map((stage) => {
+      if (stage.stageId !== selectedStage.stageId) return stage;
+      return {
+        ...stage,
+        completedQuantity: nextCompletedQuantity,
+        deductedItems: mergeDeductionLists(stage.deductedItems || [], recordedDeductions),
+      };
+    });
+
+    const ingredientCostDelta = recordedDeductions.reduce(
+      (sum, deduction) => sum + deduction.totalCost,
+      0
+    );
+    const laborCostDelta =
+      ((selectedStage.laborMinutes || 0) / 60) *
+      (product.hourlyRate || 0) *
+      result.batchFactor;
+    const finalOverheadDelta = isFinalStage
+      ? ((product.fixedCost || 0) + (product.otherCosts || 0)) * result.batchFactor
+      : 0;
+    const finishedQuantityDelta = isFinalStage ? parsedQuantity : 0;
+    const nextFinishedQuantity = Number(
+      (production.quantityProduced + finishedQuantityDelta).toFixed(4)
+    );
+    const isCompleted =
+      isFinalStage &&
+      nextCompletedQuantity >= targetQuantity - 0.0001;
+
+    const updatedProduction: Production = {
+      ...production,
+      status: isCompleted ? 'completed' : 'in_progress',
+      quantityProduced: nextFinishedQuantity,
+      totalCost: Number(
+        (production.totalCost + ingredientCostDelta + laborCostDelta + finalOverheadDelta).toFixed(4)
+      ),
+      deductedItems: mergeDeductionLists(production.deductedItems || [], recordedDeductions),
+      stageProgress: nextStageProgress,
+      completedAt: isCompleted ? new Date().toISOString().split('T')[0] : undefined,
+    };
+
+    onAdvance(updatedProduction, recordedDeductions, finishedQuantityDelta);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-2xl my-6 overflow-hidden flex flex-col max-h-[92vh]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-stone-200 bg-stone-50 shrink-0">
+          <div>
+            <h3 className="font-bold text-stone-900 text-base">Continuar produção</h3>
+            <p className="text-xs text-stone-500">{production.productName} · {formatNumber(targetQuantity)} un planejadas</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-5 overflow-y-auto space-y-4">
+          <div className="space-y-2">
+            {sortedStages.map((stage, index) => {
+              const complete = stage.completedQuantity >= stage.plannedQuantity - 0.0001;
+              const unlocked = index === 0 || (sortedStages[index - 1]?.completedQuantity || 0) > stage.completedQuantity;
+              const pct = Math.min(100, (stage.completedQuantity / Math.max(1, stage.plannedQuantity)) * 100);
+              return (
+                <button
+                  key={stage.stageId}
+                  type="button"
+                  onClick={() => setSelectedStageId(stage.stageId)}
+                  className={`w-full p-3 rounded-xl border text-left transition-colors ${
+                    selectedStageId === stage.stageId
+                      ? 'border-amber-400 bg-amber-50/60'
+                      : 'border-stone-200 bg-white hover:border-stone-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-stone-400">Etapa {index + 1}</span>
+                      <p className="text-sm font-semibold text-stone-900">{stage.stageName}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-xs font-bold ${complete ? 'text-emerald-700' : unlocked ? 'text-amber-800' : 'text-stone-400'}`}>
+                        {formatNumber(stage.completedQuantity)}/{formatNumber(stage.plannedQuantity)}
+                      </span>
+                      <span className="block text-[9px] text-stone-400">{complete ? 'concluída' : unlocked ? 'disponível' : 'aguardando etapa anterior'}</span>
+                    </div>
+                  </div>
+                  <div className="h-1.5 mt-2 rounded-full bg-stone-100 overflow-hidden">
+                    <div className={`h-full ${complete ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedStage && (
+            <div className="rounded-xl border border-stone-200 bg-stone-50 p-4 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-bold text-stone-900">{selectedStage.stageName}</h4>
+                  <p className="text-[11px] text-stone-500 mt-0.5">
+                    {selectedStageIndex === 0
+                      ? 'Registre quantas unidades tiveram esta etapa concluída agora.'
+                      : `Há ${formatNumber(availableToAdvance)} un liberadas pela etapa anterior.`}
+                  </p>
+                </div>
+                <span className="text-[10px] font-semibold text-stone-500 bg-white border border-stone-200 rounded-md px-2 py-1">
+                  {selectedStage.laborMinutes || 0} min/batelada
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-stone-600 mb-1">Quantidade concluída agora</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity(String(Math.max(0, parsedQuantity - 1)))}
+                    className="w-9 h-9 rounded-lg bg-white border border-stone-300 font-bold text-stone-700"
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    min="0"
+                    max={availableToAdvance}
+                    step="1"
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    className="flex-1 px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-center font-bold text-stone-900 focus:ring-2 focus:ring-amber-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setQuantity(String(Math.min(availableToAdvance, parsedQuantity + 1)))}
+                    className="w-9 h-9 rounded-lg bg-white border border-stone-300 font-bold text-stone-700"
+                  >
+                    +
+                  </button>
+                </div>
+                <p className="text-[10px] text-stone-500 mt-1">
+                  Máximo disponível agora: {formatNumber(availableToAdvance)} un
+                </p>
+              </div>
+
+              <div>
+                <h5 className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-2">
+                  Baixa desta etapa
+                </h5>
+                {preview.deductions.length === 0 ? (
+                  <p className="text-[11px] text-stone-500 bg-white border border-stone-200 rounded-lg p-3">
+                    Esta etapa não possui insumos consumíveis. Apenas o progresso e a mão de obra serão registrados.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {preview.deductions.map((deduction) => (
+                      <div key={`${deduction.type}-${deduction.targetId}`} className="flex items-center justify-between gap-3 bg-white border border-stone-200 rounded-lg px-3 py-2 text-[11px]">
+                        <span className="font-medium text-stone-800 truncate">{deduction.name}</span>
+                        <span className={`font-bold shrink-0 ${deduction.stockAfter < 0 ? 'text-rose-700' : 'text-stone-700'}`}>
+                          -{formatNumber(deduction.quantityTotal)} {deduction.unit}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-stone-200 bg-stone-50 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100 rounded-lg"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleAdvance}
+            disabled={!selectedStage || parsedQuantity <= 0 || availableToAdvance <= 0}
+            className="px-4 py-2 text-sm font-semibold text-white bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 disabled:text-stone-500 rounded-lg"
+          >
+            {isFinalStage ? 'Concluir etapa e adicionar ao estoque' : 'Registrar etapa'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
 // View Production Details Modal
 // ==========================================
 
