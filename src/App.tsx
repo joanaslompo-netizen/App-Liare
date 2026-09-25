@@ -878,10 +878,65 @@ export default function App() {
     }
   }, []);
 
+  const handleAdvanceProductionStage = useCallback((
+    production: Production,
+    deductions: ProductionIngredientDeduction[],
+    finishedQuantityDelta: number
+  ) => {
+    setProductions((prev) => prev.map((item) => (
+      item.id === production.id ? production : item
+    )));
+
+    if (production.stockTrackingEnabled === false) return;
+
+    if (finishedQuantityDelta > 0) {
+      setProducts((prevProducts) => prevProducts.map((product) => {
+        if (product.id !== production.productId) return product;
+        return {
+          ...product,
+          currentStock: Number(((product.currentStock ?? 0) + finishedQuantityDelta).toFixed(4)),
+          updatedAt: new Date().toISOString().split('T')[0],
+        };
+      }));
+    }
+
+    const materialDeductions = deductions.filter((item) => item.type === 'material');
+    if (materialDeductions.length > 0) {
+      setMaterials((prevMaterials) => prevMaterials.map((material) => {
+        const deduction = materialDeductions.find((item) => item.targetId === material.id);
+        if (!deduction || material.usageType === 'durable') return material;
+        return {
+          ...material,
+          currentStock: Math.max(
+            0,
+            Number((material.currentStock - deduction.quantityTotal).toFixed(4))
+          ),
+          updatedAt: new Date().toISOString().split('T')[0],
+        };
+      }));
+    }
+
+    const productDeductions = deductions.filter((item) => item.type === 'product');
+    if (productDeductions.length > 0) {
+      setProducts((prevProducts) => prevProducts.map((product) => {
+        const deduction = productDeductions.find((item) => item.targetId === product.id);
+        if (!deduction || product.id === production.productId) return product;
+        return {
+          ...product,
+          currentStock: Math.max(
+            0,
+            Number(((product.currentStock ?? 0) - deduction.quantityTotal).toFixed(4))
+          ),
+          updatedAt: new Date().toISOString().split('T')[0],
+        };
+      }));
+    }
+  }, []);
+
   const handleDeleteProduction = useCallback((id: string, revertStock: boolean) => {
     setProductions((prev) => {
       const prodToRevert = prev.find((p) => p.id === id);
-      if (revertStock && prodToRevert) {
+      if (revertStock && prodToRevert && prodToRevert.stockTrackingEnabled !== false) {
         // Estorna o produto produzido (diminui)
         setProducts((prevProducts) => {
           return prevProducts.map((p) => {
@@ -1795,6 +1850,7 @@ export default function App() {
             products={products}
             materials={materials}
             onSaveProduction={handleSaveProduction}
+            onAdvanceProductionStage={handleAdvanceProductionStage}
             onDeleteProduction={handleDeleteProduction}
             onNavigateToProducts={() => setActiveTab('products')}
             initialSelectedProduct={productionInitialProduct}
