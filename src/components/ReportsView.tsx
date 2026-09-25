@@ -21,6 +21,7 @@ import {
   formatMonthYear, 
   formatNumber 
 } from '../utils/formatters';
+import { getSaleFinancials } from '../utils/financials';
 
 interface ReportsViewProps {
   sales: Sale[];
@@ -66,8 +67,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
   // Aggregate metrics
   const totalRevenue = monthSales.reduce((acc, s) => acc + s.totalRevenue, 0);
-  const totalCostOfGoodsSold = monthSales.reduce((acc, s) => acc + s.totalCost, 0);
-  const netProfit = monthSales.reduce((acc, s) => acc + s.totalProfit, 0);
+  const totalCostOfGoodsSold = monthSales.reduce((acc, s) => acc + getSaleFinancials(s, products).businessCost, 0);
+  const netProfit = monthSales.reduce((acc, s) => acc + getSaleFinancials(s, products).ownerEarnings, 0);
   const marginPercent = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
   const totalMaterialPurchases = monthPurchases.reduce((acc, p) => acc + p.totalAmount, 0);
 
@@ -93,11 +94,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         name: s.productName,
         qty: existing.qty + s.quantity,
         revenue: existing.revenue + s.totalRevenue,
-        profit: existing.profit + s.totalProfit,
+        profit: existing.profit + getSaleFinancials(s, products).ownerEarnings,
       });
     });
     return Array.from(map.values()).sort((a, b) => b.profit - a.profit);
-  }, [monthSales]);
+  }, [monthSales, products]);
 
   // Material spending breakdown by category (from purchases in the month)
   const categorySpending = useMemo(() => {
@@ -138,7 +139,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       const mSales = sales.filter((s) => s.date.startsWith(mKey));
       const mPurchases = purchases.filter((p) => p.date.startsWith(mKey));
       const rev = mSales.reduce((acc, s) => acc + s.totalRevenue, 0);
-      const prof = mSales.reduce((acc, s) => acc + s.totalProfit, 0);
+      const prof = mSales.reduce((acc, s) => acc + getSaleFinancials(s, products).ownerEarnings, 0);
       const pur = mPurchases.reduce((acc, p) => acc + p.totalAmount, 0);
       return {
         monthKey: mKey,
@@ -148,7 +149,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         purchases: pur,
       };
     });
-  }, [availableMonths, sales, purchases]);
+  }, [availableMonths, sales, purchases, products]);
 
   const maxChartValue = Math.max(
     ...historicalTrend.map((h) => Math.max(h.revenue, h.purchases, 100)),
@@ -164,7 +165,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             Relatórios Mensais de Desempenho
           </h2>
           <p className="text-sm text-stone-500 mt-0.5">
-            Análise de faturamento, custo das peças, compras de estoque e lucro real do seu ateliê.
+            Análise de faturamento, custo das peças, compras de estoque e quanto fica para você e a margem real do ateliê.
           </p>
         </div>
 
@@ -238,13 +239,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         {/* Net Profit */}
         <div className="bg-emerald-50/70 p-5 rounded-2xl border border-emerald-200/90 shadow-2xs">
           <span className="text-xs uppercase tracking-wider text-emerald-900 font-bold block flex items-center gap-1">
-            <TrendingUp className="w-3.5 h-3.5 text-emerald-700" /> Lucro Líquido Real
+            <TrendingUp className="w-3.5 h-3.5 text-emerald-700" /> Total que fica para você
           </span>
           <span className="text-2xl sm:text-3xl font-black text-emerald-700 mt-1 block">
             +{formatCurrency(netProfit)}
           </span>
           <div className="flex items-center gap-1.5 mt-1 text-xs font-semibold text-emerald-800">
-            <span>Margem Real: {formatPercent(marginPercent)}</span>
+            <span>Margem sem mão de obra: {formatPercent(marginPercent)}</span>
           </div>
         </div>
 
@@ -298,7 +299,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <div>
                 <h3 className="text-base font-bold text-stone-900 flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-amber-600" />
-                  Evolução Mensal (Receitas vs Compras vs Lucro)
+                  Evolução Mensal (Receitas vs Compras vs Valor para Você)
                 </h3>
                 <p className="text-xs text-stone-500">
                   Comparativo dos últimos meses do seu ateliê
@@ -310,7 +311,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   <span className="w-3 h-3 rounded-xs bg-stone-900" /> Receita
                 </span>
                 <span className="inline-flex items-center gap-1 text-stone-600">
-                  <span className="w-3 h-3 rounded-xs bg-emerald-500" /> Lucro
+                  <span className="w-3 h-3 rounded-xs bg-emerald-500" /> Para você
                 </span>
                 <span className="inline-flex items-center gap-1 text-stone-600">
                   <span className="w-3 h-3 rounded-xs bg-amber-400" /> Compras
@@ -338,7 +339,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                       <div
                         style={{ height: `${profHeight}%` }}
                         className="w-1/3 bg-emerald-500 rounded-t-sm transition-all hover:bg-emerald-600 relative cursor-pointer"
-                        title={`Lucro ${h.label}: ${formatCurrency(h.profit)}`}
+                        title={`Para você ${h.label}: ${formatCurrency(h.profit)}`}
                       />
                       {/* Purchases Bar */}
                       <div
@@ -359,7 +360,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <div className="mt-4 pt-3 border-t border-stone-100 flex items-center justify-between text-xs text-stone-500">
             <span>Valores calculados em tempo real a partir dos lançamentos.</span>
             <span className="font-semibold text-stone-800">
-              Fórmula: Lucro = Vendas - Custo Produção
+              Fórmula: Para você = Vendas - custos do negócio (sem mão de obra)
             </span>
           </div>
         </div>
