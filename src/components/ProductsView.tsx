@@ -28,7 +28,7 @@ import {
   Pause,
   Play
 } from 'lucide-react';
-import { Product, Material, RecipeItem, RecipeItemType } from '../types';
+import { Product, Material, RecipeItem, RecipeItemType, ProductionStageDefinition } from '../types';
 import { 
   formatCurrency, 
   formatPercent, 
@@ -1269,6 +1269,16 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   // Recipe items (BOM)
   const [items, setItems] = useState<RecipeItem[]>(initialRecipeItems);
 
+  const makeStageId = () => `stage_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const initialStages: ProductionStageDefinition[] = product?.productionStages?.length
+    ? [...product.productionStages].sort((a, b) => a.order - b.order)
+    : [];
+  const [useProductionStages, setUseProductionStages] = useState<boolean>(
+    !!product?.useProductionStages || initialStages.length > 0
+  );
+  const [productionStages, setProductionStages] = useState<ProductionStageDefinition[]>(initialStages);
+  const [activeStageToAdd, setActiveStageToAdd] = useState<string>(initialStages[0]?.id || '');
+
   const automaticFragrance = useMemo(
     () => getAutomaticFragranceFromRecipe(items, allMaterials),
     [items, allMaterials]
@@ -1329,7 +1339,9 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Calculate live totals
-  const parsedMinutes = parseFloat(productionTimeMinutes) || 0;
+  const parsedMinutes = useProductionStages
+    ? productionStages.reduce((sum, stage) => sum + Math.max(0, Number(stage.laborMinutes) || 0), 0)
+    : (parseFloat(productionTimeMinutes) || 0);
   const parsedHourlyRate = parseFloat(hourlyRate) || 0;
   const parsedFixedPct = parseFloat(fixedCostPercent) || 0;
   const parsedOtherCosts = parseFloat(otherCosts) || 0;
@@ -1383,6 +1395,67 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       return true;
     });
   }, [allProducts, product]);
+
+  const handleEnableProductionStages = (enabled: boolean) => {
+    setUseProductionStages(enabled);
+
+    if (!enabled) {
+      setActiveStageToAdd('');
+      return;
+    }
+
+    let nextStages = productionStages;
+    if (nextStages.length === 0) {
+      const firstStage: ProductionStageDefinition = {
+        id: makeStageId(),
+        name: 'Etapa 1',
+        order: 0,
+        laborMinutes: parseFloat(productionTimeMinutes) || 0,
+      };
+      nextStages = [firstStage];
+      setProductionStages(nextStages);
+    }
+
+    const firstStageId = nextStages[0].id;
+    setActiveStageToAdd(firstStageId);
+    setItems((prev) => prev.map((item) => (
+      item.productionStageId
+        ? item
+        : { ...item, productionStageId: firstStageId }
+    )));
+  };
+
+  const handleAddStage = () => {
+    const next: ProductionStageDefinition = {
+      id: makeStageId(),
+      name: `Etapa ${productionStages.length + 1}`,
+      order: productionStages.length,
+      laborMinutes: 0,
+    };
+    setProductionStages((prev) => [...prev, next]);
+    setActiveStageToAdd(next.id);
+  };
+
+  const handleUpdateStage = (stageId: string, patch: Partial<ProductionStageDefinition>) => {
+    setProductionStages((prev) => prev.map((stage) => (
+      stage.id === stageId ? { ...stage, ...patch } : stage
+    )));
+  };
+
+  const handleRemoveStage = (stageId: string) => {
+    if (productionStages.length <= 1) return;
+    const remaining = productionStages
+      .filter((stage) => stage.id !== stageId)
+      .map((stage, index) => ({ ...stage, order: index }));
+    const fallbackId = remaining[0]?.id || '';
+    setProductionStages(remaining);
+    setItems((prev) => prev.map((item) => (
+      item.productionStageId === stageId
+        ? { ...item, productionStageId: fallbackId }
+        : item
+    )));
+    if (activeStageToAdd === stageId) setActiveStageToAdd(fallbackId);
+  };
 
   const handleAddItem = () => {
     if (!selectedTargetId) {
@@ -1463,6 +1536,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
         totalCost: total,
         categorySelections,
         durableOption,
+        productionStageId: useProductionStages ? (activeStageToAdd || productionStages[0]?.id) : undefined,
       };
       setItems([...items, newItem]);
     } else {
@@ -1480,6 +1554,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
         unit: 'un',
         unitCost: unitCost,
         totalCost: total,
+        productionStageId: useProductionStages ? (activeStageToAdd || productionStages[0]?.id) : undefined,
       };
       setItems([...items, newItem]);
     }
@@ -1521,6 +1596,18 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       }
     }
 
+    if (useProductionStages) {
+      if (productionStages.length === 0 || productionStages.some((stage) => !stage.name.trim())) {
+        alert('Defina pelo menos uma etapa e dê um nome para todas as etapas da produção.');
+        return;
+      }
+      const validStageIds = new Set(productionStages.map((stage) => stage.id));
+      if (items.some((item) => !item.productionStageId || !validStageIds.has(item.productionStageId))) {
+        alert('Escolha em qual etapa cada material ou componente será utilizado.');
+        return;
+      }
+    }
+
     const finalActualPrice = parseFloat(actualPrice) > 0 ? parseFloat(actualPrice) : suggestedPrice;
     const parsedCurrentStock = parseFloat(currentStock) || 0;
     const parsedMinStock = parseFloat(minStock) || 0;
@@ -1548,7 +1635,19 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       description: description.trim() || undefined,
       imageUrl: imageUrl || undefined,
       isIntermediate: !isFinalProduct,
-      items,
+      items: items.map((item) => ({
+        ...item,
+        productionStageId: useProductionStages ? item.productionStageId : undefined,
+      })),
+      useProductionStages,
+      productionStages: useProductionStages
+        ? productionStages.map((stage, index) => ({
+            ...stage,
+            name: stage.name.trim(),
+            order: index,
+            laborMinutes: Math.max(0, Number(stage.laborMinutes) || 0),
+          }))
+        : undefined,
       materialsCost,
       productionTimeMinutes: parsedMinutes,
       hourlyRate: parsedHourlyRate,
@@ -1922,7 +2021,95 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
             </div>
           </div>
 
-          {/* 2. RECEITA / COMPOSIÇÃO (BOM - BILL OF MATERIALS) */}
+          {/* 2. FLUXO DE PRODUÇÃO */}
+          <div className="bg-white border border-stone-200 rounded-xl p-4 sm:p-5 space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h4 className="text-sm font-bold text-stone-900 flex items-center gap-1.5">
+                  <Layers className="w-4 h-4 text-amber-600" />
+                  Produção em etapas
+                </h4>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  Use quando a mesma peça passa por fases diferentes antes de entrar no estoque como produto pronto.
+                </p>
+              </div>
+              <label className="inline-flex items-center gap-2 text-xs font-semibold text-stone-800 cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={useProductionStages}
+                  onChange={(e) => handleEnableProductionStages(e.target.checked)}
+                  className="w-4 h-4 text-amber-600 rounded border-stone-300 focus:ring-amber-500"
+                />
+                Usar etapas
+              </label>
+            </div>
+
+            {useProductionStages && (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+                  <p className="text-[11px] text-amber-950">
+                    Cada insumo será baixado somente quando a etapa correspondente for concluída. O produto entra no estoque apenas na última etapa.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  {productionStages.map((stage, index) => (
+                    <div key={stage.id} className="grid grid-cols-[28px_minmax(0,1fr)_110px_32px] gap-2 items-end">
+                      <div className="h-9 w-7 rounded-lg bg-stone-100 text-stone-600 text-xs font-bold flex items-center justify-center">
+                        {index + 1}
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-stone-500 mb-1">Nome da etapa</label>
+                        <input
+                          type="text"
+                          value={stage.name}
+                          onChange={(e) => handleUpdateStage(stage.id, { name: e.target.value })}
+                          placeholder={index === 0 ? 'Ex: Base' : index === 1 ? 'Ex: Decoração' : 'Ex: Finalização'}
+                          className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-stone-500 mb-1">Mão de obra (min)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={stage.laborMinutes}
+                          onChange={(e) => handleUpdateStage(stage.id, { laborMinutes: Math.max(0, Number(e.target.value) || 0) })}
+                          className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveStage(stage.id)}
+                        disabled={productionStages.length <= 1}
+                        className="h-9 w-8 flex items-center justify-center rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="Remover etapa"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={handleAddStage}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-stone-300 bg-white text-xs font-semibold text-stone-700 hover:border-amber-400 hover:text-amber-800"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Adicionar etapa
+                  </button>
+                  <span className="text-[11px] text-stone-500">
+                    Tempo total: <strong className="text-stone-800">{parsedMinutes} min</strong>
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 3. RECEITA / COMPOSIÇÃO (BOM - BILL OF MATERIALS) */}
           <div className="bg-stone-50/90 border border-stone-200 rounded-xl p-4 sm:p-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
@@ -1981,6 +2168,23 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
               </div>
 
               <div className="space-y-3">
+                {useProductionStages && (
+                  <div>
+                    <label className="block text-[11px] font-bold text-stone-600 mb-1">
+                      Etapa em que este item será usado
+                    </label>
+                    <select
+                      value={activeStageToAdd || productionStages[0]?.id || ''}
+                      onChange={(e) => setActiveStageToAdd(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
+                    >
+                      {productionStages.map((stage, index) => (
+                        <option key={stage.id} value={stage.id}>{index + 1}. {stage.name || `Etapa ${index + 1}`}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
                   <div className="sm:col-span-7">
                     <label className="block text-[11px] font-bold text-stone-600 mb-1">
@@ -2119,6 +2323,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   <thead className="bg-stone-50 text-stone-500 font-semibold border-b border-stone-200">
                     <tr>
                       <th className="py-2.5 px-3">Item / Descrição</th>
+                      {useProductionStages && <th className="py-2.5 px-3">Etapa</th>}
                       <th className="py-2.5 px-3 text-right">Quantidade / Uso</th>
                       <th className="py-2.5 px-3 text-right">Custo na Receita</th>
                       <th className="py-2.5 px-3 text-right">Subtotal</th>
@@ -2152,6 +2357,21 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                             </div>
                           )}
                         </td>
+                        {useProductionStages && (
+                          <td className="py-2.5 px-3">
+                            <select
+                              value={it.productionStageId || productionStages[0]?.id || ''}
+                              onChange={(e) => setItems((prev) => prev.map((item) => (
+                                item.id === it.id ? { ...item, productionStageId: e.target.value } : item
+                              )))}
+                              className="w-full min-w-[120px] px-2 py-1.5 text-[11px] bg-white border border-stone-200 rounded-md text-stone-700"
+                            >
+                              {productionStages.map((stage, index) => (
+                                <option key={stage.id} value={stage.id}>{index + 1}. {stage.name || `Etapa ${index + 1}`}</option>
+                              ))}
+                            </select>
+                          </td>
+                        )}
                         <td className="py-2.5 px-3 text-right text-stone-700 font-semibold">
                           {formatNumber(it.quantity)} {it.unit}
                         </td>
@@ -2180,7 +2400,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   </tbody>
                   <tfoot className="bg-stone-50 border-t border-stone-200 font-bold">
                     <tr>
-                      <td colSpan={3} className="py-2.5 px-3 text-stone-700 text-right">
+                      <td colSpan={useProductionStages ? 4 : 3} className="py-2.5 px-3 text-stone-700 text-right">
                         Custo Total de Insumos da Receita:
                       </td>
                       <td className="py-2.5 px-3 text-right text-stone-900 text-sm">
@@ -2208,15 +2428,22 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   <label className="block text-[11px] font-medium text-stone-700 mb-1">
                     Tempo de Produção (Minutos)
                   </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={productionTimeMinutes}
-                    onChange={(e) => setProductionTimeMinutes(e.target.value)}
-                    className="w-full px-3 py-1.5 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
-                    placeholder="Ex: 45"
-                  />
+                  {useProductionStages ? (
+                    <div className="w-full px-3 py-1.5 text-sm bg-stone-100 border border-stone-200 rounded-lg text-stone-900 font-semibold">
+                      {parsedMinutes} min
+                      <span className="block text-[9px] font-normal text-stone-500">Soma das etapas acima</span>
+                    </div>
+                  ) : (
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={productionTimeMinutes}
+                      onChange={(e) => setProductionTimeMinutes(e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
+                      placeholder="Ex: 45"
+                    />
+                  )}
                 </div>
 
                 <div>

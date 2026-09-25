@@ -101,6 +101,16 @@ export interface RecipeItem {
   categorySelections?: Record<string, string>;
   /** Formato/opção escolhida de um item durável, como o desenho específico de um molde multicavidade. */
   durableOption?: string;
+  /** Etapa da produção à qual este item pertence, quando a receita usa produção em etapas. */
+  productionStageId?: string;
+}
+
+export interface ProductionStageDefinition {
+  id: string;
+  name: string;
+  order: number;
+  /** Tempo estimado desta etapa por batelada da receita. */
+  laborMinutes: number;
 }
 
 export interface Product {
@@ -120,6 +130,10 @@ export interface Product {
   imageUrl?: string;
   isIntermediate: boolean; // True if this item is a sub-component (like "Etiqueta", "Tag Kraft", "Laço")
   items: RecipeItem[];
+  /** Ativa o fluxo de produção por etapas sem transformar cada fase em um produto separado. */
+  useProductionStages?: boolean;
+  /** Etapas configuradas para esta receita, na ordem em que são executadas. */
+  productionStages?: ProductionStageDefinition[];
   materialsCost: number; // Sum of material + sub-product items
   productionTimeMinutes: number;
   hourlyRate: number; // R$/hour for artisan pro-labore
@@ -301,6 +315,22 @@ export interface ProductionIngredientDeduction {
   stockAfter: number; // Estoque após a baixa da produção
 }
 
+export type ProductionStatus = 'in_progress' | 'completed';
+
+export interface ProductionStageProgress {
+  stageId: string;
+  stageName: string;
+  order: number;
+  /** Quantidade total planejada para passar por esta etapa. */
+  plannedQuantity: number;
+  /** Quantidade que já concluiu esta etapa. */
+  completedQuantity: number;
+  /** Tempo estimado desta etapa por batelada. */
+  laborMinutes: number;
+  /** Baixas acumuladas realizadas especificamente nesta etapa. */
+  deductedItems: ProductionIngredientDeduction[];
+}
+
 export interface Production {
   id: string;
   date: string; // YYYY-MM-DD
@@ -311,12 +341,28 @@ export interface Production {
   isIntermediate?: boolean; // Peça final vs Componente/Sub-produto
   batchYield: number; // Rendimento por lote da receita (ex: 1 un, 10 un)
   batchCount: number; // Quantidade de lotes/bateladas produzidas
-  quantityProduced: number; // Total de peças/unidades obtidas (batchCount * batchYield)
+  quantityProduced: number; // Total de peças/unidades finalizadas. Em produção por etapas cresce apenas na última etapa.
+  /** Quantidade total planejada para esta ordem de produção. */
+  targetQuantity?: number;
+  /** Situação atual. Registros antigos sem status são tratados como concluídos. */
+  status?: ProductionStatus;
   costPerUnit: number; // Custo por peça da receita
-  totalCost: number; // Custo total da produção realizada
+  totalCost: number; // Custo acumulado da produção realizada até agora
+  /** Custo total planejado caso a ordem seja concluída integralmente. */
+  plannedTotalCost?: number;
   deductedItems: ProductionIngredientDeduction[]; // Insumos e sub-produtos consumidos
+  /** Progresso das etapas, quando esta ordem usa produção em etapas. */
+  stageProgress?: ProductionStageProgress[];
+  /** Snapshot das etapas e composição para a ordem não mudar se a receita for editada depois. */
+  productionStagesSnapshot?: ProductionStageDefinition[];
+  recipeItemsSnapshot?: RecipeItem[];
+  /** Escolhas de ingredientes variáveis feitas no início desta ordem. */
+  variableSelections?: Record<string, string>;
+  /** Se false, a ordem é apenas registro e não movimenta estoque. */
+  stockTrackingEnabled?: boolean;
   notes?: string;
   createdAt: string;
+  completedAt?: string;
 }
 
 export type ProjectStatus = 'planning' | 'in_progress' | 'completed';
