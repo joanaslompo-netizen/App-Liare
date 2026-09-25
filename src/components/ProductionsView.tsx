@@ -568,6 +568,11 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
   const parsedBatchCount = Math.max(1, parseFloat(batchCount) || 1);
   const batchYield = selectedProduct?.batchYield && selectedProduct.batchYield > 0 ? selectedProduct.batchYield : 1;
   const quantityProduced = parsedBatchCount * batchYield;
+  const isStagedProduction = !!(
+    selectedProduct?.useProductionStages &&
+    selectedProduct.productionStages &&
+    selectedProduct.productionStages.length > 0
+  );
 
   const makeVariableKey = (productItemId: string, virtualMaterialId: string, recipeItemId: string) =>
     `${productItemId}::${virtualMaterialId}::${recipeItemId}`;
@@ -812,7 +817,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
       return;
     }
 
-    if (hasStockShortage && updateStock) {
+    if (hasStockShortage && updateStock && !isStagedProduction) {
       const proceed = window.confirm(
         'Atenção: Alguns insumos da receita não possuem saldo suficiente no estoque atual.\n\n' +
         'Ao prosseguir, o estoque desses itens será ajustado automaticamente para zero.\n\n' +
@@ -821,12 +826,18 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
       if (!proceed) return;
     }
 
-    const recordedDeductions = updateStock
-      ? deductions.map((deduction) => ({
-          ...deduction,
-          stockAfter: Math.max(0, Number(deduction.stockAfter.toFixed(4))),
-        }))
-      : deductions;
+    const recordedDeductions = isStagedProduction
+      ? []
+      : (updateStock
+          ? deductions.map((deduction) => ({
+              ...deduction,
+              stockAfter: Math.max(0, Number(deduction.stockAfter.toFixed(4))),
+            }))
+          : deductions);
+
+    const sortedStages = isStagedProduction
+      ? [...(selectedProduct.productionStages || [])].sort((a, b) => a.order - b.order)
+      : [];
 
     const newProduction: Production = {
       id: `prod_exec_${Date.now()}`,
@@ -838,15 +849,34 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
       isIntermediate: selectedProduct.isIntermediate,
       batchYield,
       batchCount: parsedBatchCount,
-      quantityProduced,
+      quantityProduced: isStagedProduction ? 0 : quantityProduced,
+      targetQuantity: isStagedProduction ? quantityProduced : undefined,
+      status: isStagedProduction ? 'in_progress' : 'completed',
       costPerUnit: unitCost,
-      totalCost,
+      totalCost: isStagedProduction ? 0 : totalCost,
+      plannedTotalCost: isStagedProduction ? totalCost : undefined,
       deductedItems: recordedDeductions,
+      stageProgress: isStagedProduction
+        ? sortedStages.map((stage, index) => ({
+            stageId: stage.id,
+            stageName: stage.name,
+            order: index,
+            plannedQuantity: quantityProduced,
+            completedQuantity: 0,
+            laborMinutes: stage.laborMinutes || 0,
+            deductedItems: [],
+          }))
+        : undefined,
+      productionStagesSnapshot: isStagedProduction ? sortedStages : undefined,
+      recipeItemsSnapshot: isStagedProduction ? selectedProduct.items.map((item) => ({ ...item })) : undefined,
+      variableSelections: isStagedProduction ? { ...variableSelections } : undefined,
+      stockTrackingEnabled: updateStock,
       notes: notes.trim() || undefined,
       createdAt: new Date().toISOString().split('T')[0],
+      completedAt: isStagedProduction ? undefined : new Date().toISOString().split('T')[0],
     };
 
-    onSave(newProduction, updateStock);
+    onSave(newProduction, isStagedProduction ? false : updateStock);
     onClose();
   };
 
@@ -864,7 +894,9 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
                 Lançar Produção de Receita
               </h3>
               <p className="text-xs text-stone-500">
-                Baixa automática de insumos e entrada das peças finalizadas no estoque.
+                {isStagedProduction
+                  ? 'Crie a ordem e avance cada fase conforme o trabalho for acontecendo.'
+                  : 'Baixa automática de insumos e entrada das peças finalizadas no estoque.'}
               </p>
             </div>
           </div>
@@ -1070,7 +1102,9 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-1.5">
                   <Layers className="w-4 h-4 text-amber-600" />
-                  Insumos & Ingredientes que serão deduzidos do estoque ({deductions.length})
+                  {isStagedProduction
+                    ? `Insumos previstos para todas as etapas (${deductions.length})`
+                    : `Insumos & Ingredientes que serão deduzidos do estoque (${deductions.length})`}
                 </label>
                 {hasStockShortage && (
                   <span className="text-xs font-semibold text-rose-600 flex items-center gap-1">
@@ -1170,7 +1204,9 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
                 </span>
               </label>
               <span className="text-[10px] text-stone-500 block mt-0.5 ml-6">
-                Baixa os insumos e aumenta o produto pronto
+                {isStagedProduction
+                  ? 'Cada etapa baixará seus insumos; o produto pronto entra no estoque somente ao concluir a última etapa.'
+                  : 'Baixa os insumos e aumenta o produto pronto'}
               </span>
             </div>
           </div>
@@ -1178,7 +1214,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
           {/* 5. Cost Summary Footer Card */}
           <div className="p-4 bg-stone-100 rounded-xl border border-stone-200 flex items-center justify-between">
             <div>
-              <span className="text-xs text-stone-500 block">Investimento no Lote:</span>
+              <span className="text-xs text-stone-500 block">{isStagedProduction ? 'Investimento Planejado:' : 'Investimento no Lote:'}</span>
               <span className="text-xl font-extrabold text-stone-900">
                 {formatCurrency(totalCost)}
               </span>
@@ -1187,7 +1223,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
             <div className="text-right">
               <span className="text-xs text-stone-500 block">Novo Saldo Previsto do Produto:</span>
               <span className="text-base font-bold text-emerald-700">
-                {(selectedProduct?.currentStock || 0) + (updateStock ? quantityProduced : 0)} unidades
+                {(selectedProduct?.currentStock || 0) + (updateStock && !isStagedProduction ? quantityProduced : 0)} unidades
               </span>
             </div>
           </div>
@@ -1211,7 +1247,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
               }`}
             >
               <Check className="w-4 h-4 text-amber-400" />
-              <span>Confirmar & Dar Baixa no Estoque</span>
+              <span>{isStagedProduction ? 'Criar Produção em Etapas' : 'Confirmar & Dar Baixa no Estoque'}</span>
             </button>
           </div>
         </form>
