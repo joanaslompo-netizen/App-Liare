@@ -770,7 +770,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                           {formatCurrency(p.suggestedPrice)}
                         </span>
                         <span className="text-[10px] text-stone-400 block">
-                          margem {formatPercent(p.profitMarginPercent)}
+                          margem mat. {formatPercent(p.profitMarginPercent)}
                         </span>
                       </div>
 
@@ -1350,9 +1350,18 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   const totalCost = baseCost + fixedCost + parsedOtherCosts;
   const unitCostFromBatch = totalCost / parsedYield;
 
-  // Suggested price formula: Price = UnitCost / (1 - Margin%)
+  // Suggested price: apply the desired margin only to materials.
+  // Labor and the remaining costs are added afterwards at their cost value,
+  // avoiding applying profit margin over the artisan's own labor.
   const marginFraction = Math.min(Math.max(parsedMargin, 0), 95) / 100;
-  const suggestedPrice = marginFraction < 1 ? unitCostFromBatch / (1 - marginFraction) : unitCostFromBatch * 2;
+  const materialsUnitCost = materialsCost / parsedYield;
+  const laborUnitCost = laborCost / parsedYield;
+  const fixedUnitCost = fixedCost / parsedYield;
+  const otherCostsUnit = parsedOtherCosts / parsedYield;
+  const materialsPriceWithMargin = marginFraction < 1
+    ? materialsUnitCost / (1 - marginFraction)
+    : materialsUnitCost * 2;
+  const suggestedPrice = materialsPriceWithMargin + laborUnitCost + fixedUnitCost + otherCostsUnit;
 
   // Actual price chosen or suggested
   const currentActualPrice = parseFloat(actualPrice) || suggestedPrice;
@@ -2292,7 +2301,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-bold text-stone-800">
-                    Margem de Lucro Desejada:
+                    Margem sobre Materiais:
                   </label>
                   <span className="text-xs font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded">
                     {parsedMargin}%
@@ -2312,6 +2321,9 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   <span>45% (Equilibrada)</span>
                   <span>70% (Premium)</span>
                 </div>
+                <p className="text-[11px] text-stone-500 mt-2">
+                  Aplicada somente aos materiais. A mão de obra é somada depois, sem margem adicional.
+                </p>
               </div>
 
               <div>
