@@ -2607,7 +2607,7 @@ const FichaTecnicaModal: React.FC<FichaTecnicaModalProps> = ({
 
             <div className="text-right">
               <span className="text-[11px] text-emerald-800 font-semibold block uppercase">
-                Lucro Líquido Real ({formatPercent(product.calculatedMarginPercent)})
+                Total que fica para você ({formatPercent(product.calculatedMarginPercent)})
               </span>
               <span className="text-xl font-bold text-emerald-600">
                 +{formatCurrency(product.netProfit)}
