@@ -131,8 +131,8 @@ export interface Product {
   profitMarginPercent: number; // Desired margin applied to material costs only (e.g. 50%)
   suggestedPrice: number; // Materials with margin + labor and remaining costs at cost value
   actualPrice: number; // Actual selling price chosen
-  calculatedMarginPercent: number; // Actual margin achieved
-  netProfit: number; // actualPrice - totalCost
+  calculatedMarginPercent: number; // Share of the sale price left after non-labor business costs
+  netProfit: number; // Amount left for the artisan after non-labor business costs; includes labor remuneration + commercial profit
   batchYield: number; // Number of units produced with this recipe (defaults to 1, or e.g. 50 tags)
   unitCostFromBatch: number; // totalCost / batchYield
   currentStock?: number; // Estoque atual disponível (peças/unidades prontas)
@@ -211,6 +211,10 @@ export interface SaleItem {
   quantity: number;
   unitPrice: number;
   unitCost: number;
+  /** Snapshot of non-labor cost per unit used for financial margin calculations. */
+  unitBusinessCost?: number;
+  /** Snapshot of the artisan remuneration per unit. It helps form the price, but is not treated as an expense. */
+  unitLaborRemuneration?: number;
   totalRevenue?: number;
   subtotal?: number;
   totalCost: number;
@@ -246,7 +250,15 @@ export interface Sale {
   unitCost: number;
   totalRevenue: number;
   totalCost: number;
+  /** Non-labor business cost snapshot (materials/fixed/other), when available. */
+  totalBusinessCost?: number;
+  /** Artisan remuneration snapshot included in the sold items, when available. */
+  totalLaborRemuneration?: number;
+  /** Profit remaining after covering both business costs and the intended labor remuneration. */
+  commercialProfit?: number;
+  /** Amount left for the artisan after non-labor business costs. Includes labor remuneration + commercial profit. */
   totalProfit: number;
+  /** Percentage of revenue left after non-labor business costs. */
   marginPercent: number;
   customerId?: string; // ID do cliente cadastrado
   customerName?: string;
