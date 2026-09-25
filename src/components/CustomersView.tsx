@@ -31,6 +31,7 @@ import {
   isBirthdayInMonth,
   matchesSearchText
 } from '../utils/formatters';
+import { getSaleFinancials } from '../utils/financials';
 
 interface CustomersViewProps {
   customers: Customer[];
@@ -572,6 +573,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         <CustomerPurchaseHistoryModal
           customer={viewingHistoryCustomer}
           sales={customerSalesMap.get(viewingHistoryCustomer.id) || []}
+          products={products}
           onClose={() => setViewingHistoryCustomer(null)}
           onNewOrder={() => {
             const c = viewingHistoryCustomer;
@@ -835,6 +837,7 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
 interface CustomerPurchaseHistoryModalProps {
   customer: Customer;
   sales: Sale[];
+  products: Product[];
   onClose: () => void;
   onNewOrder: () => void;
 }
@@ -842,6 +845,7 @@ interface CustomerPurchaseHistoryModalProps {
 export const CustomerPurchaseHistoryModal: React.FC<CustomerPurchaseHistoryModalProps> = ({
   customer,
   sales,
+  products,
   onClose,
   onNewOrder,
 }) => {
@@ -849,7 +853,7 @@ export const CustomerPurchaseHistoryModal: React.FC<CustomerPurchaseHistoryModal
   const whatsappUrl = cleanPhone ? `https://wa.me/55${cleanPhone}` : undefined;
 
   const totalSpent = sales.reduce((acc, s) => acc + (s.totalRevenue || 0), 0);
-  const totalProfit = sales.reduce((acc, s) => acc + (s.totalProfit || 0), 0);
+  const totalProfit = sales.reduce((acc, s) => acc + getSaleFinancials(s, products).ownerEarnings, 0);
   const totalItemsCount = sales.reduce((acc, s) => acc + (s.quantity || 0), 0);
 
   return (
@@ -903,7 +907,7 @@ export const CustomerPurchaseHistoryModal: React.FC<CustomerPurchaseHistoryModal
 
           <div>
             <span className="text-[10px] uppercase font-bold text-stone-500 block">
-              Lucro Real Gerado
+              Total que ficou para você
             </span>
             <span className="text-base font-extrabold text-emerald-600 mt-0.5 block">
               +{formatCurrency(totalProfit)}
@@ -1007,7 +1011,10 @@ export const CustomerPurchaseHistoryModal: React.FC<CustomerPurchaseHistoryModal
                           {formatCurrency(sale.totalRevenue)}
                         </span>
                         <span className="text-[11px] text-emerald-600 font-bold block">
-                          +{formatCurrency(sale.totalProfit)}
+                          {(() => {
+                            const ownerEarnings = getSaleFinancials(sale, products).ownerEarnings;
+                            return `${ownerEarnings >= 0 ? '+' : ''}${formatCurrency(ownerEarnings)}`;
+                          })()}
                         </span>
                       </div>
                     </div>
