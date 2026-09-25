@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Material, Product, Purchase, Sale, TodoItem, NavTab } from '../types';
 import { formatCurrency, formatPercent, formatDate } from '../utils/formatters';
+import { getSaleFinancials } from '../utils/financials';
 
 interface HomeViewProps {
   artisanName: string;
@@ -82,7 +83,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const currentMonth = new Date().toISOString().slice(0, 7);
   const monthSales = sales.filter((s) => s.date.startsWith(currentMonth));
   const monthRevenue = monthSales.reduce((acc, s) => acc + s.totalRevenue, 0);
-  const monthProfit = monthSales.reduce((acc, s) => acc + s.totalProfit, 0);
+  const monthProfit = monthSales.reduce((acc, s) => acc + getSaleFinancials(s, products).ownerEarnings, 0);
   const monthMargin = monthRevenue > 0 ? (monthProfit / monthRevenue) * 100 : 0;
   const isMonthLoss = monthProfit < 0;
 
@@ -248,7 +249,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4 text-[#65734f]" />
               </div>
               <span className="text-[12px] sm:text-[13px] text-white/75 whitespace-nowrap">
-                Lucro
+                Para você
               </span>
             </div>
             <strong className="block text-[21px] sm:text-[28px] leading-none font-semibold tracking-tight whitespace-nowrap">
