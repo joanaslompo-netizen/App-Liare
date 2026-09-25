@@ -4,6 +4,7 @@ import { Material, Product, Sale } from '../types';
 import { formatCurrency, formatPercent } from '../utils/formatters';
 import { User } from '../lib/firebase';
 import { CloudSyncStatus } from '../services/cloudSync';
+import { getSaleFinancials } from '../utils/financials';
 
 interface HeaderProps {
   atelierName: string;
@@ -24,6 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
   atelierName,
   artisanName,
   materials,
+  products,
   sales,
   onOpenSettings,
   onNavigateToLowStock,
@@ -36,7 +38,7 @@ export const Header: React.FC<HeaderProps> = ({
   const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
   const monthSales = sales.filter((s) => s.date.startsWith(currentMonth));
   const monthRevenue = monthSales.reduce((acc, s) => acc + s.totalRevenue, 0);
-  const monthProfit = monthSales.reduce((acc, s) => acc + s.totalProfit, 0);
+  const monthProfit = monthSales.reduce((acc, s) => acc + getSaleFinancials(s, products).ownerEarnings, 0);
   const monthMargin = monthRevenue > 0 ? (monthProfit / monthRevenue) * 100 : 0;
 
   // Stock inventory total value
@@ -109,7 +111,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Month Profit */}
             <div className="border-l border-stone-800 pl-4">
               <span className="text-[11px] uppercase tracking-wider text-stone-400 flex items-center gap-1">
-                <TrendingUp className="w-3 h-3 text-emerald-400" /> Lucro no Mês
+                <TrendingUp className="w-3 h-3 text-emerald-400" /> Para Você no Mês
               </span>
               <div className="flex items-baseline gap-1.5">
                 <span className="font-bold text-emerald-400">
