@@ -21,6 +21,7 @@ import {
   Product,
   ProductionProject,
   ProjectChecklistItem,
+  ProjectMaterialLine,
   ProjectProductLine,
   RecipeItem,
 } from '../types';
@@ -69,6 +70,22 @@ const getCustomLineUnitCost = (
     return sum + item.quantity * (product ? getProductUnitCost(product) : item.unitCost || 0);
   }, 0);
   return batchCost / yieldQty;
+};
+
+const getProjectPlannedUnits = (project: ProductionProject) =>
+  project.lines.reduce((sum, line) => sum + Math.max(0, line.quantity || 0), 0);
+
+const getDirectMaterialsCost = (
+  project: ProductionProject,
+  materials: Material[]
+) => {
+  const plannedUnits = getProjectPlannedUnits(project);
+  return (project.directMaterials || []).reduce((sum, line) => {
+    const material = materials.find((m) => m.id === line.materialId);
+    if (material?.usageType === 'durable') return sum;
+    const multiplier = line.scope === 'per_unit' ? plannedUnits : 1;
+    return sum + Math.max(0, line.quantity || 0) * multiplier * (material?.unitCost || 0);
+  }, 0);
 };
 
 const getLineRecipe = (
@@ -188,6 +205,26 @@ const buildRequirements = (
     recipe.items.forEach((item) => addRecipeItem(item, multiplier));
   });
 
+  const plannedUnits = getProjectPlannedUnits(project);
+  (project.directMaterials || []).forEach((line) => {
+    if (line.quantity <= 0) return;
+    const material = materials.find((m) => m.id === line.materialId);
+    const multiplier = line.scope === 'per_unit' ? plannedUnits : 1;
+    addRecipeItem(
+      {
+        id: line.id,
+        type: 'material',
+        targetId: line.materialId,
+        name: material?.name || line.name,
+        quantity: line.quantity,
+        unit: material?.unit || line.unit,
+        unitCost: material?.usageType === 'durable' ? 0 : material?.unitCost || 0,
+        totalCost: 0,
+      },
+      multiplier
+    );
+  });
+
   return Array.from(map.values()).sort((a, b) => {
     const aMissing = a.available !== undefined && a.required > a.available;
     const bMissing = b.available !== undefined && b.required > b.available;
@@ -228,6 +265,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       notes: '',
       dueDate: '',
       lines: [],
+      directMaterials: [],
       checklist: [],
       createdAt: now,
       updatedAt: now,
@@ -290,7 +328,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       ) : (
         <div className="space-y-4">
           {ordered.map((project) => {
-            const planned = project.lines.reduce((sum, line) => sum + Math.max(0, line.quantity || 0), 0);
+            const planned = getProjectPlannedUnits(project);
             const produced = project.lines.reduce(
               (sum, line) => sum + Math.min(Math.max(0, line.producedQuantity || 0), Math.max(0, line.quantity || 0)),
               0
@@ -306,7 +344,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               }
               const product = products.find((p) => p.id === line.productId);
               return sum + (product ? getProductUnitCost(product) : 0) * line.quantity;
-            }, 0);
+            }, 0) + getDirectMaterialsCost(project, materials);
             const projectedRevenue = project.lines.reduce((sum, line) => {
               if (line.source === 'custom') return sum + (line.targetSalePrice || 0) * line.quantity;
               const product = products.find((p) => p.id === line.productId);
@@ -332,7 +370,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                             Prazo {new Date(project.dueDate + 'T12:00:00').toLocaleDateString('pt-BR')}
                           </span>
                         )}
-                        <span>{project.lines.length} {project.lines.length === 1 ? 'item' : 'itens'}</span>
+                        <span>
+                          {project.lines.length + (project.directMaterials?.length || 0)} {(project.lines.length + (project.directMaterials?.length || 0)) === 1 ? 'item' : 'itens'}
+                        </span>
                         <span>{formatNumber(planned)} un planejadas</span>
                         {missingCount > 0 && (
                           <span className="text-rose-700 font-semibold flex items-center gap-1">
@@ -492,6 +532,36 @@ const ProjectDetails = ({
       </div>
     </div>
 
+    {(project.directMaterials?.length || 0) > 0 && (
+      <div>
+        <h4 className="text-xs font-bold text-stone-800 mb-2">Materiais adicionados diretamente ao projeto</h4>
+        <div className="space-y-2">
+          {(project.directMaterials || []).map((line) => {
+            const material = materials.find((m) => m.id === line.materialId);
+            const multiplier = line.scope === 'per_unit' ? getProjectPlannedUnits(project) : 1;
+            const totalQty = line.quantity * multiplier;
+            const unitCost = material?.usageType === 'durable' ? 0 : material?.unitCost || 0;
+            return (
+              <div key={line.id} className="bg-white border border-stone-200 rounded-xl p-3 flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-bold text-stone-900">{material?.name || line.name}</div>
+                  <div className="text-[11px] text-stone-500 mt-1">
+                    {formatNumber(line.quantity)} {UNIT_SHORT[(material?.unit || line.unit) as keyof typeof UNIT_SHORT] || material?.unit || line.unit}
+                    {line.scope === 'per_unit' ? ' por unidade' : ' no projeto'}
+                    {line.scope === 'per_unit' ? ` • total ${formatNumber(totalQty)}` : ''}
+                  </div>
+                  {line.notes && <div className="text-[11px] text-stone-600 mt-1 italic">{line.notes}</div>}
+                </div>
+                <div className="text-xs font-semibold text-stone-700 shrink-0">
+                  {formatCurrency(totalQty * unitCost)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    )}
+
     <div>
       <h4 className="text-xs font-bold text-stone-800 mb-2">Materiais e subprodutos necessários</h4>
       {requirements.length === 0 ? (
@@ -594,6 +664,9 @@ const ProjectModal = ({
   const [draft, setDraft] = useState<ProductionProject>(project);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [catalogQty, setCatalogQty] = useState('1');
+  const [selectedProjectMaterial, setSelectedProjectMaterial] = useState<Material | null>(null);
+  const [projectMaterialQty, setProjectMaterialQty] = useState('1');
+  const [projectMaterialScope, setProjectMaterialScope] = useState<'project' | 'per_unit'>('project');
   const [checkText, setCheckText] = useState('');
   const [showCustom, setShowCustom] = useState(false);
   const [customName, setCustomName] = useState('');
@@ -612,7 +685,40 @@ const ProjectModal = ({
     if (line.source === 'custom') return sum + getCustomLineUnitCost(line, products, materials) * line.quantity;
     const product = products.find((p) => p.id === line.productId);
     return sum + (product ? getProductUnitCost(product) : 0) * line.quantity;
-  }, 0);
+  }, 0) + getDirectMaterialsCost(draft, materials);
+
+  const addProjectMaterial = () => {
+    const qty = Number(projectMaterialQty);
+    if (!selectedProjectMaterial || !Number.isFinite(qty) || qty <= 0) return;
+
+    setDraft((prev) => {
+      const directMaterials = prev.directMaterials || [];
+      const existing = directMaterials.find(
+        (line) => line.materialId === selectedProjectMaterial.id && line.scope === projectMaterialScope
+      );
+      if (existing) {
+        return {
+          ...prev,
+          directMaterials: directMaterials.map((line) =>
+            line.id === existing.id ? { ...line, quantity: line.quantity + qty } : line
+          ),
+        };
+      }
+
+      const line: ProjectMaterialLine = {
+        id: `project_material_${Date.now()}`,
+        materialId: selectedProjectMaterial.id,
+        name: selectedProjectMaterial.name,
+        quantity: qty,
+        unit: selectedProjectMaterial.unit,
+        scope: projectMaterialScope,
+      };
+      return { ...prev, directMaterials: [...directMaterials, line] };
+    });
+
+    setSelectedProjectMaterial(null);
+    setProjectMaterialQty('1');
+  };
 
   const addCatalogLine = () => {
     const qty = Number(catalogQty);
@@ -1042,6 +1148,131 @@ const ProjectModal = ({
                             }}
                             className="mt-1 w-full px-2 py-1.5 rounded-lg border border-stone-300 bg-white text-xs text-stone-800"
                           />
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section className="bg-white border border-stone-200 rounded-2xl p-4 space-y-4">
+            <div>
+              <h4 className="text-sm font-bold text-stone-900">Materiais do projeto</h4>
+              <p className="text-[11px] text-stone-500">
+                Para embalagens, saquinhos, papéis, etiquetas, fitas e outros materiais que não fazem parte de uma receita.
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-[1fr_105px_165px_auto] gap-2 items-end">
+              <SearchableMaterialCombobox
+                materials={materials}
+                selectedMaterialId={selectedProjectMaterial?.id || ''}
+                onSelectMaterial={setSelectedProjectMaterial}
+                placeholder="Buscar material..."
+              />
+              <label className="text-[11px] font-semibold text-stone-600">
+                Quantidade
+                <input
+                  type="number"
+                  min="0.0001"
+                  step="any"
+                  value={projectMaterialQty}
+                  onChange={(e) => setProjectMaterialQty(e.target.value)}
+                  className="mt-1 w-full px-2.5 py-2 rounded-xl border border-stone-300 bg-white text-sm"
+                />
+              </label>
+              <label className="text-[11px] font-semibold text-stone-600">
+                Usar como
+                <select
+                  value={projectMaterialScope}
+                  onChange={(e) => setProjectMaterialScope(e.target.value as 'project' | 'per_unit')}
+                  className="mt-1 w-full px-2.5 py-2 rounded-xl border border-stone-300 bg-white text-sm"
+                >
+                  <option value="project">Total do projeto</option>
+                  <option value="per_unit">Por unidade produzida</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={addProjectMaterial}
+                disabled={!selectedProjectMaterial}
+                className="px-3.5 py-2 rounded-xl bg-stone-900 text-white text-xs font-semibold disabled:opacity-40"
+              >
+                Adicionar
+              </button>
+            </div>
+
+            {(draft.directMaterials?.length || 0) > 0 && (
+              <div className="space-y-2 pt-2 border-t border-stone-100">
+                {(draft.directMaterials || []).map((line) => {
+                  const material = materials.find((m) => m.id === line.materialId);
+                  const plannedUnits = getProjectPlannedUnits(draft);
+                  const totalQty = line.quantity * (line.scope === 'per_unit' ? plannedUnits : 1);
+                  const unit = material?.unit || line.unit;
+                  const unitCost = material?.usageType === 'durable' ? 0 : material?.unitCost || 0;
+                  return (
+                    <div key={line.id} className="rounded-xl border border-stone-200 bg-stone-50/60 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-stone-900">{material?.name || line.name}</div>
+                          <div className="text-[10px] text-stone-500 mt-1">
+                            Total calculado: {formatNumber(totalQty)} {UNIT_SHORT[unit as keyof typeof UNIT_SHORT] || unit}
+                            {' • '}{formatCurrency(totalQty * unitCost)}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setDraft((prev) => ({
+                            ...prev,
+                            directMaterials: (prev.directMaterials || []).filter((item) => item.id !== line.id),
+                          }))}
+                          className="p-1 text-stone-400 hover:text-rose-600"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="grid sm:grid-cols-2 gap-2 mt-2">
+                        <label className="text-[10px] text-stone-500">
+                          Quantidade
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={line.quantity}
+                            onChange={(e) => {
+                              const value = Math.max(0, Number(e.target.value) || 0);
+                              setDraft((prev) => ({
+                                ...prev,
+                                directMaterials: (prev.directMaterials || []).map((item) =>
+                                  item.id === line.id ? { ...item, quantity: value } : item
+                                ),
+                              }));
+                            }}
+                            className="mt-1 w-full px-2 py-1.5 rounded-lg border border-stone-300 bg-white text-xs text-stone-800"
+                          />
+                        </label>
+                        <label className="text-[10px] text-stone-500">
+                          Aplicação
+                          <select
+                            value={line.scope}
+                            onChange={(e) =>
+                              setDraft((prev) => ({
+                                ...prev,
+                                directMaterials: (prev.directMaterials || []).map((item) =>
+                                  item.id === line.id
+                                    ? { ...item, scope: e.target.value as 'project' | 'per_unit' }
+                                    : item
+                                ),
+                              }))
+                            }
+                            className="mt-1 w-full px-2 py-1.5 rounded-lg border border-stone-300 bg-white text-xs text-stone-800"
+                          >
+                            <option value="project">Total do projeto</option>
+                            <option value="per_unit">Por unidade produzida</option>
+                          </select>
                         </label>
                       </div>
                     </div>
