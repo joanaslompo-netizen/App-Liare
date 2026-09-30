@@ -387,6 +387,17 @@ export interface ProjectProductLine {
   customRecipeItems?: RecipeItem[];
 }
 
+export interface ProjectMaterialLine {
+  id: string;
+  materialId: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  /** "project" = quantidade total do projeto; "per_unit" = quantidade para cada unidade planejada. */
+  scope: 'project' | 'per_unit';
+  notes?: string;
+}
+
 export interface ProductionProject {
   id: string;
   name: string;
@@ -394,6 +405,8 @@ export interface ProductionProject {
   dueDate?: string;
   notes?: string;
   lines: ProjectProductLine[];
+  /** Materiais usados diretamente no projeto, fora das receitas (embalagens, papéis, fitas etc.). */
+  directMaterials?: ProjectMaterialLine[];
   checklist: ProjectChecklistItem[];
   createdAt: string;
   updatedAt: string;
