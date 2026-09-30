@@ -31,7 +31,7 @@ import {
   ProductionProject,
   NavTab
 } from './types';
-import { isBirthdayInMonth } from './utils/formatters';
+import { getUnitConversionMultiplier, isBirthdayInMonth } from './utils/formatters';
 import { AtelierPreset } from './utils/presets';
 import { HomeView } from './components/HomeView';
 import { MaterialsView } from './components/MaterialsView';
@@ -795,11 +795,14 @@ export default function App() {
           if (purchasedItems.length === 0) return mat;
 
           // A quantidade lançada na compra representa pacotes/lotes comprados.
-          // Cada pacote/lote acrescenta ao estoque a quantidade interna cadastrada no material.
-          const stockToAdd = purchasedItems.reduce(
-            (sum, itemBought) => sum + (itemBought.quantity * (mat.packageQuantity || 1)),
-            0
-          );
+          // Converte a unidade da embalagem para a unidade-base usada no estoque.
+          // Ex.: 6 embalagens de 1 kg, com estoque em g => 6 * 1 * 1000 = 6000 g.
+          const stockToAdd = purchasedItems.reduce((sum, itemBought) => {
+            const purchaseUnit = itemBought.unit || mat.packageUnit || mat.unit;
+            const conversionMultiplier = getUnitConversionMultiplier(purchaseUnit, mat.unit);
+            const quantityPerPackage = mat.packageQuantity || 1;
+            return sum + (itemBought.quantity * quantityPerPackage * conversionMultiplier);
+          }, 0);
 
           return {
             ...mat,
