@@ -849,7 +849,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
       productId: selectedProduct.id,
       productName: selectedProduct.name,
       productCategory: selectedProduct.category,
-      productImageUrl: selectedProduct.imageUrl,
+      productImageUrl: selectedProduct.imageUrl?.startsWith('data:image/') ? undefined : selectedProduct.imageUrl,
       isIntermediate: selectedProduct.isIntermediate,
       batchYield,
       batchCount: parsedBatchCount,
