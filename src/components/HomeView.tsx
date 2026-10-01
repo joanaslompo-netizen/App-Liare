@@ -320,12 +320,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
               const month = scheduled
                 ? new Intl.DateTimeFormat('pt-BR', { month: 'short' }).format(scheduled).replace('.', '')
                 : 'sem data';
-              const imageUrl = sale.productImageUrl || sale.items?.[0]?.productImageUrl;
-              const itemName = sale.productName || sale.items?.[0]?.productName || 'Pedido';
               const primaryItem = sale.items?.[0];
               const stockProductId = primaryItem
                 ? (primaryItem.isCustom ? primaryItem.customProductId : primaryItem.productId)
                 : sale.productId;
+              const imageUrl =
+                sale.productImageUrl ||
+                primaryItem?.productImageUrl ||
+                products.find((product) => product.id === stockProductId)?.imageUrl;
+              const itemName = sale.productName || primaryItem?.productName || 'Pedido';
               const stockProduct = stockProductId
                 ? products.find((product) => product.id === stockProductId)
                 : undefined;
