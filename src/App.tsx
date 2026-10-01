@@ -1864,6 +1864,7 @@ export default function App() {
 
         {activeTab === 'sales' && (
           <SalesView
+            settings={settings}
             sales={sales}
             products={products}
             materials={materials}
@@ -2138,3 +2139,4 @@ export default function App() {
     </div>
   );
 }
+

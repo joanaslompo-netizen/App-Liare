@@ -1,3 +1,5 @@
+import { getInvoiceTotals } from '../utils/invoice';
+import { InvoiceModal } from './InvoiceModal';
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Plus, 
@@ -27,9 +29,10 @@ import {
   Store,
   UserPlus,
   Sparkles,
-  Percent
+  Percent,
+  FileText
 } from 'lucide-react';
-import { Sale, Product, Material, RecipeItem, OrderType, DeliveryStatus, PaymentStatus, SaleItem, Customer, DiscountCode, DiscountType } from '../types';
+import { AtelierSettings, Sale, Product, Material, RecipeItem, OrderType, DeliveryStatus, PaymentStatus, SaleItem, Customer, DiscountCode, DiscountType } from '../types';
 import { 
   formatCurrency, 
   formatPercent, 
@@ -43,6 +46,7 @@ import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
 import { getProductFinancialSplit, getSaleFinancials, getSaleItemFinancialSplit } from '../utils/financials';
 
 interface SalesViewProps {
+  settings: AtelierSettings;
   sales: Sale[];
   products: Product[];
   materials: Material[];
@@ -68,6 +72,7 @@ interface SalesViewProps {
 }
 
 export const SalesView: React.FC<SalesViewProps> = ({
+  settings,
   sales,
   products,
   materials,
@@ -87,6 +92,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   openNewSaleSignal = 0,
   onOpenCustomers,
 }) => {
+  const [invoiceSale, setInvoiceSale] = useState<Sale | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTabFilter, setActiveTabFilter] = useState<'all' | 'pending_delivery' | 'pending_payment' | 'completed'>(initialFilter);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -154,7 +160,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const pendingPaymentList = useMemo(() => sales.filter((s) => s.paymentStatus === 'pendente_pagamento'), [sales]);
 
   const totalPendingPaymentAmount = useMemo(() => {
-    return pendingPaymentList.reduce((acc, s) => acc + s.totalRevenue, 0);
+    return pendingPaymentList.reduce((acc, s) => acc + getInvoiceTotals(s).balance, 0);
   }, [pendingPaymentList]);
 
   // Filter and sort
@@ -200,9 +206,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
   // Aggregate metrics across ALL sales
   const totalRevenue = sales.reduce((acc, s) => acc + s.totalRevenue, 0);
-  const totalReceived = sales
-    .filter((s) => s.paymentStatus !== 'pendente_pagamento')
-    .reduce((acc, s) => acc + s.totalRevenue, 0);
+  const totalReceived = sales.reduce((acc, s) => acc + getInvoiceTotals(s).paid, 0);
   const totalProfit = sales.reduce((acc, s) => acc + getSaleFinancials(s, products).ownerEarnings, 0);
   const isTotalLoss = totalProfit < 0;
   const totalPiecesSold = sales.reduce((acc, s) => acc + s.quantity, 0);
@@ -744,6 +748,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                       {/* Actions */}
                       <td className="py-3 px-4 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => setInvoiceSale(sale)} title="Gerar fatura" aria-label="Gerar fatura" className="p-1.5 text-blue-700 hover:bg-blue-50 rounded-lg"><FileText className="w-4 h-4" /></button>
                           <button
                             onClick={() => handleOpenEdit(sale)}
                             className="p-1.5 text-stone-400 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
@@ -773,6 +778,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
         </div>
       )}
 
+      {invoiceSale && <InvoiceModal sale={invoiceSale} settings={settings} customers={customers} products={products} onClose={() => setInvoiceSale(null)} />}
       {/* Order / Sale Modal */}
       {isModalOpen && (
         <OrderSaleModal
@@ -1303,6 +1309,8 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     existingSale?.deliveryScheduledDate || (orderType === 'encomenda' ? '' : '')
   );
 
+  const [amountPaid, setAmountPaid] = useState(String(existingSale?.amountPaid || 0));
+
   // Payment settings
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(
     existingSale?.paymentStatus || 'pago'
@@ -1511,6 +1519,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       deliveryStatus,
       deliveryScheduledDate: deliveryStatus === 'pendente_entrega' ? (deliveryScheduledDate || undefined) : undefined,
       deliveryActualDate: deliveryStatus === 'entregue' ? (existingSale?.deliveryActualDate || today) : undefined,
+      amountPaid: paymentStatus === 'pago' ? totalRevenue : Math.min(totalRevenue, Math.max(0, Number(amountPaid) || 0)),
       paymentStatus,
       paymentScheduledDate: paymentStatus === 'pendente_pagamento' ? (paymentScheduledDate || undefined) : undefined,
       paymentActualDate: paymentStatus === 'pago' ? (existingSale?.paymentActualDate || today) : undefined,
@@ -2567,6 +2576,12 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
             </div>
 
             {paymentStatus === 'pendente_pagamento' && (
+              <label className="block text-sm font-semibold text-stone-700">Valor já pago / Entrada (R$)
+                <input type="number" min="0" max={totalRevenue} step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 text-base border border-stone-300 rounded-lg" />
+              </label>
+            )}
+            {paymentStatus === 'pendente_pagamento' && (
               <div className="pt-2 border-t border-stone-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                 <label className="text-xs font-semibold text-stone-700 flex items-center gap-1">
                   <CalendarCheck className="w-3.5 h-3.5 text-rose-600" />
@@ -2767,3 +2782,4 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     </div>
   );
 };
+

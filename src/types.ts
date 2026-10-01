@@ -253,6 +253,7 @@ export interface SaleItem {
 }
 
 export interface Sale {
+  amountPaid?: number;
   id: string;
   date: string; // YYYY-MM-DD (data do pedido/venda)
   items?: SaleItem[]; // Lista de itens múltiplos do pedido
@@ -413,6 +414,10 @@ export interface ProductionProject {
 }
 
 export interface AtelierSettings {
+  pixKey?: string;
+  pixHolder?: string;
+  invoiceContact?: string;
+  invoiceAddress?: string;
   atelierName: string;
   artisanName: string;
   defaultHourlyRate: number; // R$/h
@@ -442,3 +447,4 @@ export interface TodoItem {
   dueDate?: string;
   createdAt: string;
 }
+

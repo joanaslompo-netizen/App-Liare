@@ -49,6 +49,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onOpenCloudSync,
   allCurrentData,
 }) => {
+  const [invoiceFields, setInvoiceFields] = useState({ pixKey: settings.pixKey || "", pixHolder: settings.pixHolder || "", invoiceContact: settings.invoiceContact || "", invoiceAddress: settings.invoiceAddress || "" });
   const [atelierName, setAtelierName] = useState(settings.atelierName);
   const [artisanName, setArtisanName] = useState(settings.artisanName);
   const [defaultHourlyRate, setDefaultHourlyRate] = useState(settings.defaultHourlyRate.toString());
@@ -66,6 +67,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
+    setInvoiceFields({ pixKey: settings.pixKey || "", pixHolder: settings.pixHolder || "", invoiceContact: settings.invoiceContact || "", invoiceAddress: settings.invoiceAddress || "" });
     setAtelierName(settings.atelierName);
     setArtisanName(settings.artisanName);
     setDefaultHourlyRate(settings.defaultHourlyRate.toString());
@@ -85,6 +87,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     onSaveSettings({
+      ...settings,
+      ...invoiceFields,
       atelierName: atelierName.trim() || 'Meu Ateliê',
       artisanName: artisanName.trim() || 'Artesã',
       defaultHourlyRate: parseFloat(defaultHourlyRate) || 35,
@@ -149,6 +153,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setDiscountCodes(nextCodes);
     onSaveSettings({
       ...settings,
+      ...invoiceFields,
       atelierName: atelierName.trim() || settings.atelierName,
       artisanName: artisanName.trim() || settings.artisanName,
       defaultHourlyRate: parseFloat(defaultHourlyRate) || settings.defaultHourlyRate,
@@ -269,6 +274,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
+          <section className="bg-stone-50 p-4 rounded-xl border border-stone-200 space-y-3">
+            <h4 className="font-bold text-stone-900">Dados da fatura e Pix</h4>
+            {([['pixKey', 'Chave Pix'], ['pixHolder', 'Titular do Pix'], ['invoiceContact', 'Contato do ateliê'], ['invoiceAddress', 'Endereço do ateliê']] as const).map(([key, label]) => (
+              <label key={key} className="block font-semibold text-stone-700">{label}
+                <input type="text" value={invoiceFields[key]} onChange={e => setInvoiceFields(prev => ({ ...prev, [key]: e.target.value }))}
+                  className="mt-1 w-full px-3 py-2 text-base bg-white border border-stone-300 rounded-lg" />
+              </label>
+            ))}
+          </section>
           {/* Pricing defaults */}
           <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 space-y-3">
             <h4 className="font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
@@ -543,3 +557,4 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     </div>
   );
 };
+

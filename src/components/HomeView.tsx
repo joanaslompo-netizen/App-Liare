@@ -1,3 +1,4 @@
+import { getInvoiceTotals } from '../utils/invoice';
 import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
@@ -76,7 +77,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   );
 
   const totalPendingPaymentAmount = useMemo(
-    () => pendingPayments.reduce((acc, s) => acc + s.totalRevenue, 0),
+    () => pendingPayments.reduce((acc, s) => acc + getInvoiceTotals(s).balance, 0),
     [pendingPayments]
   );
 
@@ -702,3 +703,4 @@ export const HomeView: React.FC<HomeViewProps> = ({
     </div>
   );
 };
+
