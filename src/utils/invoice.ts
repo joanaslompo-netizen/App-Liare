@@ -50,7 +50,7 @@ export const buildInvoiceHtml = (
   <p>Entrega ${sale.deliveryStatus === 'entregue' ? 'realizada' : 'prevista'}: ${date(sale.deliveryActualDate || sale.deliveryScheduledDate)}</p><p>Status: ${sale.deliveryStatus === 'entregue' ? 'Entregue' : 'Aguardando entrega'}</p>
   ${sale.paymentMethod ? `<p>Pagamento: ${escapeHtml(sale.paymentMethod)}</p>` : ''}</div></section>
   <table><thead><tr><th>Produto ou serviço</th><th>Quantidade</th><th>Preço unitário</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>
-  <section class="bottom"><div class="payment">${settings.pixKey ? `<h2>Pagamento via Pix</h2><p class="muted">Para pagar com cartão, solicite o link pelo WhatsApp do ateliê.</p><p>Chave Pix: ${escapeHtml(settings.pixKey)}</p>${settings.pixHolder ? `<p>Titular: ${escapeHtml(settings.pixHolder)}</p>` : ''}<p class="muted">Envie o comprovante após o pagamento.</p>` : ''}</div>
+  <section class="bottom"><div class="payment">${settings.pixKey ? `<h2>Pagamento via Pix</h2><p>Chave Pix: ${escapeHtml(settings.pixKey)}</p>${settings.pixHolder ? `<p>Titular: ${escapeHtml(settings.pixHolder)}</p>` : ''}<p class="muted">Envie o comprovante após o pagamento.</p><p class="muted">Para pagar com cartão, solicite o link pelo WhatsApp do ateliê.</p>` : ''}</div>
   <div class="summary"><div class="sum"><strong>Subtotal</strong><strong>${money(totals.subtotal)}</strong></div>
   ${totals.discount ? `<div class="sum"><span>Desconto${sale.discountCode ? ` (${escapeHtml(sale.discountCode)})` : ''}</span><span>−${money(totals.discount)}</span></div>` : ''}
   <div class="sum total"><span>Total da fatura</span><strong>${money(totals.total)}</strong></div><div class="sum"><span>Valor pago</span><span>${money(totals.paid)}</span></div>
