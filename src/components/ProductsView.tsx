@@ -1,3 +1,4 @@
+import { calculateRecipePricing, getRecipePricing } from '../utils/financials';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Plus, 
@@ -616,7 +617,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {filteredProducts.map((p) => {
+          {filteredProducts.map((savedProduct) => {
+            const pricing = getRecipePricing(savedProduct);
+            const p = { ...savedProduct, ...pricing, actualPrice: pricing.currentActualPrice };
             const materialItemsCount = p.items.filter((it) => it.type === 'material').length;
             const subProductItemsCount = p.items.filter((it) => it.type === 'product').length;
             const hasSubProducts = subProductItemsCount > 0;
@@ -753,10 +756,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       {/* Total Cost */}
                       <div className="text-left sm:text-center border-r border-stone-200/60 sm:border-r">
                         <span className="text-[11px] uppercase tracking-wider text-stone-500 block">
-                          Custo Total
+                          Custo real da peça
                         </span>
                         <span className="text-sm font-bold text-stone-900">
-                          {formatCurrency(p.unitCostFromBatch > 0 ? p.unitCostFromBatch : p.totalCost)}
+                          {formatCurrency(pricing.businessUnitCost)}
                         </span>
                         <span className="text-[10px] text-stone-400 block">por peça</span>
                       </div>
@@ -791,7 +794,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                           Fica para você
                         </span>
                         <span className="text-sm font-bold text-emerald-600">
-                          +{formatCurrency(p.netProfit)}
+                          {p.netProfit >= 0 ? '+' : ''}{formatCurrency(p.netProfit)}
                         </span>
                         <span className="text-[10px] font-semibold text-emerald-700 block">
                           {formatPercent(p.calculatedMarginPercent)} margem
@@ -1333,7 +1336,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     product?.profitMarginPercent != null ? product.profitMarginPercent.toString() : defaultProfitMargin.toString()
   );
   const [actualPrice, setActualPrice] = useState<string>(
-    product?.actualPrice != null ? product.actualPrice.toString() : ''
+    product?.actualPrice != null ? product.actualPrice.toFixed(2) : ''
   );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1357,31 +1360,12 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     return acc + (it.totalCost || 0);
   }, 0);
   const laborCost = (parsedMinutes / 60) * parsedHourlyRate;
-  const baseCost = materialsCost + laborCost;
-  const fixedCost = baseCost * (parsedFixedPct / 100);
-  const totalCost = baseCost + fixedCost + parsedOtherCosts;
-  const unitCostFromBatch = totalCost / parsedYield;
-
-  // Suggested price: apply the desired margin only to materials.
-  // Labor and the remaining costs are added afterwards at their cost value,
-  // avoiding applying profit margin over the artisan's own labor.
-  const marginFraction = Math.min(Math.max(parsedMargin, 0), 95) / 100;
-  const materialsUnitCost = materialsCost / parsedYield;
-  const laborUnitCost = laborCost / parsedYield;
-  const fixedUnitCost = fixedCost / parsedYield;
-  const otherCostsUnit = parsedOtherCosts / parsedYield;
-  const materialsPriceWithMargin = marginFraction < 1
-    ? materialsUnitCost / (1 - marginFraction)
-    : materialsUnitCost * 2;
-  const suggestedPrice = materialsPriceWithMargin + laborUnitCost + fixedUnitCost + otherCostsUnit;
-
-  // Actual price chosen or suggested
-  const currentActualPrice = parseFloat(actualPrice) || suggestedPrice;
-  const businessUnitCost = materialsUnitCost + fixedUnitCost + otherCostsUnit;
-  const ownerEarnings = currentActualPrice - businessUnitCost;
-  const commercialProfit = ownerEarnings - laborUnitCost;
-  const netProfit = ownerEarnings;
-  const calculatedMarginPercent = currentActualPrice > 0 ? (ownerEarnings / currentActualPrice) * 100 : 0;
+  const { fixedCost, totalCost, unitCostFromBatch, suggestedPrice, currentActualPrice,
+    businessUnitCost, laborUnitCost, commercialProfit, netProfit, calculatedMarginPercent
+  } = calculateRecipePricing(
+    materialsCost, laborCost, parsedFixedPct, parsedOtherCosts, parsedYield, parsedMargin,
+    actualPrice.trim() === '' ? undefined : Number(actualPrice)
+  );
 
   // Filter products available to be added as ingredients:
   // Exclude current product and products that already use this product (to avoid cyclic loops)
@@ -1608,7 +1592,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       }
     }
 
-    const finalActualPrice = parseFloat(actualPrice) > 0 ? parseFloat(actualPrice) : suggestedPrice;
+    const finalActualPrice = currentActualPrice;
     const parsedCurrentStock = parseFloat(currentStock) || 0;
     const parsedMinStock = parseFloat(minStock) || 0;
     const parsedStandardStock = parseFloat(standardStock) > 0 ? parseFloat(standardStock) : Math.max(parsedMinStock * 2, 10);
@@ -2563,7 +2547,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                 <input
                   id="input-product-actual-price"
                   type="number"
-                  step="0.5"
+                  min="0"
+                  step="0.01"
                   placeholder={suggestedPrice.toFixed(2)}
                   value={actualPrice}
                   onChange={(e) => setActualPrice(e.target.value)}
@@ -2606,7 +2591,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
 
               <div>
                 <span className="text-[10px] uppercase tracking-wider text-emerald-800 block font-semibold">
-                  Margem real sem mão de obra
+                  Margem que fica para você
                 </span>
                 <span className="text-base font-extrabold text-stone-900">
                   {formatPercent(calculatedMarginPercent)}
@@ -2667,6 +2652,7 @@ const FichaTecnicaModal: React.FC<FichaTecnicaModalProps> = ({
   onClose,
   onEdit,
 }) => {
+  const pricing = getRecipePricing(product);
   return (
     <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-2xl my-8 overflow-hidden">
@@ -2834,10 +2820,10 @@ const FichaTecnicaModal: React.FC<FichaTecnicaModalProps> = ({
 
             <div className="text-right">
               <span className="text-[11px] text-emerald-800 font-semibold block uppercase">
-                Total que fica para você ({formatPercent(product.calculatedMarginPercent)})
+                Total que fica para você ({formatPercent(pricing.calculatedMarginPercent)})
               </span>
               <span className="text-xl font-bold text-emerald-600">
-                +{formatCurrency(product.netProfit)}
+                {pricing.netProfit >= 0 ? '+' : ''}{formatCurrency(pricing.netProfit)}
               </span>
             </div>
           </div>

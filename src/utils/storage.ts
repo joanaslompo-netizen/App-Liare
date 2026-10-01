@@ -1,3 +1,4 @@
+import { calculateRecipePricing } from './financials';
 import { Material, Product, Purchase, Sale, Customer, Supplier, AtelierSettings, RecipeItem, TodoItem, Production, ProductionProject } from '../types';
 
 const STORAGE_KEYS = {
@@ -2108,22 +2109,11 @@ export const recalculateProductPricing = (
 
   const materialsCost = updatedItems.reduce((acc, it) => acc + (it.totalCost || 0), 0);
   const laborCost = (product.productionTimeMinutes / 60) * product.hourlyRate;
-  const baseCost = materialsCost + laborCost;
-  const fixedCost = baseCost * ((product.fixedCostPercent || 0) / 100);
-  const otherCosts = product.otherCosts || 0;
-  const totalCost = baseCost + fixedCost + otherCosts;
-
-  const batchYield = product.batchYield > 0 ? product.batchYield : 1;
-  const unitCostFromBatch = totalCost / batchYield;
-
-  // Suggested price based on desired margin %
-  // Price = TotalCost / (1 - Margin%)
-  const marginFrac = Math.min(Math.max(product.profitMarginPercent, 0), 95) / 100;
-  const suggestedPrice = marginFrac < 1 ? unitCostFromBatch / (1 - marginFrac) : unitCostFromBatch * 2;
-
-  const actualPrice = product.actualPrice > 0 ? product.actualPrice : suggestedPrice;
-  const netProfit = actualPrice - unitCostFromBatch;
-  const calculatedMarginPercent = actualPrice > 0 ? (netProfit / actualPrice) * 100 : 0;
+  const { fixedCost, totalCost, unitCostFromBatch, suggestedPrice,
+    currentActualPrice: actualPrice, netProfit, calculatedMarginPercent } = calculateRecipePricing(
+    materialsCost, laborCost, product.fixedCostPercent || 0, product.otherCosts || 0,
+    product.batchYield, product.profitMarginPercent, product.actualPrice
+  );
 
   return {
     ...product,
