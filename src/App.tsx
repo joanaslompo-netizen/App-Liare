@@ -81,6 +81,7 @@ const withDefaultDiscountCodes = (incoming: AtelierSettings): AtelierSettings =>
 const CLOUD_SYNC_PENDING_KEY = 'atelie_cloud_sync_pending_v1';
 const CLOUD_SYNC_BASE_KEY = 'atelie_cloud_sync_base_v1';
 const CLOUD_SYNC_RECOVERY_KEY = 'atelie_cloud_sync_recovery_v1';
+const AUTO_SYNC_DELAY_MS = 10 * 60 * 1000;
 
 const readStoredCloudBase = (): WorkspaceSyncBase | null => {
   try {
@@ -138,6 +139,7 @@ export default function App() {
   const isIncomingCloudSyncRef = useRef(false);
   const syncTimeoutRef = useRef<any>(null);
   const cloudRevisionRef = useRef<number | undefined>(undefined);
+  const cloudWorkspaceRef = useRef<WorkspaceData | null>(null);
   const hasLoadedCloudRef = useRef(false);
   const hasLocalChangesRef = useRef(localStorage.getItem(CLOUD_SYNC_PENDING_KEY) === 'true');
   const cloudBaseRef = useRef<WorkspaceSyncBase | null>(readStoredCloudBase());
@@ -224,10 +226,9 @@ export default function App() {
     try {
       let uploaded: WorkspaceData | null = null;
       let lastConflict: CloudSyncConflictError | null = null;
+      let cloud = cloudWorkspaceRef.current;
 
       for (let attempt = 0; attempt < 3 && !uploaded; attempt += 1) {
-        const cloud = await fetchWorkspaceFromCloud(user.uid);
-
         if (!hasLocalChangesRef.current && cloud) {
           uploaded = cloud;
           break;
@@ -242,12 +243,17 @@ export default function App() {
             user.uid,
             workspaceToUpload,
             'Web',
-            cloud?.revision
+            cloud?.revision ?? cloudRevisionRef.current
           );
         } catch (error) {
           if (error instanceof CloudSyncConflictError) {
             lastConflict = error;
-            continue;
+            if (error.cloudData) {
+              cloud = error.cloudData;
+              cloudWorkspaceRef.current = error.cloudData;
+              cloudRevisionRef.current = error.cloudData.revision || 0;
+              continue;
+            }
           }
           throw error;
         }
@@ -255,6 +261,7 @@ export default function App() {
 
       if (!uploaded) throw lastConflict || new Error('Não foi possível concluir a sincronização.');
 
+      cloudWorkspaceRef.current = uploaded;
       cloudRevisionRef.current = uploaded.revision || 0;
       setLastSyncedAt(new Date());
 
@@ -295,7 +302,7 @@ export default function App() {
         syncAgainRef.current = false;
         syncTimeoutRef.current = setTimeout(() => {
           void performCloudSyncRef.current(false);
-        }, 5000);
+        }, AUTO_SYNC_DELAY_MS);
       }
     }
   }, [applyWorkspaceData, user]);
@@ -318,6 +325,7 @@ export default function App() {
           const cloudData = await fetchWorkspaceFromCloud(currentUser.uid);
           
           if (cloudData) {
+            cloudWorkspaceRef.current = cloudData;
             cloudRevisionRef.current = cloudData.revision || 0;
             hasLoadedCloudRef.current = true;
 
@@ -331,7 +339,7 @@ export default function App() {
               setSyncStatus('pending');
               syncTimeoutRef.current = setTimeout(() => {
                 void performCloudSyncRef.current(false);
-              }, 5000);
+              }, AUTO_SYNC_DELAY_MS);
             } else {
               cloudBaseRef.current = createWorkspaceSyncBase(cloudData);
               storeCloudBase(cloudData);
@@ -358,6 +366,7 @@ export default function App() {
               todos,
               projects,
             });
+            cloudWorkspaceRef.current = createdCloud;
             cloudRevisionRef.current = createdCloud.revision || 1;
             hasLoadedCloudRef.current = true;
             hasLocalChangesRef.current = false;
@@ -382,6 +391,7 @@ export default function App() {
           currentUser.uid,
           (updatedData) => {
             if (updatedData) {
+              cloudWorkspaceRef.current = updatedData;
               const incomingRevision = updatedData.revision || 0;
               if (incomingRevision === cloudRevisionRef.current && !hasLocalChangesRef.current) return;
 
@@ -409,6 +419,9 @@ export default function App() {
           }
         );
       } else {
+        cloudWorkspaceRef.current = null;
+        cloudRevisionRef.current = undefined;
+        hasLoadedCloudRef.current = false;
         setSyncStatus('offline');
       }
     });
@@ -420,7 +433,7 @@ export default function App() {
   }, [applyWorkspaceData]);
 
   // Alterações ficam salvas localmente na hora e entram em uma fila de envio.
-  // A nuvem só é atualizada após 5 segundos sem novas mudanças.
+  // Para economizar a cota do Firestore, a nuvem é atualizada após 10 minutos sem novas mudanças.
   useEffect(() => {
     if (!hasObservedWorkspaceRef.current) {
       hasObservedWorkspaceRef.current = true;
@@ -443,7 +456,7 @@ export default function App() {
 
     syncTimeoutRef.current = setTimeout(() => {
       void performCloudSyncRef.current(false);
-    }, 5000);
+    }, AUTO_SYNC_DELAY_MS);
 
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
@@ -550,6 +563,7 @@ export default function App() {
       if (!cloud) throw new Error('Nenhum backup foi encontrado na nuvem.');
 
       protectCurrentWorkspace();
+      cloudWorkspaceRef.current = cloud;
       cloudRevisionRef.current = cloud.revision || 0;
       cloudBaseRef.current = createWorkspaceSyncBase(cloud);
       storeCloudBase(cloud);
@@ -589,6 +603,7 @@ export default function App() {
         'Restauração',
         current?.revision
       );
+      cloudWorkspaceRef.current = restored;
       cloudRevisionRef.current = restored.revision || 0;
       cloudBaseRef.current = createWorkspaceSyncBase(restored);
       storeCloudBase(restored);
