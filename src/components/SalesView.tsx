@@ -1381,7 +1381,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
         id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         productId: prod.id,
         productName: prod.name,
-        productImageUrl: prod.imageUrl,
+        productImageUrl: prod.imageUrl?.startsWith('data:image/') ? undefined : prod.imageUrl,
         quantity: q,
         unitPrice: p,
         unitCost: cost,
