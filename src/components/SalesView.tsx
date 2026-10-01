@@ -1,3 +1,4 @@
+import { formatOrderNumber } from '../utils/orderNumbers';
 import { getInvoiceTotals } from '../utils/invoice';
 import { InvoiceModal } from './InvoiceModal';
 import React, { useState, useMemo, useEffect } from 'react';
@@ -180,6 +181,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
         // Search term matching
         const matchesSearch =
+          matchesSearchText(formatOrderNumber(s.orderNumber), searchTerm) ||
+          matchesSearchText(String(s.orderNumber || ""), searchTerm) ||
           matchesSearchText(s.productName, searchTerm) ||
           (s.customerName && matchesSearchText(s.customerName, searchTerm)) ||
           (s.customerContact && matchesSearchText(s.customerContact, searchTerm)) ||
@@ -501,6 +504,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                       {/* Date & Type */}
                       <td className="py-3 px-4 whitespace-nowrap text-stone-700">
                         <div className="flex flex-col">
+                          <strong className="text-sm text-stone-900">Pedido #{formatOrderNumber(sale.orderNumber)}</strong>
                           <span className="font-semibold text-stone-900 flex items-center gap-1.5 text-xs">
                             <Calendar className="w-3.5 h-3.5 text-stone-400" />
                             {formatDate(sale.date)}
@@ -1487,6 +1491,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
     const updatedSale: Sale = {
       id: existingSale?.id || `sale_${Date.now()}`,
+      orderNumber: existingSale?.orderNumber,
       date,
       productId: firstItem.productId,
       productName: summaryProductName,
@@ -1574,7 +1579,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-stone-900 text-lg">
-                {existingSale ? 'Editar Pedido / Venda' : 'Registrar Pedido / Venda'}
+                {existingSale ? `Editar Pedido #${formatOrderNumber(existingSale.orderNumber)}` : 'Registrar Pedido / Venda'}
               </h3>
               <p className="text-xs text-stone-500">
                 Adicione um ou múltiplos produtos, selecione quantidades e acompanhe prazos
@@ -2782,4 +2787,3 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     </div>
   );
 };
-

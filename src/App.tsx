@@ -1,3 +1,4 @@
+import { ensureOrderNumbers, getHighestOrderNumber } from './utils/orderNumbers';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   loadStoredData, 
@@ -116,7 +117,7 @@ export default function App() {
   const [purchases, setPurchases] = useState<Purchase[]>(initialData.purchases);
   const [productions, setProductions] = useState<Production[]>(initialData.productions || []);
   const [productionInitialProduct, setProductionInitialProduct] = useState<Product | null>(null);
-  const [sales, setSales] = useState<Sale[]>(initialData.sales);
+  const [sales, setSales] = useState<Sale[]>(() => ensureOrderNumbers(initialData.sales, initialData.settings?.lastOrderNumber || 0));
   const [customers, setCustomers] = useState<Customer[]>(initialData.customers || []);
   const [paymentMethods, setPaymentMethods] = useState<string[]>(initialData.paymentMethods || ['offline', 'site']);
   const [customerForNewSale, setCustomerForNewSale] = useState<Customer | null>(null);
@@ -174,7 +175,7 @@ export default function App() {
     setProducts(workspace.products || []);
     setPurchases(workspace.purchases || []);
     setProductions(workspace.productions || []);
-    setSales(workspace.sales || []);
+    setSales(ensureOrderNumbers(workspace.sales || [], workspace.settings?.lastOrderNumber || 0));
     setCustomers(workspace.customers || []);
     setPaymentMethods(workspace.paymentMethods || []);
     setSuppliers(workspace.suppliers || []);
@@ -1479,6 +1480,15 @@ export default function App() {
   // ----------------------------------------------------
   // Sale Handlers
   // ----------------------------------------------------
+  const orderNumberCounter = useRef(0);
+  orderNumberCounter.current = Math.max(orderNumberCounter.current, settings.lastOrderNumber || 0, getHighestOrderNumber(sales));
+  useEffect(() => {
+    const highest = getHighestOrderNumber(sales);
+    if (highest > (settings.lastOrderNumber || 0)) {
+      setSettings(prev => ({ ...prev, lastOrderNumber: Math.max(prev.lastOrderNumber || 0, highest) }));
+    }
+  }, [sales, settings.lastOrderNumber]);
+
   const handleSaveSale = useCallback((sale: Sale) => {
     const previousSale = sales.find((s) => s.id === sale.id);
     const stockAdjustments = new Map<string, number>();
@@ -1570,8 +1580,11 @@ export default function App() {
       );
     }
 
+    const orderNumber = previousSale?.orderNumber || ++orderNumberCounter.current;
+    setSettings(prev => ({ ...prev, lastOrderNumber: Math.max(prev.lastOrderNumber || 0, orderNumber) }));
     const normalizedSale: Sale = {
       ...sale,
+      orderNumber,
       items: normalizedItems || sale.items,
     };
 
@@ -1675,7 +1688,7 @@ export default function App() {
     if (data.products) setProducts(data.products);
     if (data.purchases) setPurchases(data.purchases);
     if (data.productions) setProductions(data.productions);
-    if (data.sales) setSales(data.sales);
+    if (data.sales) setSales(ensureOrderNumbers(data.sales, data.settings?.lastOrderNumber || 0));
     if (data.customers) setCustomers(data.customers);
     if (data.paymentMethods) setPaymentMethods(data.paymentMethods);
     if (data.suppliers) setSuppliers(data.suppliers);
@@ -1688,7 +1701,7 @@ export default function App() {
     setMaterials(preset.materials);
     setProducts(preset.products);
     setPurchases(preset.purchases);
-    setSales(preset.sales);
+    setSales(ensureOrderNumbers(preset.sales));
     setSuppliers(preset.suppliers);
     setSettings(withDefaultDiscountCodes(preset.settings));
   }, []);
@@ -2139,4 +2152,3 @@ export default function App() {
     </div>
   );
 }
-

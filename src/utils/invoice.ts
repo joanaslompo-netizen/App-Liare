@@ -1,3 +1,4 @@
+import { formatOrderNumber } from './orderNumbers';
 import { AtelierSettings, Customer, Product, Sale } from '../types';
 import { formatCurrency, formatDate } from './formatters';
 
@@ -23,7 +24,7 @@ export const buildInvoiceHtml = (
     productId: sale.productId, productName: sale.productName,
     quantity: sale.quantity, unitPrice: sale.unitPrice,
   }];
-  const number = sale.id.replace(/^sale_/, '');
+  const number = formatOrderNumber(sale.orderNumber);
   const rows = items.map((item) => {
     const product = products.find((p) => p.id === item.productId);
     const aroma = product?.fragrance || (!item.productId ? 'A definir' : '');
@@ -42,7 +43,7 @@ export const buildInvoiceHtml = (
   </style></head><body><main class="page"><header><div><div class="brand">LIARE</div><strong>${escapeHtml(settings.atelierName)}</strong>
   ${settings.invoiceContact ? `<p class="muted">${escapeHtml(settings.invoiceContact)}</p>` : ''}
   ${settings.invoiceAddress ? `<p class="muted">${escapeHtml(settings.invoiceAddress)}</p>` : ''}</div>
-  <div class="right"><h1>Fatura nº ${escapeHtml(number)}</h1><p class="muted">Pedido: ${date(sale.date)}</p><p class="muted">Emissão: ${date(new Date().toLocaleDateString('sv-SE'))}</p>
+  <div class="right"><h1>Fatura nº ${escapeHtml(number)}</h1><p class="muted">Pedido nº ${escapeHtml(number)}</p><p class="muted">Data do pedido: ${date(sale.date)}</p><p class="muted">Emissão: ${date(new Date().toLocaleDateString('sv-SE'))}</p>
   ${sale.paymentScheduledDate ? `<p class="muted">Vencimento: ${date(sale.paymentScheduledDate)}</p>` : ''}</div></header>
   <section class="details"><div><h2 class="muted">Fatura para:</h2><strong>${escapeHtml(sale.customerName || customer?.name || 'Cliente não informado')}</strong>
   ${sale.customerContact || customer?.phone ? `<p class="muted">Telefone: ${escapeHtml(sale.customerContact || customer?.phone)}</p>` : ''}

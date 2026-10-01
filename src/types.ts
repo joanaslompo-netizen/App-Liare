@@ -253,6 +253,7 @@ export interface SaleItem {
 }
 
 export interface Sale {
+  orderNumber?: number;
   amountPaid?: number;
   id: string;
   date: string; // YYYY-MM-DD (data do pedido/venda)
@@ -414,6 +415,7 @@ export interface ProductionProject {
 }
 
 export interface AtelierSettings {
+  lastOrderNumber?: number;
   pixKey?: string;
   pixHolder?: string;
   invoiceContact?: string;
@@ -447,4 +449,3 @@ export interface TodoItem {
   dueDate?: string;
   createdAt: string;
 }
-
