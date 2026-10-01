@@ -163,7 +163,6 @@ export default function App() {
   const [isExampleSelectorOpen, setIsExampleSelectorOpen] = useState(false);
   const [isQuickMoreOpen, setIsQuickMoreOpen] = useState(false);
   const [quickNewSaleSignal, setQuickNewSaleSignal] = useState(0);
-  const [quickNewProductionSignal, setQuickNewProductionSignal] = useState(0);
   const [quickNewMaterialSignal, setQuickNewMaterialSignal] = useState(0);
 
   workspaceRef.current = {
@@ -1886,7 +1885,6 @@ export default function App() {
             onNavigateToProducts={() => setActiveTab('products')}
             initialSelectedProduct={productionInitialProduct}
             onClearInitialProduct={() => setProductionInitialProduct(null)}
-            openNewProductionSignal={quickNewProductionSignal}
           />
         )}
 
@@ -1983,7 +1981,6 @@ export default function App() {
                 onClick={() => {
                   setProductionInitialProduct(null);
                   setActiveTab('productions');
-                  setQuickNewProductionSignal((value) => value + 1);
                   setIsQuickMoreOpen(false);
                 }}
                 className="flex items-center gap-2.5 rounded-2xl bg-[#fbf7f2] border border-[#eadfd6] px-3 py-3 text-left text-xs font-semibold text-[#4f4640] active:scale-[0.98]"
@@ -1991,7 +1988,7 @@ export default function App() {
                 <span className="w-9 h-9 rounded-full bg-[#eef1e6] text-[#66704f] flex items-center justify-center shrink-0">
                   <Hammer className="w-4 h-4" />
                 </span>
-                Nova produção
+                Produções
               </button>
 
               <button
