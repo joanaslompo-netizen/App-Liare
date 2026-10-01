@@ -964,6 +964,14 @@ export const CustomerPurchaseHistoryModal: React.FC<CustomerPurchaseHistoryModal
               {sales.map((sale) => {
                 const isPendingDelivery = sale.deliveryStatus === 'pendente_entrega';
                 const isPendingPayment = sale.paymentStatus === 'pendente_pagamento';
+                const firstItem = sale.items?.[0];
+                const imageProductId =
+                  (firstItem?.isCustom ? firstItem.customProductId : firstItem?.productId) ||
+                  sale.productId;
+                const saleImageUrl =
+                  sale.productImageUrl ||
+                  firstItem?.productImageUrl ||
+                  products.find((product) => product.id === imageProductId)?.imageUrl;
 
                 return (
                   <div
@@ -972,9 +980,9 @@ export const CustomerPurchaseHistoryModal: React.FC<CustomerPurchaseHistoryModal
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2.5 min-w-0">
-                        {sale.productImageUrl ? (
+                        {saleImageUrl ? (
                           <img
-                            src={sale.productImageUrl}
+                            src={saleImageUrl}
                             alt=""
                             className="w-10 h-10 rounded-lg object-cover border border-stone-200 shrink-0"
                           />
