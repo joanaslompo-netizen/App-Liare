@@ -116,6 +116,19 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const getStockProductId = (item: SaleItem) =>
     item.isCustom ? item.customProductId : item.productId;
 
+  const getSaleImageUrl = (sale: Sale) => {
+    const firstItem = sale.items?.[0];
+    const candidateProductIds = [
+      sale.productId,
+      firstItem?.customProductId,
+      firstItem?.productId,
+    ].filter(Boolean) as string[];
+    const catalogImage = candidateProductIds
+      .map((id) => products.find((product) => product.id === id)?.imageUrl)
+      .find(Boolean);
+    return sale.productImageUrl || firstItem?.productImageUrl || catalogImage;
+  };
+
   const getReservedAcrossOrders = (stockProductId: string) =>
     sales.reduce((total, sale) => {
       if (sale.deliveryStatus === 'entregue' || !sale.items) return total;
@@ -498,6 +511,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 {filteredSales.map((sale) => {
                   const isPendingDelivery = sale.deliveryStatus === 'pendente_entrega';
                   const isPendingPayment = sale.paymentStatus === 'pendente_pagamento';
+                  const saleImageUrl = getSaleImageUrl(sale);
 
                   return (
                     <tr key={sale.id} className="hover:bg-stone-50/70 transition-colors">
@@ -526,9 +540,9 @@ export const SalesView: React.FC<SalesViewProps> = ({
                       {/* Product */}
                       <td className="py-3 px-4 font-semibold text-stone-900">
                         <div className="flex items-center gap-2.5">
-                          {sale.productImageUrl ? (
+                          {saleImageUrl ? (
                             <img
-                              src={sale.productImageUrl}
+                              src={saleImageUrl}
                               alt=""
                               className="w-8 h-8 rounded-lg object-cover border border-stone-200 shrink-0"
                             />
