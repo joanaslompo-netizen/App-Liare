@@ -41,12 +41,14 @@ export type CloudSyncStatus = 'offline' | 'idle' | 'pending' | 'syncing' | 'sync
 export class CloudSyncConflictError extends Error {
   cloudRevision: number;
   expectedRevision: number;
+  cloudData?: WorkspaceData;
 
-  constructor(cloudRevision: number, expectedRevision: number) {
+  constructor(cloudRevision: number, expectedRevision: number, cloudData?: WorkspaceData) {
     super('O backup da nuvem mudou desde a última sincronização. Nada foi sobrescrito.');
     this.name = 'CloudSyncConflictError';
     this.cloudRevision = cloudRevision;
     this.expectedRevision = expectedRevision;
+    this.cloudData = cloudData;
   }
 }
 
@@ -164,6 +166,64 @@ export function mergeWorkspaceData(
   };
 }
 
+const isEmbeddedImage = (value?: string) =>
+  typeof value === 'string' && value.startsWith('data:image/');
+
+/**
+ * Evita repetir a mesma foto Base64 em receitas, pedidos e produções.
+ * A foto continua armazenada no produto do catálogo e as telas fazem fallback por productId.
+ */
+export function compactWorkspaceForCloud(workspace: WorkspaceData): WorkspaceData {
+  const productImages = new Map(
+    workspace.products
+      .filter((product) => product.imageUrl)
+      .map((product) => [product.id, product.imageUrl as string])
+  );
+
+  const matchesCatalogImage = (imageUrl: string | undefined, productIds: Array<string | undefined>) =>
+    isEmbeddedImage(imageUrl) &&
+    productIds.some((id) => !!id && productImages.get(id) === imageUrl);
+
+  const sales = workspace.sales.map((sale) => {
+    const firstItem = sale.items?.[0];
+    const items = sale.items?.map((item) => {
+      if (!matchesCatalogImage(item.productImageUrl, [item.customProductId, item.productId])) {
+        return item;
+      }
+      const compactItem = { ...item };
+      delete compactItem.productImageUrl;
+      return compactItem;
+    });
+
+    const compactSale: Sale = { ...sale, items };
+    if (
+      matchesCatalogImage(sale.productImageUrl, [
+        sale.productId,
+        firstItem?.customProductId,
+        firstItem?.productId,
+      ])
+    ) {
+      delete compactSale.productImageUrl;
+    }
+    return compactSale;
+  });
+
+  const productions = (workspace.productions || []).map((production) => {
+    if (!matchesCatalogImage(production.productImageUrl, [production.productId])) {
+      return production;
+    }
+    const compactProduction = { ...production };
+    delete compactProduction.productImageUrl;
+    return compactProduction;
+  });
+
+  return {
+    ...workspace,
+    sales,
+    productions,
+  };
+}
+
 /**
  * Upload protegido por revisão (optimistic concurrency control).
  * Só grava se a revisão na nuvem ainda for exatamente a que este aparelho leu.
@@ -186,32 +246,39 @@ export async function uploadWorkspaceToCloud(
     const cloudRevision = Number(current?.revision || 0);
 
     // Existing legacy backups have revision 0. A client that has read them also expects 0.
+    const currentWorkspace = current ? workspaceFromData(current) : undefined;
+
     if (snap.exists() && expectedRevision === undefined) {
-      throw new CloudSyncConflictError(cloudRevision, -1);
+      throw new CloudSyncConflictError(cloudRevision, -1, currentWorkspace);
     }
     if (snap.exists() && cloudRevision !== Number(expectedRevision || 0)) {
-      throw new CloudSyncConflictError(cloudRevision, Number(expectedRevision || 0));
+      throw new CloudSyncConflictError(
+        cloudRevision,
+        Number(expectedRevision || 0),
+        currentWorkspace
+      );
     }
 
     const now = new Date().toISOString();
     const nextRevision = cloudRevision + 1;
+    const compactWorkspace = compactWorkspaceForCloud(workspace);
     const payload = sanitizeForFirestore({
       userId,
       version: 2,
       revision: nextRevision,
       updatedAt: now,
       lastModifiedBy: deviceLabel,
-      materials: workspace.materials,
-      products: workspace.products,
-      productions: workspace.productions || [],
-      projects: workspace.projects || [],
-      purchases: workspace.purchases,
-      sales: workspace.sales,
-      customers: workspace.customers || [],
-      paymentMethods: workspace.paymentMethods || [],
-      suppliers: workspace.suppliers,
-      settings: workspace.settings,
-      todos: workspace.todos || [],
+      materials: compactWorkspace.materials,
+      products: compactWorkspace.products,
+      productions: compactWorkspace.productions || [],
+      projects: compactWorkspace.projects || [],
+      purchases: compactWorkspace.purchases,
+      sales: compactWorkspace.sales,
+      customers: compactWorkspace.customers || [],
+      paymentMethods: compactWorkspace.paymentMethods || [],
+      suppliers: compactWorkspace.suppliers,
+      settings: compactWorkspace.settings,
+      todos: compactWorkspace.todos || [],
     });
 
     if (current) {
