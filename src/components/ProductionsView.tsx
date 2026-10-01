@@ -516,6 +516,10 @@ export const ProductionsView: React.FC<ProductionsViewProps> = ({
       {viewingProduction && (
         <ViewProductionModal
           production={viewingProduction}
+          imageUrl={
+            viewingProduction.productImageUrl ||
+            products.find((product) => product.id === viewingProduction.productId)?.imageUrl
+          }
           onClose={() => setViewingProduction(null)}
         />
       )}
@@ -1759,11 +1763,13 @@ const StageProgressModal: React.FC<StageProgressModalProps> = ({
 
 interface ViewProductionModalProps {
   production: Production;
+  imageUrl?: string;
   onClose: () => void;
 }
 
 const ViewProductionModal: React.FC<ViewProductionModalProps> = ({
   production,
+  imageUrl,
   onClose,
 }) => {
   return (
@@ -1797,9 +1803,9 @@ const ViewProductionModal: React.FC<ViewProductionModalProps> = ({
           {/* Main Info */}
           <div className="flex items-start gap-4 p-4 bg-stone-50 rounded-xl border border-stone-200">
             <div className="w-16 h-16 rounded-lg bg-white border border-stone-200 shrink-0 overflow-hidden flex items-center justify-center">
-              {production.productImageUrl ? (
+              {imageUrl ? (
                 <img
-                  src={production.productImageUrl}
+                  src={imageUrl}
                   alt={production.productName}
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
