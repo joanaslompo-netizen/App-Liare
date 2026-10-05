@@ -42,6 +42,20 @@ import { processImageFile } from '../utils/imageHelper';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
 import { SearchableProductCombobox } from './SearchableProductCombobox';
 
+const sortRecipeItemsByStage = (
+  items: RecipeItem[],
+  useStages?: boolean,
+  stages: ProductionStageDefinition[] = []
+): RecipeItem[] => {
+  if (!useStages) return items;
+  const stageOrder = new Map(stages.map((stage) => [stage.id, stage.order]));
+  return [...items].sort((a, b) => {
+    const aOrder = stageOrder.get(a.productionStageId || '') ?? Number.MAX_SAFE_INTEGER;
+    const bOrder = stageOrder.get(b.productionStageId || '') ?? Number.MAX_SAFE_INTEGER;
+    return aOrder - bOrder || a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' });
+  });
+};
+
 const buildAutomaticProductName = (productFamily?: string, fragrance?: string): string => {
   const family = productFamily?.trim() || '';
   const variation = fragrance?.trim() || '';
@@ -2365,7 +2379,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100">
-                    {items.map((it) => (
+                    {sortRecipeItemsByStage(items, useProductionStages, productionStages).map((it) => (
                       <tr key={it.id} className="hover:bg-stone-50/60">
                         <td className="py-2.5 px-3 font-medium text-stone-900">
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -2758,7 +2772,7 @@ const FichaTecnicaModal: React.FC<FichaTecnicaModalProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
-                  {product.items.map((it) => (
+                  {sortRecipeItemsByStage(product.items, product.useProductionStages, product.productionStages).map((it) => (
                     <tr key={it.id}>
                       <td className="py-2 px-3 flex items-center gap-1.5">
                         {it.type === 'product' && (
