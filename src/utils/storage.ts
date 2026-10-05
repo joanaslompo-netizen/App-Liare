@@ -2015,6 +2015,16 @@ export const saveProjects = (projects: ProductionProject[]) => {
  * the current cost of their real ingredients. Category ingredients use the
  * average current cost of the materials in that category as a planning estimate.
  */
+export const getVirtualRecipeLaborCost = (items: RecipeItem[], materials: Material[]): number =>
+  items.reduce((sum, item) => {
+    if (item.type !== 'material') return sum;
+    const material = materials.find((m) => m.id === item.targetId);
+    if (!material?.isVirtualRecipe || material.usageType === 'durable') return sum;
+    const labor = Math.max(0, material.productionTimeMinutes || 0) / 60
+      * Math.max(0, material.hourlyRate || 0);
+    return sum + labor * item.quantity / Math.max(0.0001, material.batchYield || 1);
+  }, 0);
+
 export const estimateMaterialUnitCost = (
   material: Material,
   allMaterials: Material[],
@@ -2066,7 +2076,9 @@ export const estimateMaterialUnitCost = (
     return sum + unitCost * item.quantity;
   }, 0);
 
-  return recipeCost / Math.max(0.0001, material.batchYield);
+  const laborCost = Math.max(0, material.productionTimeMinutes || 0) / 60
+    * Math.max(0, material.hourlyRate || 0);
+  return (recipeCost + laborCost) / Math.max(0.0001, material.batchYield);
 };
 
 /**

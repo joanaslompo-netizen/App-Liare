@@ -31,6 +31,7 @@ import {
 } from '../utils/formatters';
 import { SearchableProductCombobox } from './SearchableProductCombobox';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
+import { getVirtualRecipeLaborCost } from '../utils/storage';
 
 interface ProductionsViewProps {
   productions: Production[];
@@ -800,7 +801,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
     ? Math.max(0, selectedProduct.totalCost - selectedProduct.materialsCost)
     : 0;
   const totalCost = selectedProduct
-    ? ingredientCost + nonIngredientCostPerBatch * parsedBatchCount
+    ? ingredientCost + (nonIngredientCostPerBatch + getVirtualRecipeLaborCost(selectedProduct.items, materials)) * parsedBatchCount
     : 0;
   const unitCost = quantityProduced > 0 ? totalCost / quantityProduced : 0;
 
@@ -1582,6 +1583,7 @@ const StageProgressModal: React.FC<StageProgressModalProps> = ({
       (sum, deduction) => sum + deduction.totalCost,
       0
     );
+    const virtualLaborDelta = getVirtualRecipeLaborCost(stageRecipeItems, materials) * result.batchFactor;
     const laborCostDelta =
       ((selectedStage.laborMinutes || 0) / 60) *
       (product.hourlyRate || 0) *
@@ -1602,7 +1604,7 @@ const StageProgressModal: React.FC<StageProgressModalProps> = ({
       status: isCompleted ? 'completed' : 'in_progress',
       quantityProduced: nextFinishedQuantity,
       totalCost: Number(
-        (production.totalCost + ingredientCostDelta + laborCostDelta + finalOverheadDelta).toFixed(4)
+        (production.totalCost + ingredientCostDelta + laborCostDelta + virtualLaborDelta + finalOverheadDelta).toFixed(4)
       ),
       deductedItems: mergeDeductionLists(production.deductedItems || [], recordedDeductions),
       stageProgress: nextStageProgress,

@@ -74,6 +74,11 @@ export interface Material {
   recipeItems?: RecipeItem[];
   /** Quantity produced by one recipe batch, in the material base unit. */
   batchYield?: number;
+  /** Automático soma os insumos; manual informa o rendimento real do lote. */
+  recipeYieldMode?: 'auto' | 'manual';
+  productionTimeMinutes?: number;
+  hourlyRate?: number;
+  recipeLaborCost?: number;
   /** Estimated total cost of one recipe batch. */
   recipeTotalCost?: number;
   /** Estimated cost per base unit produced by the recipe. */

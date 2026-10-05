@@ -33,6 +33,7 @@ import {
   matchesSearchText
 } from '../utils/formatters';
 import { processImageFile } from '../utils/imageHelper';
+import { estimateMaterialUnitCost } from '../utils/storage';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
 
 interface MaterialsViewProps {
@@ -45,6 +46,7 @@ interface MaterialsViewProps {
   onOpenPurchaseHistory?: () => void;
   filterLowStockInitial?: boolean;
   openNewMaterialSignal?: number;
+  defaultHourlyRate?: number;
 }
 
 export const MaterialsView: React.FC<MaterialsViewProps> = ({
@@ -57,6 +59,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
   onOpenPurchaseHistory,
   filterLowStockInitial = false,
   openNewMaterialSignal = 0,
+  defaultHourlyRate = 0,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -639,6 +642,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
           suppliers={suppliers}
           onClose={() => setIsModalOpen(false)}
           materials={materials}
+          defaultHourlyRate={defaultHourlyRate}
           onSave={(saved) => {
             onSaveMaterial(saved);
             setIsModalOpen(false);
@@ -650,6 +654,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
 };
 
 interface MaterialModalProps {
+  defaultHourlyRate: number;
   isOpen: boolean;
   material: Material | null;
   existingCategories: string[];
@@ -664,12 +669,17 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
   existingCategories,
   suppliers,
   materials,
+  defaultHourlyRate,
   onClose,
   onSave,
 }) => {
   const isEditing = !!material;
 
   const [isMadeInAtelier, setIsMadeInAtelier] = useState(material?.isMadeInAtelier || false);
+  const [recipeYieldMode, setRecipeYieldMode] = useState<'auto' | 'manual'>(material?.recipeYieldMode || 'auto');
+  const [recipeYield, setRecipeYield] = useState(String(material?.batchYield || 1));
+  const [productionMinutes, setProductionMinutes] = useState(String(material?.productionTimeMinutes || 0));
+  const [laborHourlyRate, setLaborHourlyRate] = useState(String(material?.hourlyRate ?? defaultHourlyRate));
   const [isVirtualRecipe, setIsVirtualRecipe] = useState(material ? !!material.isVirtualRecipe : true);
   const [recipeItems, setRecipeItems] = useState<import('../types').RecipeItem[]>(material?.recipeItems || []);
   const [recipeTargetId, setRecipeTargetId] = useState('');
@@ -734,7 +744,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
 
     const fixed = materials.find((m) => m.id === item.targetId);
     return fixed
-      ? { unitCost: fixed.usageType === 'durable' ? 0 : fixed.unitCost, unit: UNIT_SHORT[fixed.unit] }
+      ? { unitCost: estimateMaterialUnitCost(fixed, materials), unit: UNIT_SHORT[fixed.unit] }
       : { unitCost: item.unitCost || 0, unit: item.unit };
   };
 
@@ -767,7 +777,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
         .filter((value): value is UnitOfMeasure => !!value)
     )
   );
-  const inferredRecipeUnit: UnitOfMeasure = recipeUnits.length === 1
+  const inferredRecipeUnit: UnitOfMeasure = recipeYieldMode === 'auto' && recipeUnits.length === 1
     ? recipeUnits[0]
     : unit;
   const consumableRecipeItems = recipeItems.filter((item) => {
@@ -777,9 +787,13 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
   });
   const hasMixedRecipeUnits = consumableRecipeItems.length > 0 && recipeUnits.length !== 1;
   const automaticRecipeYield = consumableRecipeItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
-  const parsedRecipeYield = Math.max(0.0001, automaticRecipeYield || 1);
-  const recipeTotalCost = normalizedRecipeItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
-  const recipeUnitCost = recipeTotalCost / parsedRecipeYield;
+  const parsedRecipeYield = recipeYieldMode === 'manual' ? Number(recipeYield) : Math.max(0.0001, automaticRecipeYield || 1);
+  const parsedProductionMinutes = Math.max(0, Number(productionMinutes) || 0);
+  const parsedLaborHourlyRate = Math.max(0, Number(laborHourlyRate) || 0);
+  const recipeLaborCost = parsedProductionMinutes / 60 * parsedLaborHourlyRate;
+  const recipeMaterialsCost = normalizedRecipeItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
+  const recipeTotalCost = recipeMaterialsCost + recipeLaborCost;
+  const recipeUnitCost = recipeTotalCost / Math.max(0.0001, parsedRecipeYield || 0);
 
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -812,7 +826,11 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
       alert('Ingredientes por categoria só podem ser usados em Receita Virtual, pois a escolha acontece na produção da peça.');
       return;
     }
-    if (isMadeInAtelier && hasMixedRecipeUnits) {
+    if (isMadeInAtelier && (!Number.isFinite(parsedRecipeYield) || parsedRecipeYield <= 0)) {
+      alert('Informe um rendimento maior que zero.');
+      return;
+    }
+    if (isMadeInAtelier && recipeYieldMode === 'auto' && hasMixedRecipeUnits) {
       alert('Todos os ingredientes da receita precisam usar a mesma unidade de medida.');
       return;
     }
@@ -847,6 +865,10 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
       isVirtualRecipe: isDurable ? false : (isMadeInAtelier ? isVirtualRecipe : false),
       recipeItems: isDurable ? undefined : (isMadeInAtelier ? normalizedRecipeItems : undefined),
       batchYield: isDurable ? undefined : (isMadeInAtelier ? parsedRecipeYield : undefined),
+      recipeYieldMode: isMadeInAtelier && !isDurable ? recipeYieldMode : undefined,
+      productionTimeMinutes: isMadeInAtelier && !isDurable ? parsedProductionMinutes : undefined,
+      hourlyRate: isMadeInAtelier && !isDurable ? parsedLaborHourlyRate : undefined,
+      recipeLaborCost: isMadeInAtelier && !isDurable ? recipeLaborCost : undefined,
       recipeTotalCost: isDurable ? undefined : (isMadeInAtelier ? recipeTotalCost : undefined),
       unitCostFromBatch: isDurable ? undefined : (isMadeInAtelier ? recipeUnitCost : undefined),
       currentStock: isMadeInAtelier && isVirtualRecipe && !isDurable ? 0 : (parseFloat(currentStock) || 0),
@@ -1319,15 +1341,19 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                 {recipeItems.length === 0 && <div className="text-[11px] text-stone-500 bg-white border border-dashed border-purple-200 rounded-lg p-3 text-center">Nenhum ingrediente adicionado.</div>}
               </div>
 
+              <label className="flex items-center gap-2 text-sm font-semibold text-stone-800">
+                <input type="checkbox" checked={recipeYieldMode === 'auto'} onChange={(e) => setRecipeYieldMode(e.target.checked ? 'auto' : 'manual')} />
+                Calcular rendimento pela soma dos insumos
+              </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="bg-white border border-purple-200 rounded-lg p-3 flex items-center justify-between">
-                  <div>
-                    <span className="text-[11px] font-bold text-stone-700 block">Rendimento automático</span>
-                    <span className="text-[10px] text-stone-500">Soma dos ingredientes da receita</span>
+                <div className="bg-white border border-purple-200 rounded-lg p-3 space-y-2">
+                  <label htmlFor="material-recipe-yield" className="block text-sm font-bold text-stone-700">Quantidade produzida por lote</label>
+                  <div className="flex gap-2">
+                    <input id="material-recipe-yield" type="number" min="0.0001" step="any" disabled={recipeYieldMode === 'auto'} value={recipeYieldMode === 'auto' ? automaticRecipeYield : recipeYield} onChange={(e) => setRecipeYield(e.target.value)} className="w-1/2 px-3 py-2 text-sm border border-stone-300 rounded-lg disabled:bg-stone-100" />
+                    <select aria-label="Unidade do rendimento" disabled={recipeYieldMode === 'auto'} value={inferredRecipeUnit} onChange={(e) => setUnit(e.target.value as UnitOfMeasure)} className="w-1/2 px-3 py-2 text-sm border border-stone-300 rounded-lg disabled:bg-stone-100">
+                      {Object.entries(UNIT_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                    </select>
                   </div>
-                  <span className="font-extrabold text-stone-900">
-                    {formatNumber(automaticRecipeYield)} {UNIT_SHORT[inferredRecipeUnit]}
-                  </span>
                 </div>
                 <div className="bg-white border border-purple-200 rounded-lg p-3 flex items-center justify-between">
                   <span className="text-[11px] text-stone-600">{recipeItems.some(i => i.selectionMode === 'category') ? 'Custo estimado por unidade' : 'Custo por unidade'}</span>
@@ -1335,7 +1361,23 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                 </div>
               </div>
 
-              {hasMixedRecipeUnits && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="material-production-minutes" className="block text-sm font-bold text-stone-700 mb-1">Tempo por lote (minutos)</label>
+                  <input id="material-production-minutes" type="number" min="0" step="any" value={productionMinutes} onChange={(e) => setProductionMinutes(e.target.value)} className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg" />
+                </div>
+                <div>
+                  <label htmlFor="material-hourly-rate" className="block text-sm font-bold text-stone-700 mb-1">Valor da sua hora (R$)</label>
+                  <input id="material-hourly-rate" type="number" min="0" step="any" value={laborHourlyRate} onChange={(e) => setLaborHourlyRate(e.target.value)} className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg" />
+                </div>
+              </div>
+              <div className="bg-white border border-purple-200 rounded-lg p-3 space-y-1 text-sm text-stone-800">
+                <div className="flex justify-between"><span>Insumos por lote</span><strong>{formatCurrency(recipeMaterialsCost)}</strong></div>
+                <div className="flex justify-between"><span>Mão de obra por lote</span><strong>{formatCurrency(recipeLaborCost)}</strong></div>
+                <div className="flex justify-between"><span>Custo total do lote</span><strong>{formatCurrency(recipeTotalCost)}</strong></div>
+              </div>
+
+              {recipeYieldMode === 'auto' && hasMixedRecipeUnits && (
                 <div className="text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
                   Os ingredientes precisam usar a mesma unidade para calcular o rendimento automaticamente.
                 </div>

@@ -14,6 +14,7 @@ import {
   saveTodos,
   saveProjects,
   cascadeRecalculateAllProducts,
+  getVirtualRecipeLaborCost,
   DEFAULT_TODOS,
   DEFAULT_SETTINGS
 } from './utils/storage';
@@ -1253,7 +1254,8 @@ export default function App() {
       : undefined;
     const productId = existingCustomProduct?.id || `custom_prod_${now}_${Math.random().toString(36).slice(2, 6)}`;
     const productionId = `production_custom_${now}_${Math.random().toString(36).slice(2, 6)}`;
-    const materialsCost = deductedItems.reduce((sum, d) => sum + d.totalCost, 0);
+    const materialsCost = deductedItems.reduce((sum, d) => sum + d.totalCost, 0)
+      + getVirtualRecipeLaborCost(item.customRecipeItems, materials);
     const unitCost = materialsCost;
     const customBusinessCost =
       materialsCost +
@@ -1841,6 +1843,7 @@ export default function App() {
         {activeTab === 'materials' && (
           <MaterialsView
             materials={materials}
+            defaultHourlyRate={settings.defaultHourlyRate}
             suppliers={suppliers}
             onSaveMaterial={handleSaveMaterial}
             onDeleteMaterial={handleDeleteMaterial}
