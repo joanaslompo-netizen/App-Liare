@@ -1,4 +1,5 @@
 import { calculateRecipePricing } from './financials';
+import { synchronizeRecipeFamilies } from './recipeFamilies';
 import { Material, Product, Purchase, Sale, Customer, Supplier, AtelierSettings, RecipeItem, TodoItem, Production, ProductionProject } from '../types';
 
 const STORAGE_KEYS = {
@@ -2138,7 +2139,7 @@ export const cascadeRecalculateAllProducts = (
   materials: Material[],
   products: Product[]
 ): Product[] => {
-  let updatedList = [...products];
+  let updatedList = synchronizeRecipeFamilies(products, materials);
 
   // First pass: update intermediate products (components)
   updatedList = updatedList.map((p) => {

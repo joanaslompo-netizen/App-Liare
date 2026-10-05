@@ -728,7 +728,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
       const options = materials.filter((m) => !m.isVirtualRecipe && m.usageType !== 'durable' && m.category === item.targetCategory);
       if (options.length === 0) return { unitCost: item.unitCost || 0, unit: item.unit };
       const avg = options.reduce((sum, m) => sum + m.unitCost, 0) / options.length;
-      const units = Array.from(new Set(options.map((m) => m.unit)));
+      const units = Array.from(new Set<UnitOfMeasure>(options.map((m) => m.unit)));
       return { unitCost: avg, unit: units.length === 1 ? UNIT_SHORT[units[0]] : item.unit };
     }
 
@@ -741,7 +741,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
   const getRecipeItemUnitOfMeasure = (item: import('../types').RecipeItem): UnitOfMeasure | null => {
     if (item.selectionMode === 'category' && item.targetCategory) {
       const options = materials.filter((m) => !m.isVirtualRecipe && m.usageType !== 'durable' && m.category === item.targetCategory);
-      const units = Array.from(new Set(options.map((m) => m.unit)));
+      const units = Array.from(new Set<UnitOfMeasure>(options.map((m) => m.unit)));
       return units.length === 1 ? units[0] : null;
     }
 
@@ -1254,7 +1254,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                   if (!recipeCategory) { alert('Selecione uma categoria.'); return; }
                   const options = materials.filter(m => !m.isVirtualRecipe && m.category === recipeCategory);
                   if (options.length === 0) { alert('Essa categoria ainda não possui materiais cadastrados.'); return; }
-                  const categoryUnits = Array.from(new Set(options.map(m => m.unit)));
+                  const categoryUnits = Array.from(new Set<UnitOfMeasure>(options.map(m => m.unit)));
                   if (categoryUnits.length !== 1) {
                     alert('Os materiais dessa categoria usam unidades diferentes. Para usar a categoria na receita, cadastre todos com a mesma unidade de medida.');
                     return;

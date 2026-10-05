@@ -1,4 +1,5 @@
 import { calculateRecipePricing, getRecipePricing } from '../utils/financials';
+import { inheritRecipe } from '../utils/recipeFamilies';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Plus, 
@@ -954,7 +955,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       id={`btn-duplicate-product-${p.id}`}
                       onClick={() => onDuplicateProduct(p)}
                       className="p-1.5 text-stone-500 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors"
-                      title="Duplicar receita"
+                      title={p.isCustomRecipe ? 'Duplicar receita' : 'Criar variação vinculada (estoque zerado)'}
                     >
                       <Copy className="w-4 h-4" />
                     </button>
@@ -1147,6 +1148,12 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   onSave,
 }) => {
   const isEditing = !!product;
+  const [parentRecipeId, setParentRecipeId] = useState(product?.parentRecipeId || '');
+  const [isFamilyMother, setIsFamilyMother] = useState(!!product?.isFamilyMother);
+  const motherRecipes = allProducts.filter((p) =>
+    p.id !== product?.id && !p.parentRecipeId && !p.isCustomRecipe
+    && !allProducts.some((child) => child.parentRecipeId === product?.id && product?.id)
+  );
 
   const initialAutomaticDisplayName = buildAutomaticProductName(product?.productFamily, product?.fragrance);
   const inferredInitialCustomName =
@@ -1340,6 +1347,26 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const selectMotherRecipe = (id: string) => {
+    setParentRecipeId(id);
+    const mother = allProducts.find((p) => p.id === id);
+    if (!mother) return;
+    const inherited = inheritRecipe({ ...mother, ...product, items }, mother, allMaterials);
+    setItems(inherited.items);
+    setProductFamily(inherited.productFamily || '');
+    setCategory(mother.category);
+    setIsFinalProduct(!mother.isIntermediate);
+    setBatchYield(String(mother.batchYield));
+    setUseProductionStages(!!mother.useProductionStages);
+    setProductionStages(mother.productionStages?.map((stage) => ({ ...stage })) || []);
+    setActiveStageToAdd(mother.productionStages?.[0]?.id || '');
+    setProductionTimeMinutes(String(mother.productionTimeMinutes));
+    setHourlyRate(String(mother.hourlyRate));
+    setFixedCostPercent(String(mother.fixedCostPercent));
+    setOtherCosts(String(mother.otherCosts));
+    setProfitMarginPercent(String(mother.profitMarginPercent));
+  };
 
   // Calculate live totals
   const parsedMinutes = useProductionStages
@@ -1610,6 +1637,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
 
     const savedProduct: Product = {
       id: product?.id || `prod_${Date.now()}`,
+      parentRecipeId: parentRecipeId || undefined,
+      isFamilyMother: !parentRecipeId && isFamilyMother,
       name: finalDisplayName,
       customName: customDisplayName || undefined,
       category: (finalCategory || 'Acessórios & Bolsas').trim(),
@@ -1656,7 +1685,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       updatedAt: new Date().toISOString().split('T')[0],
     };
 
-    onSave(savedProduct);
+    const mother = allProducts.find((p) => p.id === parentRecipeId);
+    onSave(mother ? inheritRecipe(savedProduct, mother, allMaterials) : savedProduct);
   };
 
   return (
@@ -1853,6 +1883,26 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   <p className="text-[10px] text-stone-500 mt-1">
                     Agrupa receitas que são o mesmo produto com aromas diferentes.
                   </p>
+                  {!product?.isCustomRecipe && (
+                    <div className="mt-3 space-y-2">
+                      <label htmlFor="parent-recipe" className="block text-sm font-bold text-stone-700">Receita mãe</label>
+                      <select id="parent-recipe" value={parentRecipeId} onChange={(e) => selectMotherRecipe(e.target.value)} className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg">
+                        <option value="">Esta é uma receita mãe / independente</option>
+                        {motherRecipes.map((mother) => <option key={mother.id} value={mother.id}>{mother.name}</option>)}
+                      </select>
+                      {!parentRecipeId && (
+                        <label className="flex items-start gap-2 text-sm text-stone-700">
+                          <input type="checkbox" checked={isFamilyMother} onChange={(e) => setIsFamilyMother(e.target.checked)} className="mt-1" />
+                          <span>Usar como mãe e vincular as receitas existentes desta família ao salvar</span>
+                        </label>
+                      )}
+                      <p className="text-sm text-stone-700">
+                        {parentRecipeId
+                          ? 'Composição, quantidades e mão de obra vêm da mãe. Para alterar esses dados, edite a mãe. Escolha o aroma nesta variação; seu estoque e preço de venda são individuais.'
+                          : 'As variações vinculadas receberão as alterações desta receita nas próximas produções, mantendo seus aromas e estoques.'}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div>

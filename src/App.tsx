@@ -755,20 +755,35 @@ export default function App() {
         updated = [prod, ...prev];
       }
 
+      if (prod.isFamilyMother && !prod.parentRecipeId && prod.productFamily?.trim()) {
+        updated = updated.map((p) =>
+          p.id !== prod.id && !p.isCustomRecipe && !p.isFamilyMother && !p.parentRecipeId
+          && p.productFamily?.trim() === prod.productFamily.trim()
+            ? { ...p, parentRecipeId: prod.id }
+            : p
+        );
+      }
+
       // Cascade recalculate other products that might use this product as a sub-product (component)!
       return cascadeRecalculateAllProducts(materials, updated);
     });
   }, [materials]);
 
   const handleDeleteProduct = useCallback((id: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
+    setProducts((prev) => prev.filter((p) => p.id !== id).map((p) =>
+      p.parentRecipeId === id ? { ...p, parentRecipeId: undefined } : p
+    ));
   }, []);
 
   const handleDuplicateProduct = useCallback((prod: Product) => {
     const copy: Product = {
       ...prod,
       id: `prod_${Date.now()}`,
+      parentRecipeId: prod.isCustomRecipe ? undefined : (prod.parentRecipeId || prod.id),
+      isFamilyMother: false,
       name: `${prod.name} (Cópia)`,
+      customName: `${prod.name} (Cópia)`,
+      currentStock: 0,
       createdAt: new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString().split('T')[0],
     };
