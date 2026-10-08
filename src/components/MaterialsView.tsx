@@ -1143,7 +1143,8 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
           </div>
 
           {usageType === 'durable' && (
-            <div className="bg-purple-50/60 border border-purple-200 rounded-xl p-4 space-y-4">
+            <MoreOptions title="Mais opções: detalhes do durável" >
+<div className="bg-purple-50/60 border border-purple-200 rounded-xl p-4 space-y-4">
               <div>
                 <h4 className="text-xs font-bold text-purple-950 uppercase tracking-wider flex items-center gap-1.5">
                   <Hammer className="w-3.5 h-3.5 text-purple-700" />
@@ -1188,6 +1189,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                 </div>
               )}
             </div>
+</MoreOptions>
           )}
 
           {isMadeInAtelier && usageType !== 'durable' && (
