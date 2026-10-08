@@ -36,6 +36,7 @@ interface HomeViewProps {
   onOpenNewMaterial?: () => void;
   onOpenNewSale?: () => void;
   onOpenSettings?: () => void;
+  onOpenSale?: (saleId: string) => void;
 }
 
 // Redeploy marker: summary banner
@@ -51,6 +52,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onOpenNewProduct,
   onOpenNewMaterial,
   onOpenNewSale,
+  onOpenSale,
 }) => {
   const [newTodoText, setNewTodoText] = useState('');
   const [newTodoPriority, setNewTodoPriority] = useState<'high' | 'normal' | 'low'>('normal');
@@ -329,19 +331,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 primaryItem?.productImageUrl ||
                 products.find((product) => product.id === stockProductId)?.imageUrl;
               const itemName = sale.productName || primaryItem?.productName || 'Pedido';
-              const stockProduct = stockProductId
-                ? products.find((product) => product.id === stockProductId)
-                : undefined;
-              const physicalStock = stockProduct?.currentStock ?? 0;
-              const reservedQuantity = primaryItem?.reservedQuantity ?? 0;
-              const requestedQuantity = primaryItem?.quantity ?? sale.quantity;
-              const missingQuantity = Math.max(0, requestedQuantity - reservedQuantity);
+              const requestedQuantity = sale.items?.length
+                ? sale.items.reduce((sum, item) => sum + item.quantity, 0)
+                : sale.quantity;
 
               return (
                 <button
                   type="button"
                   key={sale.id}
-                  onClick={() => onNavigate('sales', 'pending_delivery')}
+                  onClick={() => onOpenSale ? onOpenSale(sale.id) : onNavigate('sales', 'pending_delivery')}
                   className="w-full py-2.5 sm:py-3 flex items-center gap-3 text-left cursor-pointer group"
                 >
                   <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-[#f7f2ed] flex flex-col items-center justify-center shrink-0">
@@ -359,20 +357,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
                   <div className="min-w-0 flex-1">
                     <span className="text-xs sm:text-sm font-semibold text-[#352f2b] block truncate">
-                      {itemName}
+                      {itemName}{sale.items && sale.items.length > 1 ? ` + ${sale.items.length - 1} item(ns)` : ''}
                     </span>
                     <div className="mt-0.5 flex items-center justify-between gap-3">
                       <span className="text-[11px] sm:text-xs text-[#857970] truncate">
                         {sale.customerName || 'Cliente sem nome'}
                       </span>
-                      <div
-                        className="flex items-center gap-2.5 text-[11px] sm:text-xs font-bold shrink-0"
-                        aria-label={`Estoque ${physicalStock}, reservado ${reservedQuantity}, faltam ${missingQuantity}`}
-                      >
-                        <span className="text-emerald-600" title="Estoque">{physicalStock}</span>
-                        <span className="text-sky-600" title="Reservado">{reservedQuantity}</span>
-                        <span className="text-rose-600" title="Faltam">{missingQuantity}</span>
-                      </div>
+                      <span className="text-xs font-semibold text-stone-700 shrink-0">
+                        {requestedQuantity} {requestedQuantity === 1 ? 'unidade' : 'unidades'}
+                      </span>
                     </div>
                   </div>
 

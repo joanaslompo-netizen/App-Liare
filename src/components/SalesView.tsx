@@ -65,6 +65,8 @@ interface SalesViewProps {
   onDeleteSale: (id: string) => void;
   onSaveCustomer: (customer: Customer) => void;
   onAddPaymentMethod: (method: string) => void;
+  initialSaleId?: string | null;
+  onClearInitialSale?: () => void;
   initialFilter?: 'all' | 'pending_delivery' | 'pending_payment';
   initialCustomerForNewOrder?: Customer | null;
   onClearInitialCustomer?: () => void;
@@ -87,6 +89,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
   onDeleteSale,
   onSaveCustomer,
   onAddPaymentMethod,
+  initialSaleId,
+  onClearInitialSale,
   initialFilter = 'all',
   initialCustomerForNewOrder,
   onClearInitialCustomer,
@@ -112,6 +116,16 @@ export const SalesView: React.FC<SalesViewProps> = ({
       setIsModalOpen(true);
     }
   }, [openNewSaleSignal]);
+
+  useEffect(() => {
+    if (!initialSaleId) return;
+    const sale = sales.find((item) => item.id === initialSaleId);
+    if (sale) {
+      setEditingSale(sale);
+      setIsModalOpen(true);
+    }
+    onClearInitialSale?.();
+  }, [initialSaleId, sales, onClearInitialSale]);
 
   const getStockProductId = (item: SaleItem) =>
     item.isCustom ? item.customProductId : item.productId;
