@@ -185,7 +185,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
   // Quick stats
   const pendingDeliveryList = useMemo(() => sales.filter((s) => s.deliveryStatus === 'pendente_entrega'), [sales]);
-  const pendingPaymentList = useMemo(() => sales.filter((s) => s.paymentStatus === 'pendente_pagamento'), [sales]);
+  const pendingPaymentList = useMemo(() => sales.filter((s) => s.paymentStatus === 'pendente_pagamento' && getInvoiceTotals(s).balance > 0), [sales]);
 
   const totalPendingPaymentAmount = useMemo(() => {
     return pendingPaymentList.reduce((acc, s) => acc + getInvoiceTotals(s).balance, 0);
@@ -199,7 +199,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
         if (activeTabFilter === 'pending_delivery' && s.deliveryStatus !== 'pendente_entrega') {
           return false;
         }
-        if (activeTabFilter === 'pending_payment' && s.paymentStatus !== 'pendente_pagamento') {
+        if (activeTabFilter === 'pending_payment' && (s.paymentStatus !== 'pendente_pagamento' || getInvoiceTotals(s).balance <= 0)) {
           return false;
         }
         if (activeTabFilter === 'completed' && (s.deliveryStatus === 'pendente_entrega' || s.paymentStatus === 'pendente_pagamento')) {

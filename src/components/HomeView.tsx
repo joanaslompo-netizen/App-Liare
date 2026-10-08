@@ -74,7 +74,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
   );
 
   const pendingPayments = useMemo(
-    () => sales.filter((s) => s.paymentStatus === 'pendente_pagamento'),
+    () => sales.filter((s) => s.paymentStatus === 'pendente_pagamento' && getInvoiceTotals(s).balance > 0)
+      .sort((a, b) => (a.paymentScheduledDate || '9999-12-31').localeCompare(b.paymentScheduledDate || '9999-12-31')),
     [sales]
   );
 
@@ -550,35 +551,26 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => onNavigate('sales', 'pending_payment')}
-            className="w-full text-left bg-white rounded-2xl border border-[#eadfd6] p-5 shadow-xs hover:border-[#c98a72] transition-colors cursor-pointer"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-xl bg-[#eef1e6] text-[#6d7658] flex items-center justify-center shrink-0">
-                  <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-[#352f2b]">Valores a receber</h4>
-                  <p className="text-xs text-[#857970] mt-0.5">
-                    {pendingPayments.length} {pendingPayments.length === 1 ? 'cliente pendente' : 'clientes pendentes'}
-                  </p>
-                </div>
+          <div className="w-full bg-white rounded-2xl border border-[#eadfd6] p-5 shadow-xs">
+            <button type="button" onClick={() => onNavigate('sales', 'pending_payment')} className="w-full text-left flex items-start justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-bold text-[#352f2b]">Contas a receber</h4>
+                <p className="text-xs text-[#857970] mt-0.5">{pendingPayments.length} pedido(s) com saldo pendente</p>
               </div>
               <strong className="text-lg font-bold text-[#6d7658]">{formatCurrency(totalPendingPaymentAmount)}</strong>
-            </div>
-            {pendingPayments[0] && (
-              <div className="mt-3 pt-3 border-t border-[#f0e7e0] flex items-center justify-between gap-3 text-xs">
-                <span className="text-[#5e5149] truncate">
-                  {pendingPayments[0].customerName || 'Cliente sem nome'}
-                  {pendingPayments[0].paymentScheduledDate ? ` · cobrar em ${formatDate(pendingPayments[0].paymentScheduledDate)}` : ''}
+            </button>
+            {pendingPayments.slice(0, 3).map((sale) => (
+              <button key={sale.id} type="button"
+                onClick={() => onOpenSale ? onOpenSale(sale.id) : onNavigate('sales', 'pending_payment')}
+                className="w-full mt-3 pt-3 border-t border-[#f0e7e0] flex items-center justify-between gap-3 text-left text-sm">
+                <span className="min-w-0">
+                  <span className="block font-semibold truncate">{sale.customerName || 'Cliente sem nome'}</span>
+                  <span className="text-xs text-stone-600">Pedido {sale.orderNumber || 'sem número'}{sale.paymentScheduledDate ? ` · ${formatDate(sale.paymentScheduledDate)}` : ''}</span>
                 </span>
-                <ArrowRight className="w-3.5 h-3.5 text-[#a86149] shrink-0" />
-              </div>
-            )}
-          </button>
+                <strong className="shrink-0 text-[#6d7658]">{formatCurrency(getInvoiceTotals(sale).balance)}</strong>
+              </button>
+            ))}
+          </div>
 
           <button
             type="button"
