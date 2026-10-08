@@ -2714,7 +2714,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
         {/* Quick Customer Registration Modal Overlay */}
         {isQuickCustomerOpen && (
-          <div className="fixed inset-0 z-60 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="liare-quick-dialog fixed inset-0 z-60 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
             <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
               <div className="px-5 py-4 border-b border-stone-200 bg-stone-50 flex items-center justify-between">
                 <div className="flex items-center gap-2">

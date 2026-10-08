@@ -7,3 +7,10 @@
     font-size: 16px !important;
   }
 }
+
+/* Ações e cadastros rápidos precisam caber na área útil do celular. */
+@media (max-width: 768px) {
+  .liare-more-options > summary { min-height: 44px; display: flex; align-items: center; }
+  .liare-quick-dialog > div { max-height: calc(100dvh - 2rem); overflow-y: auto; }
+  .liare-quick-dialog button { min-height: 44px; }
+}
