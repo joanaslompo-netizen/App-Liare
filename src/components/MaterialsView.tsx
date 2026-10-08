@@ -1,3 +1,4 @@
+import { MoreOptions } from './MoreOptions';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Plus, 
@@ -909,7 +910,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
         {/* Modal Body Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Photo & Main identification */}
-          <div className="grid grid-cols-[8rem_minmax(0,1fr)] sm:grid-cols-[9rem_minmax(0,1fr)] gap-4 sm:gap-5 items-start">
+          <div className="grid grid-cols-1 sm:grid-cols-[9rem_minmax(0,1fr)] gap-4 sm:gap-5 items-start">
             {/* Photo upload container */}
             <div className="shrink-0 w-32 sm:w-36 flex flex-col items-center">
               <div 
@@ -959,6 +960,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
 
             {/* Name, Category, Classification and Supplier */}
             <div className="w-full">
+<MoreOptions title="Mais opções: tipo de material" defaultOpen={isMadeInAtelier || usageType === 'durable' || materialType === 'for_sale'}>
               {/* Material options: all materials are internal by default */}
               <div className="space-y-2">
 
@@ -1072,9 +1074,11 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                   </span>
                 </button>
               </div>
+
+</MoreOptions>
             </div>
 
-            <div className="col-span-2 space-y-3.5 w-full">
+            <div className="sm:col-span-2 space-y-3.5 w-full">
               <div>
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
                   Nome do Material *
@@ -1385,6 +1389,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
             </div>
           )}
 
+<MoreOptions title="Mais opções: fornecedor" >
           {/* Supplier: only for purchased materials */}
           {!isMadeInAtelier && (
             <div>
@@ -1407,6 +1412,8 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
             </div>
           )}
 
+
+</MoreOptions>
           {/* Pricing & Unit Calculation Box: only for purchased materials */}
           {!isMadeInAtelier && (
           <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-4 space-y-4">
@@ -1559,6 +1566,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
             </div>
           )}
 
+<MoreOptions title="Mais opções: observações" >
           {/* Notes */}
           <div>
             <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
@@ -1573,6 +1581,8 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
             />
           </div>
 
+
+</MoreOptions>
           {/* Modal Footer */}
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-stone-200">
             <button
