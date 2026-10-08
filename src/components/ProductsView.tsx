@@ -336,6 +336,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         </div>
       </div>
 
+      <MoreOptions title="Mais opções: receitas personalizadas" defaultOpen={recipeScope === 'custom'}>
       <div className="inline-flex items-center p-1 bg-stone-100 rounded-xl border border-stone-200 w-fit">
         <button
           type="button"
@@ -370,6 +371,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           Personalizadas ({products.filter((p) => p.isCustomRecipe).length})
         </button>
       </div>
+
+      </MoreOptions>
 
       {/* Filter and Search Bar */}
       <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs space-y-3">
