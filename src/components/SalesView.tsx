@@ -2741,7 +2741,6 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                   </label>
                   <input
                     type="text"
-                    required
                     placeholder="Ex: Amanda Silva"
                     value={quickName}
                     onChange={(e) => setQuickName(e.target.value)}
