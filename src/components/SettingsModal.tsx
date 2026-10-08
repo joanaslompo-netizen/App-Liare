@@ -1,3 +1,4 @@
+import { localDateString } from '../utils/localDate';
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Settings, 
@@ -104,7 +105,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(allCurrentData, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', dataStr);
-    const dateStr = new Date().toISOString().split('T')[0];
+    const dateStr = localDateString();
     downloadAnchor.setAttribute('download', `backup_atelie_custos_${dateStr}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
@@ -203,7 +204,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         type: newDiscountType,
         value: newDiscountType === 'percentage' ? Math.min(100, value) : value,
         active: true,
-        createdAt: new Date().toISOString().split('T')[0],
+        createdAt: localDateString(),
       },
     ];
     persistDiscountCodes(next);

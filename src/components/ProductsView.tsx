@@ -1,3 +1,4 @@
+import { localDateString } from '../utils/localDate';
 import { MoreOptions } from './MoreOptions';
 import { calculateRecipePricing, getRecipePricing } from '../utils/financials';
 import { inheritRecipe } from '../utils/recipeFamilies';
@@ -958,7 +959,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                         onClick={() => onSaveProduct({
                           ...p,
                           isPaused: !p.isPaused,
-                          updatedAt: new Date().toISOString().split('T')[0],
+                          updatedAt: localDateString(),
                         })}
                         className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer ${
                           p.isPaused
@@ -1701,8 +1702,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       isPaused: product?.isPaused ?? false,
       standardStock: parsedStandardStock,
       notes: notes.trim() || undefined,
-      createdAt: product?.createdAt || new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0],
+      createdAt: product?.createdAt || localDateString(),
+      updatedAt: localDateString(),
     };
 
     const mother = allProducts.find((p) => p.id === parentRecipeId);

@@ -1,3 +1,4 @@
+import { localDateString } from '../utils/localDate';
 import React, { useState, useMemo } from 'react';
 import { 
   Plus, 
@@ -316,7 +317,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
   onClose,
   onSave,
 }) => {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(localDateString());
   const [supplierId, setSupplierId] = useState('');
   const [freeSupplierName, setFreeSupplierName] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -399,7 +400,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
       shippingCost: parsedShipping,
       totalAmount,
       notes: notes.trim() || undefined,
-      createdAt: new Date().toISOString().split('T')[0],
+      createdAt: localDateString(),
     };
 
     onSave(purchase, updateStock);

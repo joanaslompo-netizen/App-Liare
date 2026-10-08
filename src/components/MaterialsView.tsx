@@ -1,3 +1,4 @@
+import { localDateString } from '../utils/localDate';
 import { MoreOptions } from './MoreOptions';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
@@ -582,7 +583,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                       onClick={() => onSaveMaterial({
                         ...mat,
                         isPaused: !mat.isPaused,
-                        updatedAt: new Date().toISOString().split('T')[0],
+                        updatedAt: localDateString(),
                       })}
                       className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer ${
                         mat.isPaused
@@ -881,8 +882,8 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
       supplierName: isMadeInAtelier ? undefined : (selectedSupplier ? selectedSupplier.name : undefined),
       imageUrl: imageUrl || undefined,
       notes: notes.trim() || undefined,
-      createdAt: material?.createdAt || new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0],
+      createdAt: material?.createdAt || localDateString(),
+      updatedAt: localDateString(),
     };
 
     onSave(newOrUpdated);

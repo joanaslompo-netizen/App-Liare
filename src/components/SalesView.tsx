@@ -1,3 +1,4 @@
+import { localDateString } from '../utils/localDate';
 import { MoreOptions } from './MoreOptions';
 import { formatOrderNumber } from '../utils/orderNumbers';
 import { getInvoiceTotals } from '../utils/invoice';
@@ -244,7 +245,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
   // Quick Action: Mark Delivery as Complete
   const handleMarkAsDelivered = (sale: Sale) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateString();
     const updated: Sale = {
       ...sale,
       deliveryStatus: 'entregue',
@@ -255,7 +256,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
   // Quick Action: Mark Payment as Received
   const handleMarkAsPaid = (sale: Sale) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateString();
     const updated: Sale = {
       ...sale,
       paymentStatus: 'pago',
@@ -891,7 +892,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   onSave,
 }) => {
   const [orderType, setOrderType] = useState<OrderType>(existingSale?.orderType || 'pronta_entrega');
-  const [date, setDate] = useState(existingSale?.date || new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(existingSale?.date || localDateString());
 
   // Customer linkage & data
   const [customerId, setCustomerId] = useState<string | undefined>(
@@ -1321,7 +1322,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
               customProductId: result.productId,
               customProductionId: result.productionId,
               customProducedQuantity: result.producedQuantity,
-              customProducedAt: new Date().toISOString().split('T')[0],
+              customProducedAt: localDateString(),
               reservedQuantity: Math.min(
                 current.quantity,
                 (current.reservedQuantity || 0) + 1
@@ -1510,7 +1511,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       }
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateString();
 
     // Primary product summary for backwards compatibility
     const firstItem = items[0];

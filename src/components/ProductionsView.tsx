@@ -1,3 +1,4 @@
+import { localDateString } from '../utils/localDate';
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Plus, 
@@ -550,7 +551,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
   onSave,
 }) => {
   const [selectedProductId, setSelectedProductId] = useState<string>(presetProduct?.id || '');
-  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState<string>(localDateString());
   const [batchCount, setBatchCount] = useState<string>('1');
   const [notes, setNotes] = useState<string>('');
   const [updateStock, setUpdateStock] = useState<boolean>(true);
@@ -877,8 +878,8 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
       variableSelections: isStagedProduction ? { ...variableSelections } : undefined,
       stockTrackingEnabled: updateStock,
       notes: notes.trim() || undefined,
-      createdAt: new Date().toISOString().split('T')[0],
-      completedAt: isStagedProduction ? undefined : new Date().toISOString().split('T')[0],
+      createdAt: localDateString(),
+      completedAt: isStagedProduction ? undefined : localDateString(),
     };
 
     onSave(newProduction, isStagedProduction ? false : updateStock);
@@ -1608,7 +1609,7 @@ const StageProgressModal: React.FC<StageProgressModalProps> = ({
       ),
       deductedItems: mergeDeductionLists(production.deductedItems || [], recordedDeductions),
       stageProgress: nextStageProgress,
-      completedAt: isCompleted ? new Date().toISOString().split('T')[0] : undefined,
+      completedAt: isCompleted ? localDateString() : undefined,
     };
 
     onAdvance(updatedProduction, recordedDeductions, finishedQuantityDelta);

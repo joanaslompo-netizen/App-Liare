@@ -1,3 +1,4 @@
+import { localDateString } from '../utils/localDate';
 import { getInvoiceTotals } from '../utils/invoice';
 import React, { useMemo, useState } from 'react';
 import {
@@ -119,7 +120,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       text: newTodoText.trim(),
       completed: false,
       priority: newTodoPriority,
-      createdAt: new Date().toISOString().split('T')[0],
+      createdAt: localDateString(),
     };
 
     onUpdateTodos([newTodo, ...todos]);
@@ -143,7 +144,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       text,
       completed: false,
       priority: 'normal',
-      createdAt: new Date().toISOString().split('T')[0],
+      createdAt: localDateString(),
     };
     onUpdateTodos([newTodo, ...todos]);
   };
