@@ -19,3 +19,14 @@ Verificação local: `node --import tsx scripts/verify-backup.ts /caminho/para/b
 - Cada mudança exige tipagem/build e verificação do fluxo afetado; salvar, reabrir, editar e recarregar no celular e desktop. Sincronização real deve ser conferida na conta conectada antes de considerar essa parte validada.
 - Meta: compra em menos de um minuto, pedido em poucos passos, produção em segundos e pendências/custo/margem acessíveis.
 - Nunca incluir backups ou dados de clientes no GitHub.
+
+## S01 — Operação e cadastro
+
+| Tipo | Funções |
+| --- | --- |
+| Operação diária | Pedido, Produção, Compra e Estoque |
+| Cadastro | Produto/Receita, Material, Cliente e Fornecedor |
+| Consulta | Relatórios e históricos |
+| Excepcional | Configurações, backup e sincronização |
+
+Esta classificação orienta a reforma; não altera a navegação por si só.
