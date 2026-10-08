@@ -85,7 +85,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     [pendingPayments]
   );
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonth = localDateString().slice(0, 7);
   const monthSales = sales.filter((s) => s.date.startsWith(currentMonth));
   const monthRevenue = monthSales.reduce((acc, s) => acc + s.totalRevenue, 0);
   const monthProfit = monthSales.reduce((acc, s) => acc + getSaleFinancials(s, products).ownerEarnings, 0);
