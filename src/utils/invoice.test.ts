@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { buildInvoiceHtml, getInvoiceTotals } from './invoice';
+import { DEFAULT_SETTINGS } from './storage';
+import type { Sale } from '../types';
+const sale = { id: 'test', orderNumber: 42, date: '2026-01-01', productId: '', productName: 'Peça de teste', quantity: 2, unitPrice: 50, totalRevenue: 90, discountAmount: 10, amountPaid: 30, paymentStatus: 'pendente_pagamento', customerName: 'Cliente Teste' } as Sale;
+assert.deepEqual(getInvoiceTotals(sale), { total: 90, paid: 30, balance: 60, discount: 10, subtotal: 100 });
+assert.equal(getInvoiceTotals({ ...sale, amountPaid: 100 }).balance, 0);
+assert.equal(getInvoiceTotals({ ...sale, paymentStatus: 'pago' }).balance, 0);
+const html = buildInvoiceHtml(sale, { ...DEFAULT_SETTINGS, pixKey: 'chave-de-teste', pixHolder: 'Ateliê Teste' }, [], []);
+for (const text of ['chave-de-teste', 'Ateliê Teste', 'Peça de teste', 'Saldo devedor', 'cartão', 'WhatsApp', 'Desconto', '42']) assert(html.includes(text));
+console.log('Fatura: identificação, PIX, cartão/WhatsApp, desconto e saldo parcial preservados.');
