@@ -332,7 +332,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 sale.productImageUrl ||
                 primaryItem?.productImageUrl ||
                 products.find((product) => product.id === stockProductId)?.imageUrl;
-              const itemName = sale.productName || primaryItem?.productName || 'Pedido';
+              const itemName = primaryItem?.productName || sale.productName || 'Pedido';
               const requestedQuantity = sale.items?.length
                 ? sale.items.reduce((sum, item) => sum + item.quantity, 0)
                 : sale.quantity;
