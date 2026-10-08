@@ -1,3 +1,4 @@
+import { MoreOptions } from './MoreOptions';
 import { formatOrderNumber } from '../utils/orderNumbers';
 import { getInvoiceTotals } from '../utils/invoice';
 import { InvoiceModal } from './InvoiceModal';
@@ -2751,7 +2752,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
                 <div>
                   <label className="block font-bold text-stone-700 mb-1">
-                    Telefone / WhatsApp *
+                    Telefone / WhatsApp (opcional)
                   </label>
                   <input
                     type="text"
@@ -2762,6 +2763,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                   />
                 </div>
 
+                <MoreOptions>
                 <div>
                   <label className="block font-bold text-stone-700 mb-1 flex items-center justify-between">
                     <span>Data de Aniversário</span>
@@ -2788,6 +2790,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                     className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 text-sm"
                   />
                 </div>
+                </MoreOptions>
               </div>
 
               <div className="px-5 py-3 border-t border-stone-200 bg-stone-50 flex items-center justify-end gap-2">
