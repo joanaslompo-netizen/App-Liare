@@ -849,6 +849,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
       .filter(Boolean);
 
     const newOrUpdated: Material = {
+      ...material,
       id: material?.id || `mat_${Date.now()}`,
       name: name.trim(),
       category: finalCategory,

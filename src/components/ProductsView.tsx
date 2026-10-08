@@ -1651,6 +1651,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     }
 
     const savedProduct: Product = {
+      ...product,
       id: product?.id || `prod_${Date.now()}`,
       parentRecipeId: parentRecipeId || undefined,
       isFamilyMother: !parentRecipeId && isFamilyMother,

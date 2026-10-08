@@ -1520,6 +1520,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       : `${firstItem.productName} + ${items.length - 1} outro(s)`;
 
     const updatedSale: Sale = {
+      ...existingSale,
       id: existingSale?.id || `sale_${Date.now()}`,
       orderNumber: existingSale?.orderNumber,
       date,
