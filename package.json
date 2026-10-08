@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:group1": "node --import tsx scripts/test-group1-forms.tsx && node --import tsx src/utils/dataIntegrity.test.ts && node --import tsx src/utils/materialProductionCost.test.ts && node --import tsx src/utils/recipeFamilies.test.ts"
+    "test:group1": "node --import tsx scripts/test-group1-forms.tsx && node --import tsx src/utils/dataIntegrity.test.ts && node --import tsx src/utils/materialProductionCost.test.ts && node --import tsx src/utils/recipeFamilies.test.ts && node --import tsx src/utils/invoice.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
