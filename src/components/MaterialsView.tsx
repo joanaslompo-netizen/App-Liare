@@ -589,7 +589,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                           ? 'text-emerald-700 hover:bg-emerald-50'
                           : 'text-stone-400 hover:text-stone-700 hover:bg-stone-100'
                       }`}
-                      title={mat.isPaused ? 'Retomar material' : 'Pausar material'}
+                      title={mat.isPaused ? 'Retomar uso e alertas do material' : 'Pausar uso e alertas, mantendo o estoque registrado'}
                     >
                       {mat.isPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
                       <span>{mat.isPaused ? 'Retomar' : 'Pausar'}</span>

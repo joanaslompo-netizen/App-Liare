@@ -30,3 +30,7 @@ Verificação local: `node --import tsx scripts/verify-backup.ts /caminho/para/b
 | Excepcional | Configurações, backup e sincronização |
 
 Esta classificação orienta a reforma; não altera a navegação por si só.
+
+## S11 — conceitos distintos
+
+Pausado significa que o material não está em uso no momento; o estoque registrado permanece. Não controlar estoque significa continuar usando e calculando o custo sem inventário físico. O segundo comportamento depende do S10, fora deste grupo; não será simulado usando Pausado.
