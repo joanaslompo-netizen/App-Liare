@@ -164,6 +164,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
 
         <div className="flex items-center gap-2 flex-wrap">
           {onOpenPurchaseHistory && (
+<MoreOptions title="Mais opções: histórico">
             <button
               type="button"
               onClick={onOpenPurchaseHistory}
@@ -172,6 +173,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
               <ShoppingCart className="w-4 h-4 text-amber-700" />
               <span>Compras de Materiais</span>
             </button>
+</MoreOptions>
           )}
 
           <button

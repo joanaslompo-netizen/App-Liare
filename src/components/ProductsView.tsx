@@ -315,6 +315,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+<MoreOptions title="Mais opções: histórico">
           <button
             type="button"
             onClick={onOpenProductionHistory}
@@ -323,6 +324,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             <Hammer className="w-4 h-4 text-amber-600" />
             <span>Histórico de Produção</span>
           </button>
+</MoreOptions>
         {recipeScope === 'catalog' && (
           <button
             id="btn-add-product"
