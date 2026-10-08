@@ -14,3 +14,15 @@
   .liare-quick-dialog > div { max-height: calc(100dvh - 2rem); overflow-y: auto; }
   .liare-quick-dialog button { min-height: 44px; }
 }
+
+/* Cadastros extensos usam a tela inteira no celular e mantêm o modal no desktop. */
+@media (max-width: 768px) {
+  .liare-form-dialog { align-items: flex-start; padding: 0; }
+  .liare-form-dialog > div {
+    width: 100%; max-width: none; min-height: 100dvh; max-height: none;
+    margin: 0; border-radius: 0; overflow: visible;
+  }
+  .liare-form-dialog form { max-height: none; overflow: visible; padding: 16px; }
+  .liare-form-dialog button[type="submit"] { min-height: 44px; }
+  .liare-form-dialog > div { padding-bottom: env(safe-area-inset-bottom); }
+}

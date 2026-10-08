@@ -232,7 +232,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
+    <div className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-lg my-4 max-h-[calc(100dvh-2rem)] overflow-y-auto">
         {/* Header */}
         <div className="px-6 py-4 bg-stone-50 border-b border-stone-200 flex items-center justify-between">
