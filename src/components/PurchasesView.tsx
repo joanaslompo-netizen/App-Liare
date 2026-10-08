@@ -700,7 +700,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
               className="px-5 py-2 text-sm font-medium bg-stone-900 hover:bg-stone-800 text-white rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <Check className="w-4 h-4 text-amber-400" />
-              <span>Concluir e Salvar Compra</span>
+              <span>Salvar Compra</span>
             </button>
           </div>
         </form>

@@ -2808,7 +2808,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                   className="px-4 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-stone-950 rounded-lg cursor-pointer flex items-center gap-1.5 shadow-xs"
                 >
                   <Check className="w-3.5 h-3.5" />
-                  <span>Cadastrar e Vincular</span>
+                  <span>Salvar e vincular</span>
                 </button>
               </div>
             </div>

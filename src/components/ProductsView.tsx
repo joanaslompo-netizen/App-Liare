@@ -2708,7 +2708,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
             className="px-5 py-2 text-sm font-medium bg-stone-900 hover:bg-stone-800 text-white rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <Check className="w-4 h-4 text-amber-400" />
-            <span>{isEditing ? 'Salvar Alterações' : 'Concluir & Salvar Receita'}</span>
+            <span>{isEditing ? 'Salvar Alterações' : 'Salvar Receita'}</span>
           </button>
         </div>
       </div>
