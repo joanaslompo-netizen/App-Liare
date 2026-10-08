@@ -39,6 +39,6 @@ O campo **Controlar estoque: Sim/Não** depende do S10, fora deste grupo. Por is
 
 Tipagem e build passaram. Testes dos formulários simularam edição/salvamento com campos recolhidos, duráveis, personalizados, fornecedor avulso e abertura de pedidos. Passaram também os testes de custos/famílias, fatura e integridade. A restauração do backup completo com o carregador real preservou coleções, campos originais e números de pedidos, incluindo a segunda abertura.
 
-A prévia foi compilada pela Vercel, mas exigiu login para o teste pelo navegador. O teste visual em celular/iPad e a sincronização entre aparelhos precisam ser concluídos neste checklist. Testes simulados não substituem essas conferências.
+A prévia foi compilada pela Vercel, mas exigiu login para o teste pelo navegador. Após a publicação no app habitual, foram conferidos no navegador de desktop a abertura do pedido pela entrega e pela cobrança, o cliente rápido, o formulário de material recolhido e a checagem de integridade, usando os dados de exemplo daquela sessão. Nenhum desses testes salvou ou alterou registros. O teste visual em celular/iPad e a sincronização entre aparelhos precisam ser concluídos neste checklist. Testes simulados não substituem essas conferências.
 
 Se algum ponto falhar, registre a tela, o que fez, o resultado esperado e o resultado observado. Não é necessário desfazer dados ou restaurar o backup por conta própria.
