@@ -1622,12 +1622,6 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       alert('Informe um nome personalizado ou preencha Produto-base / Família e Variação.');
       return;
     }
-    if (items.length === 0) {
-      if (!confirm('Esta receita não contém nenhum material ou componente adicionado. Deseja continuar mesmo assim?')) {
-        return;
-      }
-    }
-
     if (useProductionStages) {
       if (productionStages.length === 0 || productionStages.some((stage) => !stage.name.trim())) {
         alert('Defina pelo menos uma etapa e dê um nome para todas as etapas da produção.');
