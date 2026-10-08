@@ -318,6 +318,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
 }) => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [supplierId, setSupplierId] = useState('');
+  const [freeSupplierName, setFreeSupplierName] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [shippingCost, setShippingCost] = useState('0');
   const [notes, setNotes] = useState('');
@@ -386,7 +387,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
     }
 
     const sup = suppliers.find((s) => s.id === supplierId);
-    const supplierName = sup ? sup.name : 'Fornecedor Avulso';
+    const supplierName = sup ? sup.name : (freeSupplierName.trim() || 'Fornecedor Avulso');
 
     const purchase: Purchase = {
       id: `pur_${Date.now()}`,
@@ -454,6 +455,16 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
                   </option>
                 ))}
               </select>
+              {!supplierId && (
+                <input
+                  type="text"
+                  aria-label="Nome do fornecedor avulso"
+                  placeholder="Nome do fornecedor (opcional)"
+                  value={freeSupplierName}
+                  onChange={(event) => setFreeSupplierName(event.target.value)}
+                  className="mt-2 w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
+                />
+              )}
             </div>
 
             <div>
