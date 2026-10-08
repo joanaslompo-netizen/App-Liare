@@ -1,3 +1,4 @@
+import { MoreOptions } from './MoreOptions';
 import { calculateRecipePricing, getRecipePricing } from '../utils/financials';
 import { inheritRecipe } from '../utils/recipeFamilies';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
@@ -1987,7 +1988,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
               </div>
 
               {/* Stock Management Fields */}
-              <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-3">
+              <MoreOptions title="Mais opções: estoque e observações" >
+<div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-3">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-stone-800 uppercase tracking-wider">
                   <Package className="w-3.5 h-3.5 text-stone-500" />
                   <span>Controle de Estoque & Pronta-Entrega</span>
@@ -2066,11 +2068,13 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   />
                 </div>
               </div>
+</MoreOptions>
             </div>
           </div>
 
           {/* 2. FLUXO DE PRODUÇÃO */}
-          <div className="bg-white border border-stone-200 rounded-xl p-4 sm:p-5 space-y-4">
+          <MoreOptions title="Mais opções: produção por etapas" defaultOpen={useProductionStages}>
+<div className="bg-white border border-stone-200 rounded-xl p-4 sm:p-5 space-y-4">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h4 className="text-sm font-bold text-stone-900 flex items-center gap-1.5">
@@ -2156,6 +2160,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
               </div>
             )}
           </div>
+</MoreOptions>
 
           {/* 3. RECEITA / COMPOSIÇÃO (BOM - BILL OF MATERIALS) */}
           <div className="bg-stone-50/90 border border-stone-200 rounded-xl p-4 sm:p-5 space-y-4">
@@ -2519,7 +2524,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
             </div>
 
             {/* Fixed costs & extras */}
-            <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 space-y-3">
+            <MoreOptions title="Mais opções: custos indiretos" >
+<div className="bg-stone-50 border border-stone-200 rounded-xl p-4 space-y-3">
               <h4 className="text-xs font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
                 <Percent className="w-3.5 h-3.5 text-amber-600" />
                 Custos Fixos & Despesas Extras
@@ -2565,6 +2571,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                 </span>
               </div>
             </div>
+</MoreOptions>
           </div>
 
           {/* 4. PRECIFICAÇÃO, MARGEM DE LUCRO & PREÇO SUGERIDO */}
@@ -2575,7 +2582,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
             </h4>
 
             {/* Sliders & Margins */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <MoreOptions title="Mais opções: margem e preço" >
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-bold text-stone-800">
@@ -2623,6 +2631,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                 </span>
               </div>
             </div>
+</MoreOptions>
 
             {/* Financial Summary Highlight Banner */}
             <div className="bg-white rounded-xl p-4 border border-amber-300 shadow-xs grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
