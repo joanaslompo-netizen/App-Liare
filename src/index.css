@@ -26,3 +26,7 @@
   .liare-form-dialog button[type="submit"] { min-height: 44px; }
   .liare-form-dialog > div { padding-bottom: env(safe-area-inset-bottom); }
 }
+
+@media (max-width: 768px) {
+  .liare-form-dialog h3 { overflow-wrap: anywhere; }
+}

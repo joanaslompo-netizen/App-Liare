@@ -315,7 +315,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           </h2>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
 <MoreOptions title="Mais opções: histórico">
           <button
             type="button"
