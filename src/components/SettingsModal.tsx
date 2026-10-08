@@ -1,3 +1,5 @@
+import { inspectDataIntegrity, type IntegrityIssue } from '../utils/dataIntegrity';
+import { localDateString } from '../utils/localDate';
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Settings, 
@@ -64,9 +66,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [editingDiscountCodeId, setEditingDiscountCodeId] = useState<string | null>(null);
 
   const fileImportRef = useRef<HTMLInputElement>(null);
+  const [integrityIssues, setIntegrityIssues] = useState<IntegrityIssue[] | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
+    setIntegrityIssues(null);
     setInvoiceFields({ pixKey: settings.pixKey || "", pixHolder: settings.pixHolder || "", invoiceContact: settings.invoiceContact || "", invoiceAddress: settings.invoiceAddress || "" });
     setAtelierName(settings.atelierName);
     setArtisanName(settings.artisanName);
@@ -104,7 +108,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(allCurrentData, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', dataStr);
-    const dateStr = new Date().toISOString().split('T')[0];
+    const dateStr = localDateString();
     downloadAnchor.setAttribute('download', `backup_atelie_custos_${dateStr}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
@@ -203,7 +207,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         type: newDiscountType,
         value: newDiscountType === 'percentage' ? Math.min(100, value) : value,
         active: true,
-        createdAt: new Date().toISOString().split('T')[0],
+        createdAt: localDateString(),
       },
     ];
     persistDiscountCodes(next);
@@ -231,7 +235,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
+    <div className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-lg my-4 max-h-[calc(100dvh-2rem)] overflow-y-auto">
         {/* Header */}
         <div className="px-6 py-4 bg-stone-50 border-b border-stone-200 flex items-center justify-between">
@@ -473,6 +477,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span>{user ? 'Gerenciar Aparelhos Conectados' : 'Conectar Conta Google Agora'}</span>
             </button>
           </div>
+
+          <section className="rounded-xl border border-stone-200 bg-stone-50 p-4 space-y-3">
+            <button type="button" onClick={() => setIntegrityIssues(inspectDataIntegrity(allCurrentData))}
+              className="min-h-11 px-3 py-2 rounded-lg border border-stone-300 bg-white font-semibold text-stone-800">
+              Verificar integridade dos dados
+            </button>
+            <p className="text-stone-500">Apenas verifica. Nenhum dado será alterado ou corrigido.</p>
+            {integrityIssues !== null && (
+              <div role="status" className="space-y-2">
+                <p className="font-semibold text-stone-800">{integrityIssues.length ? `${integrityIssues.length} ponto(s) para conferir` : 'Nenhum problema encontrado nesta checagem.'}</p>
+                <ul className="list-disc pl-5 space-y-1 text-stone-700">
+                  {integrityIssues.slice(0, 50).map((issue, index) => <li key={`${issue.entityId}-${issue.code}-${index}`}>{issue.message}</li>)}
+                </ul>
+                {integrityIssues.length > 50 && <p>Mostrando os primeiros 50 pontos.</p>}
+              </div>
+            )}
+          </section>
 
           {/* Backup & Data Section */}
           <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-200/70 space-y-2.5">

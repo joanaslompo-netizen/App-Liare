@@ -1,3 +1,4 @@
+import { localDateString } from '../utils/localDate';
 import React, { useState, useMemo } from 'react';
 import { 
   Plus, 
@@ -316,8 +317,9 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
   onClose,
   onSave,
 }) => {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(localDateString());
   const [supplierId, setSupplierId] = useState('');
+  const [freeSupplierName, setFreeSupplierName] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [shippingCost, setShippingCost] = useState('0');
   const [notes, setNotes] = useState('');
@@ -386,7 +388,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
     }
 
     const sup = suppliers.find((s) => s.id === supplierId);
-    const supplierName = sup ? sup.name : 'Fornecedor Avulso';
+    const supplierName = sup ? sup.name : (freeSupplierName.trim() || 'Fornecedor Avulso');
 
     const purchase: Purchase = {
       id: `pur_${Date.now()}`,
@@ -398,14 +400,14 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
       shippingCost: parsedShipping,
       totalAmount,
       notes: notes.trim() || undefined,
-      createdAt: new Date().toISOString().split('T')[0],
+      createdAt: localDateString(),
     };
 
     onSave(purchase, updateStock);
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
+    <div className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-xl w-full max-w-2xl my-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50">
@@ -454,6 +456,16 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
                   </option>
                 ))}
               </select>
+              {!supplierId && (
+                <input
+                  type="text"
+                  aria-label="Nome do fornecedor avulso"
+                  placeholder="Nome do fornecedor (opcional)"
+                  value={freeSupplierName}
+                  onChange={(event) => setFreeSupplierName(event.target.value)}
+                  className="mt-2 w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
+                />
+              )}
             </div>
 
             <div>
@@ -688,7 +700,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
               className="px-5 py-2 text-sm font-medium bg-stone-900 hover:bg-stone-800 text-white rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <Check className="w-4 h-4 text-amber-400" />
-              <span>Concluir e Salvar Compra</span>
+              <span>Salvar Compra</span>
             </button>
           </div>
         </form>

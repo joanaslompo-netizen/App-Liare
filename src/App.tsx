@@ -157,6 +157,7 @@ export default function App() {
   // Active navigation tab - default to 'home' (initial dashboard screen)
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [filterLowStockInitial, setFilterLowStockInitial] = useState(false);
+  const [homeSaleId, setHomeSaleId] = useState<string | null>(null);
   const [salesInitialFilter, setSalesInitialFilter] = useState<'all' | 'pending_delivery' | 'pending_payment'>('all');
 
   // Modals state
@@ -1836,6 +1837,11 @@ export default function App() {
               setSalesInitialFilter('all');
               setActiveTab('sales');
             }}
+            onOpenSale={(saleId) => {
+              setHomeSaleId(saleId);
+              setSalesInitialFilter('all');
+              setActiveTab('sales');
+            }}
             onOpenSettings={() => setIsSettingsOpen(true)}
           />
         )}
@@ -1922,6 +1928,8 @@ export default function App() {
             onDeleteSale={handleDeleteSale}
             onSaveCustomer={handleSaveCustomer}
             onAddPaymentMethod={handleAddPaymentMethod}
+            initialSaleId={homeSaleId}
+            onClearInitialSale={() => setHomeSaleId(null)}
             initialFilter={salesInitialFilter}
             initialCustomerForNewOrder={customerForNewSale}
             onClearInitialCustomer={() => setCustomerForNewSale(null)}

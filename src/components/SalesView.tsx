@@ -1,3 +1,5 @@
+import { localDateString } from '../utils/localDate';
+import { MoreOptions } from './MoreOptions';
 import { formatOrderNumber } from '../utils/orderNumbers';
 import { getInvoiceTotals } from '../utils/invoice';
 import { InvoiceModal } from './InvoiceModal';
@@ -65,6 +67,8 @@ interface SalesViewProps {
   onDeleteSale: (id: string) => void;
   onSaveCustomer: (customer: Customer) => void;
   onAddPaymentMethod: (method: string) => void;
+  initialSaleId?: string | null;
+  onClearInitialSale?: () => void;
   initialFilter?: 'all' | 'pending_delivery' | 'pending_payment';
   initialCustomerForNewOrder?: Customer | null;
   onClearInitialCustomer?: () => void;
@@ -87,6 +91,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
   onDeleteSale,
   onSaveCustomer,
   onAddPaymentMethod,
+  initialSaleId,
+  onClearInitialSale,
   initialFilter = 'all',
   initialCustomerForNewOrder,
   onClearInitialCustomer,
@@ -112,6 +118,16 @@ export const SalesView: React.FC<SalesViewProps> = ({
       setIsModalOpen(true);
     }
   }, [openNewSaleSignal]);
+
+  useEffect(() => {
+    if (!initialSaleId) return;
+    const sale = sales.find((item) => item.id === initialSaleId);
+    if (sale) {
+      setEditingSale(sale);
+      setIsModalOpen(true);
+    }
+    onClearInitialSale?.();
+  }, [initialSaleId, sales, onClearInitialSale]);
 
   const getStockProductId = (item: SaleItem) =>
     item.isCustom ? item.customProductId : item.productId;
@@ -171,7 +187,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
   // Quick stats
   const pendingDeliveryList = useMemo(() => sales.filter((s) => s.deliveryStatus === 'pendente_entrega'), [sales]);
-  const pendingPaymentList = useMemo(() => sales.filter((s) => s.paymentStatus === 'pendente_pagamento'), [sales]);
+  const pendingPaymentList = useMemo(() => sales.filter((s) => s.paymentStatus === 'pendente_pagamento' && getInvoiceTotals(s).balance > 0), [sales]);
 
   const totalPendingPaymentAmount = useMemo(() => {
     return pendingPaymentList.reduce((acc, s) => acc + getInvoiceTotals(s).balance, 0);
@@ -185,7 +201,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
         if (activeTabFilter === 'pending_delivery' && s.deliveryStatus !== 'pendente_entrega') {
           return false;
         }
-        if (activeTabFilter === 'pending_payment' && s.paymentStatus !== 'pendente_pagamento') {
+        if (activeTabFilter === 'pending_payment' && (s.paymentStatus !== 'pendente_pagamento' || getInvoiceTotals(s).balance <= 0)) {
           return false;
         }
         if (activeTabFilter === 'completed' && (s.deliveryStatus === 'pendente_entrega' || s.paymentStatus === 'pendente_pagamento')) {
@@ -229,7 +245,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
   // Quick Action: Mark Delivery as Complete
   const handleMarkAsDelivered = (sale: Sale) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateString();
     const updated: Sale = {
       ...sale,
       deliveryStatus: 'entregue',
@@ -240,7 +256,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
   // Quick Action: Mark Payment as Received
   const handleMarkAsPaid = (sale: Sale) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateString();
     const updated: Sale = {
       ...sale,
       paymentStatus: 'pago',
@@ -876,7 +892,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   onSave,
 }) => {
   const [orderType, setOrderType] = useState<OrderType>(existingSale?.orderType || 'pronta_entrega');
-  const [date, setDate] = useState(existingSale?.date || new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(existingSale?.date || localDateString());
 
   // Customer linkage & data
   const [customerId, setCustomerId] = useState<string | undefined>(
@@ -1306,7 +1322,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
               customProductId: result.productId,
               customProductionId: result.productionId,
               customProducedQuantity: result.producedQuantity,
-              customProducedAt: new Date().toISOString().split('T')[0],
+              customProducedAt: localDateString(),
               reservedQuantity: Math.min(
                 current.quantity,
                 (current.reservedQuantity || 0) + 1
@@ -1495,7 +1511,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       }
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateString();
 
     // Primary product summary for backwards compatibility
     const firstItem = items[0];
@@ -1504,6 +1520,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       : `${firstItem.productName} + ${items.length - 1} outro(s)`;
 
     const updatedSale: Sale = {
+      ...existingSale,
       id: existingSale?.id || `sale_${Date.now()}`,
       orderNumber: existingSale?.orderNumber,
       date,
@@ -1583,7 +1600,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+    <div className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-2xl my-8 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4.5 border-b border-stone-200 bg-stone-50">
@@ -2698,7 +2715,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
         {/* Quick Customer Registration Modal Overlay */}
         {isQuickCustomerOpen && (
-          <div className="fixed inset-0 z-60 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="liare-quick-dialog fixed inset-0 z-60 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
             <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
               <div className="px-5 py-4 border-b border-stone-200 bg-stone-50 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -2726,7 +2743,6 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                   </label>
                   <input
                     type="text"
-                    required
                     placeholder="Ex: Amanda Silva"
                     value={quickName}
                     onChange={(e) => setQuickName(e.target.value)}
@@ -2737,7 +2753,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
                 <div>
                   <label className="block font-bold text-stone-700 mb-1">
-                    Telefone / WhatsApp *
+                    Telefone / WhatsApp (opcional)
                   </label>
                   <input
                     type="text"
@@ -2748,6 +2764,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                   />
                 </div>
 
+                <MoreOptions>
                 <div>
                   <label className="block font-bold text-stone-700 mb-1 flex items-center justify-between">
                     <span>Data de Aniversário</span>
@@ -2774,6 +2791,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                     className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 text-sm"
                   />
                 </div>
+                </MoreOptions>
               </div>
 
               <div className="px-5 py-3 border-t border-stone-200 bg-stone-50 flex items-center justify-end gap-2">
@@ -2791,7 +2809,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                   className="px-4 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-stone-950 rounded-lg cursor-pointer flex items-center gap-1.5 shadow-xs"
                 >
                   <Check className="w-3.5 h-3.5" />
-                  <span>Cadastrar e Vincular</span>
+                  <span>Salvar e vincular</span>
                 </button>
               </div>
             </div>

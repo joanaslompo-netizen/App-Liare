@@ -1,3 +1,5 @@
+import { localDateString } from '../utils/localDate';
+import { MoreOptions } from './MoreOptions';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Plus, 
@@ -163,6 +165,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
 
         <div className="flex items-center gap-2 flex-wrap">
           {onOpenPurchaseHistory && (
+<MoreOptions title="Mais opções: histórico">
             <button
               type="button"
               onClick={onOpenPurchaseHistory}
@@ -171,6 +174,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
               <ShoppingCart className="w-4 h-4 text-amber-700" />
               <span>Compras de Materiais</span>
             </button>
+</MoreOptions>
           )}
 
           <button
@@ -579,14 +583,14 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                       onClick={() => onSaveMaterial({
                         ...mat,
                         isPaused: !mat.isPaused,
-                        updatedAt: new Date().toISOString().split('T')[0],
+                        updatedAt: localDateString(),
                       })}
                       className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer ${
                         mat.isPaused
                           ? 'text-emerald-700 hover:bg-emerald-50'
                           : 'text-stone-400 hover:text-stone-700 hover:bg-stone-100'
                       }`}
-                      title={mat.isPaused ? 'Retomar material' : 'Pausar material'}
+                      title={mat.isPaused ? 'Retomar uso e alertas do material' : 'Pausar uso e alertas, mantendo o estoque registrado'}
                     >
                       {mat.isPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
                       <span>{mat.isPaused ? 'Retomar' : 'Pausar'}</span>
@@ -845,6 +849,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
       .filter(Boolean);
 
     const newOrUpdated: Material = {
+      ...material,
       id: material?.id || `mat_${Date.now()}`,
       name: name.trim(),
       category: finalCategory,
@@ -878,15 +883,15 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
       supplierName: isMadeInAtelier ? undefined : (selectedSupplier ? selectedSupplier.name : undefined),
       imageUrl: imageUrl || undefined,
       notes: notes.trim() || undefined,
-      createdAt: material?.createdAt || new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0],
+      createdAt: material?.createdAt || localDateString(),
+      updatedAt: localDateString(),
     };
 
     onSave(newOrUpdated);
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
+    <div className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-xl w-full max-w-2xl my-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50">
@@ -909,7 +914,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
         {/* Modal Body Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Photo & Main identification */}
-          <div className="grid grid-cols-[8rem_minmax(0,1fr)] sm:grid-cols-[9rem_minmax(0,1fr)] gap-4 sm:gap-5 items-start">
+          <div className="grid grid-cols-1 sm:grid-cols-[9rem_minmax(0,1fr)] gap-4 sm:gap-5 items-start">
             {/* Photo upload container */}
             <div className="shrink-0 w-32 sm:w-36 flex flex-col items-center">
               <div 
@@ -959,6 +964,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
 
             {/* Name, Category, Classification and Supplier */}
             <div className="w-full">
+<MoreOptions title="Mais opções: tipo de material" defaultOpen={isMadeInAtelier || usageType === 'durable' || materialType === 'for_sale'}>
               {/* Material options: all materials are internal by default */}
               <div className="space-y-2">
 
@@ -1072,9 +1078,11 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                   </span>
                 </button>
               </div>
+
+</MoreOptions>
             </div>
 
-            <div className="col-span-2 space-y-3.5 w-full">
+            <div className="sm:col-span-2 space-y-3.5 w-full">
               <div>
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
                   Nome do Material *
@@ -1139,7 +1147,8 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
           </div>
 
           {usageType === 'durable' && (
-            <div className="bg-purple-50/60 border border-purple-200 rounded-xl p-4 space-y-4">
+            <MoreOptions title="Mais opções: detalhes do durável" >
+<div className="bg-purple-50/60 border border-purple-200 rounded-xl p-4 space-y-4">
               <div>
                 <h4 className="text-xs font-bold text-purple-950 uppercase tracking-wider flex items-center gap-1.5">
                   <Hammer className="w-3.5 h-3.5 text-purple-700" />
@@ -1184,6 +1193,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                 </div>
               )}
             </div>
+</MoreOptions>
           )}
 
           {isMadeInAtelier && usageType !== 'durable' && (
@@ -1385,6 +1395,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
             </div>
           )}
 
+<MoreOptions title="Mais opções: fornecedor" >
           {/* Supplier: only for purchased materials */}
           {!isMadeInAtelier && (
             <div>
@@ -1407,6 +1418,8 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
             </div>
           )}
 
+
+</MoreOptions>
           {/* Pricing & Unit Calculation Box: only for purchased materials */}
           {!isMadeInAtelier && (
           <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-4 space-y-4">
@@ -1559,6 +1572,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
             </div>
           )}
 
+<MoreOptions title="Mais opções: observações" >
           {/* Notes */}
           <div>
             <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
@@ -1573,6 +1587,8 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
             />
           </div>
 
+
+</MoreOptions>
           {/* Modal Footer */}
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-stone-200">
             <button
@@ -1588,7 +1604,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
               className="px-5 py-2 text-sm font-medium bg-stone-900 hover:bg-stone-800 text-white rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               <Check className="w-4 h-4 text-amber-400" />
-              <span>{isEditing ? 'Salvar Alterações' : 'Cadastrar Material'}</span>
+              <span>{isEditing ? 'Salvar Alterações' : 'Salvar Material'}</span>
             </button>
           </div>
         </form>

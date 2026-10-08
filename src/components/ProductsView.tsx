@@ -1,3 +1,5 @@
+import { localDateString } from '../utils/localDate';
+import { MoreOptions } from './MoreOptions';
 import { calculateRecipePricing, getRecipePricing } from '../utils/financials';
 import { inheritRecipe } from '../utils/recipeFamilies';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
@@ -313,7 +315,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           </h2>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+<MoreOptions title="Mais opções: histórico">
           <button
             type="button"
             onClick={onOpenProductionHistory}
@@ -322,6 +325,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             <Hammer className="w-4 h-4 text-amber-600" />
             <span>Histórico de Produção</span>
           </button>
+</MoreOptions>
         {recipeScope === 'catalog' && (
           <button
             id="btn-add-product"
@@ -335,6 +339,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         </div>
       </div>
 
+      <MoreOptions title="Mais opções: receitas personalizadas" defaultOpen={recipeScope === 'custom'}>
       <div className="inline-flex items-center p-1 bg-stone-100 rounded-xl border border-stone-200 w-fit">
         <button
           type="button"
@@ -369,6 +374,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           Personalizadas ({products.filter((p) => p.isCustomRecipe).length})
         </button>
       </div>
+
+      </MoreOptions>
 
       {/* Filter and Search Bar */}
       <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs space-y-3">
@@ -952,7 +959,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                         onClick={() => onSaveProduct({
                           ...p,
                           isPaused: !p.isPaused,
-                          updatedAt: new Date().toISOString().split('T')[0],
+                          updatedAt: localDateString(),
                         })}
                         className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer ${
                           p.isPaused
@@ -1615,12 +1622,6 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       alert('Informe um nome personalizado ou preencha Produto-base / Família e Variação.');
       return;
     }
-    if (items.length === 0) {
-      if (!confirm('Esta receita não contém nenhum material ou componente adicionado. Deseja continuar mesmo assim?')) {
-        return;
-      }
-    }
-
     if (useProductionStages) {
       if (productionStages.length === 0 || productionStages.some((stage) => !stage.name.trim())) {
         alert('Defina pelo menos uma etapa e dê um nome para todas as etapas da produção.');
@@ -1650,6 +1651,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     }
 
     const savedProduct: Product = {
+      ...product,
       id: product?.id || `prod_${Date.now()}`,
       parentRecipeId: parentRecipeId || undefined,
       isFamilyMother: !parentRecipeId && isFamilyMother,
@@ -1695,8 +1697,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
       isPaused: product?.isPaused ?? false,
       standardStock: parsedStandardStock,
       notes: notes.trim() || undefined,
-      createdAt: product?.createdAt || new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0],
+      createdAt: product?.createdAt || localDateString(),
+      updatedAt: localDateString(),
     };
 
     const mother = allProducts.find((p) => p.id === parentRecipeId);
@@ -1704,7 +1706,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-4xl my-6 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50 shrink-0">
@@ -1987,7 +1989,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
               </div>
 
               {/* Stock Management Fields */}
-              <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-3">
+              <MoreOptions title="Mais opções: estoque e observações" >
+<div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-3">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-stone-800 uppercase tracking-wider">
                   <Package className="w-3.5 h-3.5 text-stone-500" />
                   <span>Controle de Estoque & Pronta-Entrega</span>
@@ -2066,11 +2069,13 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   />
                 </div>
               </div>
+</MoreOptions>
             </div>
           </div>
 
           {/* 2. FLUXO DE PRODUÇÃO */}
-          <div className="bg-white border border-stone-200 rounded-xl p-4 sm:p-5 space-y-4">
+          <MoreOptions title="Mais opções: produção por etapas" defaultOpen={useProductionStages}>
+<div className="bg-white border border-stone-200 rounded-xl p-4 sm:p-5 space-y-4">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h4 className="text-sm font-bold text-stone-900 flex items-center gap-1.5">
@@ -2156,6 +2161,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
               </div>
             )}
           </div>
+</MoreOptions>
 
           {/* 3. RECEITA / COMPOSIÇÃO (BOM - BILL OF MATERIALS) */}
           <div className="bg-stone-50/90 border border-stone-200 rounded-xl p-4 sm:p-5 space-y-4">
@@ -2519,7 +2525,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
             </div>
 
             {/* Fixed costs & extras */}
-            <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 space-y-3">
+            <MoreOptions title="Mais opções: custos indiretos" >
+<div className="bg-stone-50 border border-stone-200 rounded-xl p-4 space-y-3">
               <h4 className="text-xs font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
                 <Percent className="w-3.5 h-3.5 text-amber-600" />
                 Custos Fixos & Despesas Extras
@@ -2565,6 +2572,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                 </span>
               </div>
             </div>
+</MoreOptions>
           </div>
 
           {/* 4. PRECIFICAÇÃO, MARGEM DE LUCRO & PREÇO SUGERIDO */}
@@ -2575,7 +2583,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
             </h4>
 
             {/* Sliders & Margins */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <MoreOptions title="Mais opções: margem e preço" >
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-bold text-stone-800">
@@ -2623,6 +2632,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                 </span>
               </div>
             </div>
+</MoreOptions>
 
             {/* Financial Summary Highlight Banner */}
             <div className="bg-white rounded-xl p-4 border border-amber-300 shadow-xs grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
@@ -2693,7 +2703,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
             className="px-5 py-2 text-sm font-medium bg-stone-900 hover:bg-stone-800 text-white rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <Check className="w-4 h-4 text-amber-400" />
-            <span>{isEditing ? 'Salvar Alterações' : 'Concluir & Salvar Receita'}</span>
+            <span>{isEditing ? 'Salvar Alterações' : 'Salvar Receita'}</span>
           </button>
         </div>
       </div>
