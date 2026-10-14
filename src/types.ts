@@ -447,6 +447,7 @@ export interface ProductionProject {
 }
 
 export interface AtelierSettings {
+  creditOrigins?: CreditOrigin[];
   lastOrderNumber?: number;
   pixKey?: string;
   pixHolder?: string;
@@ -497,7 +498,10 @@ export interface DeliveryEvent {
   note?: string;
 }
 export type FinanceEntryKind = 'receipt' | 'credit_use' | 'credit_grant' | 'credit_opening' | 'credit_release' | 'credit_refund' | 'refund' | 'expense_payment' | 'purchase_payment' | 'capital' | 'withdrawal' | 'cash_opening' | 'transfer' | 'settlement' | 'reversal';
+export type CreditMovementKind = 'receipt' | 'credit_opening' | 'credit_grant' | 'credit_refund';
+export interface CreditOrigin { id: string; name: string; kind: CreditMovementKind; }
 export interface FinanceEntry {
+  origin?: string;
   id: string;
   kind: FinanceEntryKind;
   date: string;

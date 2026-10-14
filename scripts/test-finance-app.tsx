@@ -15,16 +15,28 @@ const {default:App}=await import('../src/App');
 let root=createRoot(document.querySelector('#root')!);
 async function mount(){await act(async()=>root.render(<App/>));}
 async function button(text:string){const el=[...document.querySelectorAll('button')].find(e=>e.textContent?.trim()===text);assert(el,`Botão: ${text}`);await act(async()=>el.click());}
-async function field(label:string,value:string){const container=[...document.querySelectorAll('label')].find(e=>e.textContent?.includes(label));assert(container,`Campo: ${label}`);const el=container.querySelector('input,select') as HTMLInputElement;assert(el);await act(async()=>{const proto=el.tagName==='SELECT'?dom.window.HTMLSelectElement.prototype:dom.window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value')!.set!.call(el,value);el.dispatchEvent(new dom.window.Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));});}
+async function field(label:string,value:string){const container=[...document.querySelectorAll('label')].find(e=>e.textContent?.includes(label));assert(container,`Campo: ${label}`);const el=(container.querySelector('input,select') || document.getElementById(container.htmlFor)) as HTMLInputElement;assert(el);await act(async()=>{const proto=el.tagName==='SELECT'?dom.window.HTMLSelectElement.prototype:dom.window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value')!.set!.call(el,value);el.dispatchEvent(new dom.window.Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));});}
 async function submit(){const form=document.querySelector('form');assert(form);await act(async()=>form.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));}
 const saved=()=>JSON.parse(localStorage.getItem('atelie_workspace_finance_v1')!);
-await mount();await button('Financeiro');await button('Valor antecipado / crédito');await field('Cliente','c');await field('Valor (R$)','300');await submit();
-assert.equal(alerts.length,0,alerts.join('; '));assert.equal(saved().finance.entries[0].amountCents,30000);
+await mount();await button('Financeiro');await button('Valor antecipado / crédito');await field('Cliente','Cli');assert.equal((document.querySelector('[role=combobox]') as HTMLInputElement).value,'Cli');const customerOption=document.querySelector('[role=option]') as HTMLElement;assert(customerOption);await act(async()=>customerOption.click());await field('Origem / ação','Feira de Natal');await button('Salvar esta origem como categoria');assert.equal(saved().settings.creditOrigins.length,5);await field('Valor (R$)','300');await submit();
+assert.equal(alerts.length,0,alerts.join('; '));assert.equal(saved().finance.entries[0].amountCents,30000);assert.equal(saved().finance.entries[0].origin,'Feira de Natal');
 await button('A receber');const order=[...document.querySelectorAll('button')].find(e=>e.textContent?.includes('#1 · Cliente teste'));assert(order);await act(async()=>order.click());
 const use=[...document.querySelectorAll('label')].find(e=>e.textContent?.includes('Usar crédito disponível'))!.querySelector('input')!;await act(async()=>use.click());await field('Valor do crédito a usar','120');await button('Usar crédito');
 assert.equal(alerts.length,0,alerts.join('; '));assert.equal(saved().finance.entries.filter((e:any)=>e.kind==='credit_use').length,1);
 await act(async()=>root.unmount());root=createRoot(document.querySelector('#root')!);await mount();await button('Financeiro');await button('Créditos dos clientes');
 assert(document.body.textContent?.includes('180,00'));
+assert.equal(saved().settings.creditOrigins.length,5);
+await button('Valor antecipado / crédito');await button('Editar categorias de origem');
+const categoryInput=document.querySelector('[aria-label="Nome da categoria 5"]') as HTMLInputElement;assert(categoryInput);
+await act(async()=>{Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value')!.set!.call(categoryInput,'Feira do condomínio');categoryInput.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});
+const deleteCategory=[...document.querySelectorAll('button')].find(element=>element.textContent?.trim()==='Excluir categoria');assert(deleteCategory);await act(async()=>deleteCategory.click());
+await button('Salvar categorias');
+assert.equal(saved().settings.creditOrigins.length,4);
+assert(saved().settings.creditOrigins.some((origin:any)=>origin.name==='Feira do condomínio'));
+assert.equal(saved().finance.entries.find((entry:any)=>entry.origin).origin,'Feira de Natal');
+await act(async()=>root.unmount());root=createRoot(document.querySelector('#root')!);await mount();
+assert.equal(saved().settings.creditOrigins.length,4);
+assert(saved().settings.creditOrigins.some((origin:any)=>origin.name==='Feira do condomínio'));
 await act(async()=>root.unmount());
-console.log('App integrado: registrar R$300, usar R$120 no pedido, recarregar e manter crédito R$180 passou. Backup inicial e histórico persistidos.');
+console.log('App integrado: registrar R$300, usar R$120 no pedido, recarregar e manter crédito R$180 passou. Busca por nome, criação/edição/exclusão de categorias e origem histórica preservada após recarregar passaram.');
 process.exit(0);
