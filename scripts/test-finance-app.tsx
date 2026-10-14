@@ -18,7 +18,14 @@ async function button(text:string){const el=[...document.querySelectorAll('butto
 async function field(label:string,value:string){const container=[...document.querySelectorAll('label')].find(e=>e.textContent?.includes(label));assert(container,`Campo: ${label}`);const el=(container.querySelector('input,select') || document.getElementById(container.htmlFor)) as HTMLInputElement;assert(el);await act(async()=>{const proto=el.tagName==='SELECT'?dom.window.HTMLSelectElement.prototype:dom.window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value')!.set!.call(el,value);el.dispatchEvent(new dom.window.Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));});}
 async function submit(){const form=document.querySelector('form');assert(form);await act(async()=>form.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));}
 const saved=()=>JSON.parse(localStorage.getItem('atelie_workspace_finance_v1')!);
-await mount();await button('Financeiro');await button('Valor antecipado / crédito');await field('Cliente','Cli');assert.equal((document.querySelector('[role=combobox]') as HTMLInputElement).value,'Cli');const customerOption=document.querySelector('[role=option]') as HTMLElement;assert(customerOption);await act(async()=>customerOption.click());await field('Origem / ação','Feira de Natal');await button('Salvar esta origem como categoria');assert.equal(saved().settings.creditOrigins.length,5);await field('Valor (R$)','300');await submit();
+await mount();await button('Financeiro');await button('Valor antecipado / crédito');await field('Valor (R$)','300');await field('Origem / ação','Feira de Natal');
+await field('Cliente','Novo cliente teste');await button('+ Cadastro rápido de cliente');
+assert.equal(([...document.querySelectorAll('label')].find(label=>label.textContent?.includes('Nome do cliente'))!.querySelector('input') as HTMLInputElement).value,'Novo cliente teste');
+await field('Telefone / WhatsApp','11999990000');await button('Salvar e selecionar cliente');
+assert(saved().customers.some((customer:any)=>customer.name==='Novo cliente teste'&&customer.phone==='11999990000'));
+assert.equal((document.querySelector('[role=combobox]') as HTMLInputElement).value,'Novo cliente teste');
+assert.equal(([...document.querySelectorAll('label')].find(label=>label.textContent?.includes('Valor (R$)'))!.querySelector('input') as HTMLInputElement).value,'300');
+await field('Cliente','Cli');assert.equal((document.querySelector('[role=combobox]') as HTMLInputElement).value,'Cli');const customerOption=document.querySelector('[role=option]') as HTMLElement;assert(customerOption);await act(async()=>customerOption.click());await field('Origem / ação','Feira de Natal');await button('Salvar esta origem como categoria');assert.equal(saved().settings.creditOrigins.length,5);await field('Valor (R$)','300');await submit();
 assert.equal(alerts.length,0,alerts.join('; '));assert.equal(saved().finance.entries[0].amountCents,30000);assert.equal(saved().finance.entries[0].origin,'Feira de Natal');
 await button('A receber');const order=[...document.querySelectorAll('button')].find(e=>e.textContent?.includes('#1 · Cliente teste'));assert(order);await act(async()=>order.click());
 const use=[...document.querySelectorAll('label')].find(e=>e.textContent?.includes('Usar crédito disponível'))!.querySelector('input')!;await act(async()=>use.click());await field('Valor do crédito a usar','120');await button('Usar crédito');
@@ -26,6 +33,7 @@ assert.equal(alerts.length,0,alerts.join('; '));assert.equal(saved().finance.ent
 await act(async()=>root.unmount());root=createRoot(document.querySelector('#root')!);await mount();await button('Financeiro');await button('Créditos dos clientes');
 assert(document.body.textContent?.includes('180,00'));
 assert.equal(saved().settings.creditOrigins.length,5);
+assert(saved().customers.some((customer:any)=>customer.name==='Novo cliente teste'));
 await button('Valor antecipado / crédito');await button('Editar categorias de origem');
 const categoryInput=document.querySelector('[aria-label="Nome da categoria 5"]') as HTMLInputElement;assert(categoryInput);
 await act(async()=>{Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value')!.set!.call(categoryInput,'Feira do condomínio');categoryInput.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});
@@ -38,5 +46,5 @@ await act(async()=>root.unmount());root=createRoot(document.querySelector('#root
 assert.equal(saved().settings.creditOrigins.length,4);
 assert(saved().settings.creditOrigins.some((origin:any)=>origin.name==='Feira do condomínio'));
 await act(async()=>root.unmount());
-console.log('App integrado: registrar R$300, usar R$120 no pedido, recarregar e manter crédito R$180 passou. Busca por nome, criação/edição/exclusão de categorias e origem histórica preservada após recarregar passaram.');
+console.log('App integrado: registrar R$300, usar R$120 no pedido, recarregar e manter crédito R$180 passou. Cadastro rápido com seleção automática e preservação do formulário, busca por nome, criação/edição/exclusão de categorias e origem histórica preservada após recarregar passaram.');
 process.exit(0);

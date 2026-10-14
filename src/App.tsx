@@ -1857,7 +1857,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'finance' && <FinanceView sales={sales} customers={customers} finance={finance} creditOrigins={settings.creditOrigins} onSaveCreditOrigins={origins => setSettings(previous => ({ ...previous, creditOrigins: origins }))} onAction={handleFinanceAction} onOpenOrder={setWorkflowSaleId} />}
+        {activeTab === 'finance' && <FinanceView onSaveCustomer={handleSaveCustomer} sales={sales} customers={customers} finance={finance} creditOrigins={settings.creditOrigins} onSaveCreditOrigins={origins => setSettings(previous => ({ ...previous, creditOrigins: origins }))} onAction={handleFinanceAction} onOpenOrder={setWorkflowSaleId} />}
 
         {activeTab === 'reports' && (
           <ReportsView

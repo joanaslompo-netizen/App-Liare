@@ -3,8 +3,8 @@ import type { Customer } from '../types';
 
 const normalize = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR').trim();
 
-export function CustomerSearch({ customers, value, onChange, label = 'Cliente', required = false, detail, emptyLabel = 'Todos os clientes' }: {
-  customers: Customer[]; value: string; onChange: (id: string) => void; label?: string; required?: boolean; detail?: (customer: Customer) => string; emptyLabel?: string;
+export function CustomerSearch({ customers, value, onChange, onCreate, label = 'Cliente', required = false, detail, emptyLabel = 'Todos os clientes' }: {
+  customers: Customer[]; value: string; onChange: (id: string) => void; onCreate?: (name: string) => void; label?: string; required?: boolean; detail?: (customer: Customer) => string; emptyLabel?: string;
 }) {
   const id = useId();
   const field = useRef<HTMLInputElement>(null);
@@ -36,5 +36,6 @@ export function CustomerSearch({ customers, value, onChange, label = 'Cliente', 
       {!results.length && <p className="p-3 text-sm text-stone-500">Nenhum cliente encontrado.</p>}
       <p className="px-3 py-2 text-xs text-stone-500">Digite para filtrar os nomes.</p>
     </div>}
+    {onCreate && <button type="button" className="text-sm font-medium underline text-[#95553f]" onClick={() => { setOpen(false); onCreate(query.trim()); }}>+ Cadastro rápido de cliente</button>}
   </div>;
 }
