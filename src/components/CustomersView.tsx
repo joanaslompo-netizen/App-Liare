@@ -1,3 +1,5 @@
+import type { FinanceData } from "../types";
+import { creditBalance, money, emptyFinance } from "../utils/financeLedger";
 import React, { useState, useMemo } from 'react';
 import { 
   Users, 
@@ -34,6 +36,8 @@ import {
 import { getSaleFinancials } from '../utils/financials';
 
 interface CustomersViewProps {
+  finance?: FinanceData;
+  onOpenFinance?: () => void;
   customers: Customer[];
   sales: Sale[];
   products: Product[];
@@ -45,6 +49,7 @@ interface CustomersViewProps {
 
 export const CustomersView: React.FC<CustomersViewProps> = ({
   customers,
+  finance = emptyFinance(), onOpenFinance,
   sales,
   products,
   discountCodes,
@@ -161,6 +166,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
   return (
     <div className="space-y-6">
+      {onOpenFinance && <button onClick={onOpenFinance} className="rounded-xl border bg-white p-3 text-sm">Créditos dos clientes · {formatCurrency(money(customers.reduce((n,c) => n + creditBalance(finance,c.id), 0)))}</button>}
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

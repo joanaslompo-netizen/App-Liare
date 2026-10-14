@@ -25,7 +25,7 @@ import {
   Play,
   Hammer
 } from 'lucide-react';
-import { Material, Supplier, UnitOfMeasure, MaterialType } from '../types';
+import { Material, Supplier, UnitOfMeasure, MaterialType, StockMovement } from '../types';
 import { 
   formatCurrency, 
   formatNumber, 
@@ -39,6 +39,7 @@ import { estimateMaterialUnitCost } from '../utils/storage';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
 
 interface MaterialsViewProps {
+  stockMovements?: StockMovement[];
   materials: Material[];
   suppliers: Supplier[];
   onSaveMaterial: (material: Material) => void;
@@ -53,6 +54,7 @@ interface MaterialsViewProps {
 
 export const MaterialsView: React.FC<MaterialsViewProps> = ({
   materials,
+  stockMovements = [],
   suppliers,
   onSaveMaterial,
   onDeleteMaterial,
@@ -152,6 +154,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
 
   return (
     <div className="space-y-6">
+      <details className="rounded-xl border bg-white p-3"><summary className="cursor-pointer text-sm font-semibold">Histórico de estoque</summary><div className="mt-3 space-y-2">{[...stockMovements].reverse().filter(m=>m.type==='material').slice(0,50).map(m=><p className="border-t pt-2 text-sm" key={m.id}>{m.date} · {materials.find(mat=>mat.id===m.targetId)?.name || 'Material anterior'} · {m.quantity>0?'+':''}{formatNumber(m.quantity)} · {m.reason}</p>)}{!stockMovements.length&&<p className="text-sm text-stone-500">Os novos movimentos aparecerão aqui.</p>}</div></details>
       {/* Top action and filter bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

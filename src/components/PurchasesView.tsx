@@ -29,7 +29,7 @@ interface PurchasesViewProps {
   purchases: Purchase[];
   materials: Material[];
   suppliers: Supplier[];
-  onSavePurchase: (purchase: Purchase, updateStock: boolean) => void;
+  onSavePurchase: (purchase: Purchase, updateStock: boolean, payment?: {paidNow: boolean; dueDate: string; account: string}) => void | boolean | Promise<boolean>;
   onDeletePurchase: (id: string) => void;
   onOpenSuppliers?: () => void;
 }
@@ -281,8 +281,8 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
           materials={materials}
           suppliers={suppliers}
           onClose={() => setIsModalOpen(false)}
-          onSave={(p, updateStock) => {
-            onSavePurchase(p, updateStock);
+          onSave={async (p, updateStock, payment) => {
+            if (await onSavePurchase(p, updateStock, payment) === false) return;
             setIsModalOpen(false);
           }}
         />
@@ -308,7 +308,7 @@ interface NewPurchaseModalProps {
   materials: Material[];
   suppliers: Supplier[];
   onClose: () => void;
-  onSave: (p: Purchase, updateStock: boolean) => void;
+  onSave: (p: Purchase, updateStock: boolean, payment?: {paidNow: boolean; dueDate: string; account: string}) => void | Promise<void>;
 }
 
 const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
@@ -324,6 +324,9 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
   const [shippingCost, setShippingCost] = useState('0');
   const [notes, setNotes] = useState('');
   const [updateStock, setUpdateStock] = useState(true);
+  const [paidNow, setPaidNow] = useState(true);
+  const [dueDate, setDueDate] = useState(localDateString());
+  const [account, setAccount] = useState("Principal");
 
   // Items in this purchase
   const [items, setItems] = useState<PurchaseItem[]>([]);
@@ -403,7 +406,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
       createdAt: localDateString(),
     };
 
-    onSave(purchase, updateStock);
+    onSave(purchase, updateStock, {paidNow, dueDate, account});
   };
 
   return (
@@ -672,6 +675,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
             </label>
           </div>
 
+          <div className="space-y-3 rounded-xl border p-3"><label className="flex gap-2 text-sm"><input type="checkbox" checked={paidNow} onChange={e=>setPaidNow(e.target.checked)} />Compra já paga</label>{paidNow ? <label className="block text-sm">Conta de saída<input required className="mt-1 w-full rounded-lg border p-2 text-base" value={account} onChange={e=>setAccount(e.target.value)} /></label> : <label className="block text-sm">Vencimento<input required type="date" className="mt-1 w-full rounded-lg border p-2 text-base" value={dueDate} onChange={e=>setDueDate(e.target.value)} /></label>}<p className="text-xs text-stone-500">Custo da última compra usado na receita; custo médio mantido para o estoque.</p></div>
           {/* Notes */}
           <div>
             <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">

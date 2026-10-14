@@ -687,7 +687,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
                   chosen.name,
                   UNIT_SHORT[chosen.unit] || recipeItem.unit,
                   expandedQuantityPerBatch,
-                  chosen.unitCost
+                  (chosen.inventoryUnitCost ?? chosen.unitCost)
                 );
               }
               return;
@@ -704,7 +704,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
                     childMat.name,
                     UNIT_SHORT[childMat.unit] || recipeItem.unit,
                     expandedQuantityPerBatch,
-                    childMat.unitCost
+                    (childMat.inventoryUnitCost ?? childMat.unitCost)
                   );
                 }
               } else {
@@ -746,7 +746,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
           mat?.name || item.name,
           mat ? (UNIT_SHORT[mat.unit] || item.unit) : item.unit,
           item.quantity,
-          mat?.unitCost ?? item.unitCost
+          mat?.inventoryUnitCost ?? mat?.unitCost ?? item.unitCost
         );
         return;
       }
@@ -1423,7 +1423,7 @@ const StageProgressModal: React.FC<StageProgressModalProps> = ({
                   chosen.name,
                   UNIT_SHORT[chosen.unit] || recipeItem.unit,
                   expandedQuantityPerBatch,
-                  chosen.unitCost
+                  (chosen.inventoryUnitCost ?? chosen.unitCost)
                 );
               }
               return;
@@ -1483,7 +1483,7 @@ const StageProgressModal: React.FC<StageProgressModalProps> = ({
           mat?.name || item.name,
           mat ? (UNIT_SHORT[mat.unit] || item.unit) : item.unit,
           item.quantity,
-          mat?.unitCost ?? item.unitCost
+          mat?.inventoryUnitCost ?? mat?.unitCost ?? item.unitCost
         );
         return;
       }

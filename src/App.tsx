@@ -1,3 +1,9 @@
+import { getProductFinancialSplit } from "./utils/financials";
+import { FinanceView, OrderWorkflowModal } from "./components/FinanceView";
+import { applyFinanceCommand, emptyFinance, projectOrder, type FinanceCommand } from "./utils/financeLedger";
+import { executeFinanceInCloud } from "./services/cloudSync";
+import { saveWorkspaceSnapshot } from "./utils/storage";
+import type { FinanceData, StockMovement } from "./types";
 import { ensureOrderNumbers, getHighestOrderNumber } from './utils/orderNumbers';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
@@ -128,6 +134,12 @@ export default function App() {
     withDefaultDiscountCodes(initialData.settings)
   );
   const [todos, setTodos] = useState<TodoItem[]>(initialData.todos || DEFAULT_TODOS);
+  const [finance, setFinance] = useState<FinanceData>(initialData.finance || emptyFinance());
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>(initialData.stockMovements || []);
+  const [financeBusy, setFinanceBusy] = useState(false);
+  const financeLock = useRef(false);
+  const [workflowSaleId, setWorkflowSaleId] = useState<string | null>(null);
+  const displaySales = useMemo(() => sales.map(s => projectOrder(s, finance)), [sales, finance]);
   const [projects, setProjects] = useState<ProductionProject[]>(initialData.projects || []);
 
   // Cloud Sync & Auth State
@@ -146,7 +158,7 @@ export default function App() {
   const cloudBaseRef = useRef<WorkspaceSyncBase | null>(readStoredCloudBase());
   const workspaceRef = useRef<WorkspaceData>({
     materials, products, purchases, productions, sales, customers,
-    paymentMethods, suppliers, settings, todos, projects,
+    paymentMethods, suppliers, settings, todos, projects, finance, stockMovements,
   });
   const localChangeVersionRef = useRef(0);
   const syncInFlightRef = useRef(false);
@@ -169,11 +181,15 @@ export default function App() {
 
   workspaceRef.current = {
     materials, products, purchases, productions, sales, customers,
-    paymentMethods, suppliers, settings, todos, projects,
+    paymentMethods, suppliers, settings, todos, projects, finance, stockMovements,
   };
 
   const applyWorkspaceData = useCallback((workspace: WorkspaceData) => {
     isIncomingCloudSyncRef.current = true;
+    workspaceRef.current = workspace;
+    saveWorkspaceSnapshot(workspace);
+    setFinance(workspace.finance || emptyFinance());
+    setStockMovements(workspace.stockMovements || []);
     setMaterials(workspace.materials || []);
     setProducts(workspace.products || []);
     setPurchases(workspace.purchases || []);
@@ -197,6 +213,26 @@ export default function App() {
       console.warn('Não foi possível criar a cópia local de segurança:', error);
     }
   }, []);
+
+  const handleFinanceAction = useCallback(async (command: FinanceCommand): Promise<boolean> => {
+    if (financeLock.current || syncInFlightRef.current) { alert('Aguarde a operação em andamento.'); return false; }
+    financeLock.current = true; setFinanceBusy(true); syncInFlightRef.current = true;
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    try {
+      if (user && (!hasLoadedCloudRef.current || !navigator.onLine)) throw new Error('Conecte a conta e aguarde a sincronização para registrar este movimento.');
+      const updated = user ? await executeFinanceInCloud(user.uid, workspaceRef.current, cloudBaseRef.current, command) : applyFinanceCommand(workspaceRef.current, command);
+      if (!localStorage.getItem("atelie_finance_initial_backup_v1")) localStorage.setItem("atelie_finance_initial_backup_v1", JSON.stringify(workspaceRef.current));
+      saveWorkspaceSnapshot(updated);
+      applyWorkspaceData(updated);
+      if (user) {
+        cloudWorkspaceRef.current = updated; cloudRevisionRef.current = updated.revision || 0;
+        cloudBaseRef.current = createWorkspaceSyncBase(updated); storeCloudBase(updated);
+        hasLocalChangesRef.current = false; storePendingSync(false); setSyncStatus('synced'); setLastSyncedAt(new Date());
+      } else { hasLocalChangesRef.current = true; storePendingSync(true); setSyncStatus('offline'); }
+      return true;
+    } catch (error) { alert(error instanceof Error ? error.message : 'Não foi possível registrar.'); return false; }
+    finally { financeLock.current = false; syncInFlightRef.current = false; setFinanceBusy(false); }
+  }, [user, applyWorkspaceData]);
 
   // Auto-dismiss notification toast
   useEffect(() => {
@@ -365,7 +401,7 @@ export default function App() {
               suppliers,
               settings,
               todos,
-              projects,
+              projects, finance, stockMovements,
             });
             cloudWorkspaceRef.current = createdCloud;
             cloudRevisionRef.current = createdCloud.revision || 1;
@@ -462,7 +498,9 @@ export default function App() {
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
-  }, [materials, products, purchases, productions, sales, customers, paymentMethods, suppliers, settings, todos, projects]);
+  }, [materials, products, purchases, productions, sales, customers, paymentMethods, suppliers, settings, todos, projects, finance, stockMovements]);
+
+  useEffect(() => { saveWorkspaceSnapshot(workspaceRef.current); }, [materials, products, purchases, productions, sales, customers, paymentMethods, suppliers, settings, todos, projects, finance, stockMovements]);
 
   // Auto-persist changes to local storage cache as well (offline fallback)
   useEffect(() => {
@@ -664,35 +702,21 @@ export default function App() {
     setMaterials((prev) => prev.filter((m) => m.id !== id));
   }, [products]);
 
-  const handleQuickStockChange = useCallback((id: string, delta: number) => {
-    setMaterials((prev) =>
-      prev.map((m) => {
-        if (m.id === id) {
-          const newStock = Math.max(0, m.currentStock + delta);
-          return {
-            ...m,
-            currentStock: newStock,
-            updatedAt: new Date().toISOString().split('T')[0],
-          };
-        }
-        return m;
-      })
-    );
-  }, []);
+  const handleQuickStockChange = useCallback((id: string, delta: number) => { void handleFinanceAction({type:'stock_adjust',materialId:id,delta,date:new Date().toLocaleDateString('sv-SE'),id:crypto.randomUUID()}); }, [handleFinanceAction]);
 
   // Produz um lote de um material feito no ateliê: consome os ingredientes
   // da receita e adiciona o rendimento ao estoque do próprio material.
   const handleProduceMaterial = useCallback((materialId: string, batchCount: number) => {
-    setMaterials((prev) => {
+    const prev=workspaceRef.current.materials;
       const target = prev.find((m) => m.id === materialId);
       if (!target?.isMadeInAtelier || !target.recipeItems?.length || !target.batchYield) {
         alert('Este material não possui uma receita válida de produção no ateliê.');
-        return prev;
+        return;
       }
 
       if (target.isVirtualRecipe) {
         alert('Esta é uma receita virtual: ela é preparada automaticamente durante a produção da peça e não possui estoque próprio.');
-        return prev;
+        return;
       }
 
       const ingredientRequirements = target.recipeItems
@@ -715,7 +739,7 @@ export default function App() {
         alert('Estoque insuficiente de "' + (ingredient?.name || insufficient.name) + '". Necessário: ' +
           insufficient.required + ' ' + insufficient.unit + '. Disponível: ' +
           (ingredient?.currentStock ?? 0) + ' ' + (ingredient?.unit || insufficient.unit) + '.');
-        return prev;
+        return;
       }
 
       const updated = prev.map((m) => {
@@ -739,8 +763,8 @@ export default function App() {
         return m;
       });
 
-      return updated;
-    });
+      setMaterials(updated);
+      setStockMovements(moves=>[...moves,...ingredientRequirements.map(req=>({id:crypto.randomUUID(),date:new Date().toLocaleDateString('sv-SE'),targetId:req.targetId,type:'material' as const,quantity:-req.required,reason:'Produção de material interno',referenceId:materialId})),{id:crypto.randomUUID(),date:new Date().toLocaleDateString('sv-SE'),targetId:materialId,type:'material' as const,quantity:target.batchYield*batchCount,reason:'Material interno finalizado'}]);
   }, []);
 
   // ----------------------------------------------------
@@ -817,43 +841,16 @@ export default function App() {
   // ----------------------------------------------------
   // Purchase Handlers
   // ----------------------------------------------------
-  const handleSavePurchase = useCallback((purchase: Purchase, updateStock: boolean) => {
-    setPurchases((prev) => [purchase, ...prev]);
+  const handleSavePurchase = useCallback(async (purchase: Purchase, updateStock: boolean, payment?: {paidNow: boolean; dueDate: string; account: string}) => handleFinanceAction({type:'purchase',purchase,updateStock,paidNow:payment?.paidNow ?? false,dueDate:payment?.dueDate || purchase.date,account:payment?.account || 'Principal'}), [handleFinanceAction]);
 
-    if (updateStock) {
-      setMaterials((prevMaterials) => {
-        return prevMaterials.map((mat) => {
-          const purchasedItems = purchase.items.filter((it) => it.materialId === mat.id);
-          if (purchasedItems.length === 0) return mat;
-
-          // A quantidade lançada na compra representa pacotes/lotes comprados.
-          // Converte a unidade da embalagem para a unidade-base usada no estoque.
-          // Ex.: 6 embalagens de 1 kg, com estoque em g => 6 * 1 * 1000 = 6000 g.
-          const stockToAdd = purchasedItems.reduce((sum, itemBought) => {
-            const purchaseUnit = itemBought.unit || mat.packageUnit || mat.unit;
-            const conversionMultiplier = getUnitConversionMultiplier(purchaseUnit, mat.unit);
-            const quantityPerPackage = mat.packageQuantity || 1;
-            return sum + (itemBought.quantity * quantityPerPackage * conversionMultiplier);
-          }, 0);
-
-          return {
-            ...mat,
-            currentStock: Number((mat.currentStock + stockToAdd).toFixed(4)),
-            updatedAt: new Date().toISOString().split('T')[0],
-          };
-        });
-      });
-    }
-  }, []);
-
-  const handleDeletePurchase = useCallback((id: string) => {
-    setPurchases((prev) => prev.filter((p) => p.id !== id));
-  }, []);
+  const handleDeletePurchase = useCallback((id: string) => { if(confirm('Cancelar a compra e reverter a entrada de estoque? O histórico será preservado.')) void handleFinanceAction({type:'cancel_purchase',purchaseId:id,date:new Date().toLocaleDateString('sv-SE')}); }, [handleFinanceAction]);
 
   // ----------------------------------------------------
   // Production Handlers (Baixa de Insumos & Entrada no Estoque)
   // ----------------------------------------------------
   const handleSaveProduction = useCallback((production: Production, updateStock: boolean) => {
+    if(workspaceRef.current.productions?.some(p=>p.id===production.id))return;
+    if(updateStock) setStockMovements(prev=>[...prev,...production.deductedItems.map(d=>({id:`${production.id}_${d.targetId}`,date:production.date,targetId:d.targetId,type:d.type,quantity:-d.quantityTotal,reason:'Produção',referenceId:production.id})),...(production.quantityProduced>0?[{id:`${production.id}_finished`,date:production.date,targetId:production.productId,type:'product' as const,quantity:production.quantityProduced,reason:'Produto finalizado',referenceId:production.id}]:[])]);
     setProductions((prev) => [production, ...prev]);
 
     if (updateStock) {
@@ -865,6 +862,8 @@ export default function App() {
             return {
               ...p,
               currentStock: current + production.quantityProduced,
+              inventoryBusinessCost: production.quantityProduced>0 ? (current*(p.inventoryBusinessCost ?? getProductFinancialSplit(p).businessCostPerUnit)+production.quantityProduced*Math.max(0,production.costPerUnit-getProductFinancialSplit(p).laborRemunerationPerUnit))/(current+production.quantityProduced) : p.inventoryBusinessCost,
+              inventoryLaborCost: production.quantityProduced>0 ? (current*(p.inventoryLaborCost ?? getProductFinancialSplit(p).laborRemunerationPerUnit)+production.quantityProduced*getProductFinancialSplit(p).laborRemunerationPerUnit)/(current+production.quantityProduced) : p.inventoryLaborCost,
               updatedAt: new Date().toISOString().split('T')[0],
             };
           }
@@ -923,6 +922,7 @@ export default function App() {
     )));
 
     if (production.stockTrackingEnabled === false) return;
+    setStockMovements(prev=>[...prev,...deductions.map(d=>({id:crypto.randomUUID(),date:production.date,targetId:d.targetId,type:d.type,quantity:-d.quantityTotal,reason:'Etapa de produção',referenceId:production.id})),...(finishedQuantityDelta>0?[{id:crypto.randomUUID(),date:production.date,targetId:production.productId,type:'product' as const,quantity:finishedQuantityDelta,reason:'Produto finalizado',referenceId:production.id}]:[])]);
 
     if (finishedQuantityDelta > 0) {
       setProducts((prevProducts) => prevProducts.map((product) => {
@@ -930,6 +930,8 @@ export default function App() {
         return {
           ...product,
           currentStock: Number(((product.currentStock ?? 0) + finishedQuantityDelta).toFixed(4)),
+          inventoryBusinessCost: ((product.currentStock||0)*(product.inventoryBusinessCost ?? getProductFinancialSplit(product).businessCostPerUnit)+finishedQuantityDelta*Math.max(0,(production.targetQuantity?(production.plannedTotalCost ?? production.totalCost)/production.targetQuantity:production.costPerUnit)-getProductFinancialSplit(product).laborRemunerationPerUnit))/((product.currentStock||0)+finishedQuantityDelta),
+          inventoryLaborCost: ((product.currentStock||0)*(product.inventoryLaborCost ?? getProductFinancialSplit(product).laborRemunerationPerUnit)+finishedQuantityDelta*getProductFinancialSplit(product).laborRemunerationPerUnit)/((product.currentStock||0)+finishedQuantityDelta),
           updatedAt: new Date().toISOString().split('T')[0],
         };
       }));
@@ -1521,119 +1523,15 @@ export default function App() {
     }
   }, [sales, settings.lastOrderNumber]);
 
-  const handleSaveSale = useCallback((sale: Sale) => {
-    const previousSale = sales.find((s) => s.id === sale.id);
-    const stockAdjustments = new Map<string, number>();
-    let blockedMessage = '';
+  const handleSaveSale = useCallback(async (sale: Sale): Promise<boolean> => {
+    const existing = workspaceRef.current.sales.find(s => s.id === sale.id);
+    const initialPaymentCents = !existing ? Math.round((sale.amountPaid || 0) * 100) : undefined;
+    const success = await handleFinanceAction({ type: 'save_order', sale, initialPaymentCents, initialMethod: sale.paymentMethod });
+    if (success) setWorkflowSaleId(sale.id);
+    return success;
+  }, [handleFinanceAction]);
 
-    const normalizedItems = sale.items?.map((item) => {
-      const previousItem = previousSale?.items?.find((prevItem) => prevItem.id === item.id);
-      const stockProductId = item.isCustom ? item.customProductId : item.productId;
-
-      // Older delivered orders did not record stockConsumedQuantity for regular items.
-      // Their stock was already deducted at delivery, so an edit must not deduct it again.
-      const legacyConsumed = previousSale?.deliveryStatus === 'entregue'
-        ? (previousItem?.quantity || 0)
-        : previousItem?.customStockConsumed ? (previousItem.quantity || 0) : 0;
-      const previousConsumed = previousItem?.stockConsumedQuantity ?? legacyConsumed;
-      const targetConsumed = sale.deliveryStatus === 'entregue' ? item.quantity : 0;
-      const deltaToConsume = targetConsumed - previousConsumed;
-
-      if (!stockProductId) {
-        if (targetConsumed > 0 && item.isCustom) {
-          blockedMessage = `Produza "${item.productName}" antes de marcar o pedido como entregue.`;
-        }
-        return {
-          ...item,
-          stockConsumedQuantity: targetConsumed > 0 ? previousConsumed : 0,
-          customStockConsumed: targetConsumed > 0 ? previousConsumed > 0 : false,
-        };
-      }
-
-      if (deltaToConsume > 0) {
-        const stockProduct = products.find((p) => p.id === stockProductId);
-        const physicalStock = stockProduct?.currentStock ?? 0;
-
-        const reservedByOtherOrders = sales.reduce((total, currentSale) => {
-          if (currentSale.id === sale.id || currentSale.deliveryStatus === 'entregue' || !currentSale.items) return total;
-          return total + currentSale.items.reduce((sum, currentItem) => {
-            const currentStockProductId = currentItem.isCustom ? currentItem.customProductId : currentItem.productId;
-            return currentStockProductId === stockProductId
-              ? sum + (currentItem.reservedQuantity || 0)
-              : sum;
-          }, 0);
-        }, 0);
-
-        const usableForThisSale = Math.max(0, physicalStock - reservedByOtherOrders);
-        if (!stockProduct || usableForThisSale < deltaToConsume) {
-          blockedMessage = `Estoque insuficiente de "${item.productName}" para concluir a entrega. Disponível para este pedido: ${usableForThisSale} un.`;
-          return item;
-        }
-
-        stockAdjustments.set(
-          stockProductId,
-          (stockAdjustments.get(stockProductId) || 0) - deltaToConsume
-        );
-      } else if (deltaToConsume < 0) {
-        stockAdjustments.set(
-          stockProductId,
-          (stockAdjustments.get(stockProductId) || 0) + Math.abs(deltaToConsume)
-        );
-      }
-
-      const restoredReservation = sale.deliveryStatus === 'pendente_entrega' && previousConsumed > 0
-        ? Math.min(item.quantity, previousConsumed)
-        : (item.reservedQuantity || 0);
-
-      return {
-        ...item,
-        reservedQuantity: sale.deliveryStatus === 'entregue' ? 0 : restoredReservation,
-        stockConsumedQuantity: targetConsumed,
-        customStockConsumed: item.isCustom ? targetConsumed > 0 : item.customStockConsumed,
-      };
-    });
-
-    if (blockedMessage) {
-      alert(blockedMessage);
-      return;
-    }
-
-    if (stockAdjustments.size > 0) {
-      setProducts((prevProducts) =>
-        prevProducts.map((product) => {
-          const delta = stockAdjustments.get(product.id);
-          if (!delta) return product;
-          return {
-            ...product,
-            currentStock: Math.max(0, Number(((product.currentStock ?? 0) + delta).toFixed(4))),
-            updatedAt: new Date().toISOString().split('T')[0],
-          };
-        })
-      );
-    }
-
-    const orderNumber = previousSale?.orderNumber || ++orderNumberCounter.current;
-    setSettings(prev => ({ ...prev, lastOrderNumber: Math.max(prev.lastOrderNumber || 0, orderNumber) }));
-    const normalizedSale: Sale = {
-      ...sale,
-      orderNumber,
-      items: normalizedItems || sale.items,
-    };
-
-    setSales((prev) => {
-      const idx = prev.findIndex((s) => s.id === sale.id);
-      if (idx >= 0) {
-        const updated = [...prev];
-        updated[idx] = normalizedSale;
-        return updated;
-      }
-      return [normalizedSale, ...prev];
-    });
-  }, [sales, products]);
-
-  const handleDeleteSale = useCallback((id: string) => {
-    setSales((prev) => prev.filter((s) => s.id !== id));
-  }, []);
+  const handleDeleteSale = useCallback((id: string) => { setWorkflowSaleId(id); }, []);
 
   // ----------------------------------------------------
   // Project Handlers
@@ -1694,6 +1592,7 @@ export default function App() {
   }, []);
 
   const handleDeleteCustomer = useCallback((id: string) => {
+    if (workspaceRef.current.sales.some(s => s.customerId === id) || workspaceRef.current.finance?.entries.some(e => e.customerId === id)) { alert("Este cliente tem histórico de pedidos ou financeiro. Preserve o cadastro."); return; }
     setCustomers((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
@@ -1716,6 +1615,9 @@ export default function App() {
   // Restore Data / Backup / Presets
   // ----------------------------------------------------
   const handleRestoreAllData = useCallback((data: any) => {
+    protectCurrentWorkspace();
+    setFinance(data.finance || emptyFinance()); setStockMovements(data.stockMovements || []);
+    saveWorkspaceSnapshot({ ...workspaceRef.current, ...data, finance: data.finance || emptyFinance(), stockMovements: data.stockMovements || [] });
     if (data.materials) setMaterials(data.materials);
     if (data.products) setProducts(data.products);
     if (data.purchases) setPurchases(data.purchases);
@@ -1778,6 +1680,7 @@ export default function App() {
           </button>
 
           <div className="flex items-center gap-2 shrink-0">
+            <button onClick={() => setActiveTab('finance')} className="rounded-xl border bg-white px-3 py-2 text-xs font-semibold">Financeiro</button>
             {lowStockCount > 0 && (
               <button
                 type="button"
@@ -1814,7 +1717,7 @@ export default function App() {
             materials={materials}
             products={products}
             purchases={purchases}
-            sales={sales}
+            sales={displaySales}
             todos={todos}
             onUpdateTodos={setTodos}
             onNavigate={(tab, filter) => {
@@ -1848,6 +1751,7 @@ export default function App() {
 
         {activeTab === 'materials' && (
           <MaterialsView
+            stockMovements={stockMovements}
             materials={materials}
             defaultHourlyRate={settings.defaultHourlyRate}
             suppliers={suppliers}
@@ -1915,13 +1819,14 @@ export default function App() {
         {activeTab === 'sales' && (
           <SalesView
             settings={settings}
-            sales={sales}
+            sales={displaySales}
             products={products}
             materials={materials}
             customers={customers}
             paymentMethods={paymentMethods}
             discountCodes={settings.discountCodes || []}
             onSaveSale={handleSaveSale}
+            onOpenWorkflow={setWorkflowSaleId}
             onReserveSaleItem={handleReserveSaleItem}
             onReleaseSaleItemReservation={handleReleaseSaleItemReservation}
             onProduceCustomItem={handleProduceCustomItem}
@@ -1941,21 +1846,27 @@ export default function App() {
         {activeTab === 'customers' && (
           <CustomersView
             customers={customers}
-            sales={sales}
+            sales={displaySales}
             products={products}
             discountCodes={settings.discountCodes || []}
             onSaveCustomer={handleSaveCustomer}
+            finance={finance}
+            onOpenFinance={() => setActiveTab('finance')}
             onDeleteCustomer={handleDeleteCustomer}
             onNavigateToNewOrderWithCustomer={handleCreateSaleForCustomer}
           />
         )}
 
+        {activeTab === 'finance' && <FinanceView sales={sales} customers={customers} finance={finance} onAction={handleFinanceAction} onOpenOrder={setWorkflowSaleId} />}
+
         {activeTab === 'reports' && (
           <ReportsView
-            sales={sales}
+            sales={displaySales}
             purchases={purchases}
             products={products}
             materials={materials}
+            finance={finance}
+            onOpenFinance={() => setActiveTab('finance')}
             onOpenPurchaseHistory={() => setActiveTab('purchases')}
           />
         )}
@@ -2121,6 +2032,8 @@ export default function App() {
         </div>
       </nav>
 
+      {workflowSaleId && sales.find(s => s.id === workflowSaleId) && <OrderWorkflowModal key={workflowSaleId} sale={sales.find(s => s.id === workflowSaleId)!} finance={finance} onAction={handleFinanceAction} onClose={() => setWorkflowSaleId(null)} />}
+      {financeBusy && <div role="status" className="fixed inset-0 z-[80] flex items-center justify-center bg-stone-900/30"><p className="rounded-xl bg-white p-5 font-semibold">Registrando com segurança…</p></div>}
       {/* Settings & Backup Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
@@ -2142,7 +2055,7 @@ export default function App() {
           suppliers,
           settings,
           todos,
-          projects,
+          projects, finance, stockMovements,
         }}
       />
 

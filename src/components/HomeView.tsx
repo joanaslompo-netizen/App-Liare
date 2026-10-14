@@ -1,3 +1,4 @@
+import { isActiveOrder, orderItems } from "../utils/financeLedger";
 import { localDateString } from '../utils/localDate';
 import { getInvoiceTotals } from '../utils/invoice';
 import React, { useMemo, useState } from 'react';
@@ -70,12 +71,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
   );
 
   const pendingDeliveries = useMemo(
-    () => sales.filter((s) => s.deliveryStatus === 'pendente_entrega'),
+    () => sales.filter((s) => isActiveOrder(s) && s.deliveryStatus !== 'entregue'),
     [sales]
   );
 
   const pendingPayments = useMemo(
-    () => sales.filter((s) => s.paymentStatus === 'pendente_pagamento' && getInvoiceTotals(s).balance > 0)
+    () => sales.filter((s) => isActiveOrder(s) && s.paymentStatus === 'pendente_pagamento' && getInvoiceTotals(s).balance > 0)
       .sort((a, b) => (a.paymentScheduledDate || '9999-12-31').localeCompare(b.paymentScheduledDate || '9999-12-31')),
     [sales]
   );
@@ -86,7 +87,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   );
 
   const currentMonth = localDateString().slice(0, 7);
-  const monthSales = sales.filter((s) => s.date.startsWith(currentMonth));
+  const monthSales = sales.filter((s) => isActiveOrder(s) && s.date.startsWith(currentMonth));
   const monthRevenue = monthSales.reduce((acc, s) => acc + s.totalRevenue, 0);
   const monthProfit = monthSales.reduce((acc, s) => acc + getSaleFinancials(s, products).ownerEarnings, 0);
   const monthMargin = monthRevenue > 0 ? (monthProfit / monthRevenue) * 100 : 0;
@@ -167,6 +168,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
     [pendingDeliveries]
   );
 
+  const productionNeeds = useMemo(() => {
+    const needs = new Map<string, {name:string; quantity:number}>();
+    for (const sale of sales.filter(isActiveOrder)) for (const item of orderItems(sale)) {
+      const delivered = (item.deliveredQuantity ?? item.stockConsumedQuantity ?? (sale.deliveryStatus === 'entregue' ? item.quantity : 0)) - (item.returnedQuantity || 0);
+      const missing = Math.max(0,item.quantity-delivered-(item.reservedQuantity||0));
+      if(missing){const key=item.isCustom?item.customProductId||item.id||sale.id:item.productId; const previous=needs.get(key);needs.set(key,{name:item.productName,quantity:(previous?.quantity||0)+missing});}
+    }
+    return [...needs.values()];
+  },[sales]);
   return (
     <div className="space-y-4 sm:space-y-6 pb-12">
       <section className="px-1 sm:px-0">
@@ -219,13 +229,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
         </div>
       </section>
+      <section className="rounded-2xl bg-white border border-stone-200 p-4"><h3 className="font-bold mb-2">Produzir</h3><div className="grid sm:grid-cols-2 gap-3"><div><p className="text-xs font-semibold text-stone-500">Para pedidos · unidades ainda não separadas</p>{productionNeeds.length ? productionNeeds.map((n,i)=><button key={i} onClick={()=>onNavigate('sales')} className="block w-full text-left py-2 text-sm">{n.name} · <strong>{n.quantity} un</strong></button>) : <p className="mt-2 text-sm text-stone-500">Pedidos sem falta de peças.</p>}</div><div><p className="text-xs font-semibold text-stone-500">Reposição de pronta-entrega</p>{lowStockProducts.map(p=><button key={p.id} onClick={()=>onNavigate('productions')} className="block w-full text-left py-2 text-sm">{p.name} · <strong>{Math.max(0,(p.standardStock||p.minStock||0)-(p.currentStock||0))} un</strong></button>)}</div></div></section>
       <section
         onClick={() => onNavigate('reports')}
         className="rounded-[28px] sm:rounded-3xl bg-[#b96f55] text-white px-4.5 pt-4.5 pb-3.5 sm:p-6 shadow-sm cursor-pointer transition-transform hover:-translate-y-0.5"
       >
         <div className="flex items-center gap-2 mb-3.5 sm:mb-5">
           <span className="text-[13px] sm:text-[15px] font-semibold text-white/90">
-            Resumo do mês
+            Pedidos do mês
           </span>
           <span className="text-[13px] sm:text-[15px] text-white/65">·</span>
           <span className="text-[13px] sm:text-[15px] font-semibold text-white/90">
@@ -240,7 +251,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 <BarChart3 className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
               </div>
               <span className="text-[12px] sm:text-[13px] text-white/75 whitespace-nowrap">
-                Faturamento
+                Valor contratado
               </span>
             </div>
             <strong className="block text-[21px] sm:text-[28px] leading-none font-semibold tracking-tight whitespace-nowrap">
@@ -254,7 +265,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4 text-[#65734f]" />
               </div>
               <span className="text-[12px] sm:text-[13px] text-white/75 whitespace-nowrap">
-                Para você
+                Estimativa
               </span>
             </div>
             <strong className="block text-[21px] sm:text-[28px] leading-none font-semibold tracking-tight whitespace-nowrap">

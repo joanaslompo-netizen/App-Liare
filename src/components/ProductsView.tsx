@@ -1,3 +1,4 @@
+import { getEmbeddedRecipeLaborCost } from "../utils/storage";
 import { localDateString } from '../utils/localDate';
 import { MoreOptions } from './MoreOptions';
 import { calculateRecipePricing, getRecipePricing } from '../utils/financials';
@@ -1407,12 +1408,13 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     }
     return acc + (it.totalCost || 0);
   }, 0);
+  const embeddedLaborCost = getEmbeddedRecipeLaborCost(items, allMaterials, allProducts);
   const laborCost = (parsedMinutes / 60) * parsedHourlyRate;
   const { fixedCost, totalCost, unitCostFromBatch, suggestedPrice, currentActualPrice,
     businessUnitCost, laborUnitCost, commercialProfit, netProfit, calculatedMarginPercent
   } = calculateRecipePricing(
     materialsCost, laborCost, parsedFixedPct, parsedOtherCosts, parsedYield, parsedMargin,
-    actualPrice.trim() === '' ? undefined : Number(actualPrice)
+    actualPrice.trim() === '' ? undefined : Number(actualPrice), embeddedLaborCost
   );
 
   // Filter products available to be added as ingredients:
@@ -1678,6 +1680,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
           }))
         : undefined,
       materialsCost,
+      embeddedLaborCost,
       productionTimeMinutes: parsedMinutes,
       hourlyRate: parsedHourlyRate,
       laborCost,
@@ -1901,7 +1904,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   </p>
                   {!product?.isCustomRecipe && (
                     <div className="mt-3 space-y-2">
-                      <label htmlFor="parent-recipe" className="block text-sm font-bold text-stone-700">Receita mãe</label>
+                      <label htmlFor="parent-recipe" className="block text-sm font-bold text-stone-700">Fórmula base</label>
                       <select id="parent-recipe" value={parentRecipeId} onChange={(e) => selectMotherRecipe(e.target.value)} className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg">
                         <option value="">Esta é uma receita mãe / independente</option>
                         {motherRecipes.map((mother) => <option key={mother.id} value={mother.id}>{mother.name}</option>)}
@@ -2588,25 +2591,25 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-bold text-stone-800">
-                    Margem sobre Materiais:
+                    Multiplicador dos materiais:
                   </label>
                   <span className="text-xs font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded">
-                    {parsedMargin}%
+                    {(1 / (1 - parsedMargin / 100)).toFixed(2)}×
                   </span>
                 </div>
                 <input
                   type="range"
-                  min="5"
-                  max="80"
-                  step="5"
-                  value={parsedMargin}
-                  onChange={(e) => setProfitMarginPercent(e.target.value)}
+                  min="1"
+                  max="5"
+                  step="0.1"
+                  value={1 / (1 - parsedMargin / 100)}
+                  onChange={(e) => setProfitMarginPercent(String((1 - 1 / Number(e.target.value)) * 100))}
                   className="w-full accent-amber-600 cursor-pointer"
                 />
                 <div className="flex justify-between text-[10px] text-stone-400 mt-1">
-                  <span>10% (Baixa)</span>
-                  <span>45% (Equilibrada)</span>
-                  <span>70% (Premium)</span>
+                  <span>1×</span>
+                  <span>2,5×</span>
+                  <span>5×</span>
                 </div>
                 <p className="text-[11px] text-stone-500 mt-2">
                   Aplicada somente aos materiais. A mão de obra é somada depois, sem margem adicional.

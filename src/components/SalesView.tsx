@@ -1,3 +1,4 @@
+import { isActiveOrder } from "../utils/financeLedger";
 import { localDateString } from '../utils/localDate';
 import { MoreOptions } from './MoreOptions';
 import { formatOrderNumber } from '../utils/orderNumbers';
@@ -56,7 +57,8 @@ interface SalesViewProps {
   customers: Customer[];
   paymentMethods: string[];
   discountCodes: DiscountCode[];
-  onSaveSale: (sale: Sale) => void;
+  onSaveSale: (sale: Sale) => void | boolean | Promise<boolean>;
+  onOpenWorkflow?: (id: string) => void;
   onReserveSaleItem: (saleId: string, itemId: string) => number | null;
   onReleaseSaleItemReservation: (saleId: string, itemId: string) => number | null;
   onProduceCustomItem: (
@@ -85,6 +87,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   paymentMethods = ['offline', 'site'],
   discountCodes = [],
   onSaveSale,
+  onOpenWorkflow,
   onReserveSaleItem,
   onReleaseSaleItemReservation,
   onProduceCustomItem,
@@ -186,8 +189,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
   };
 
   // Quick stats
-  const pendingDeliveryList = useMemo(() => sales.filter((s) => s.deliveryStatus === 'pendente_entrega'), [sales]);
-  const pendingPaymentList = useMemo(() => sales.filter((s) => s.paymentStatus === 'pendente_pagamento' && getInvoiceTotals(s).balance > 0), [sales]);
+  const pendingDeliveryList = useMemo(() => sales.filter((s) => isActiveOrder(s) && s.deliveryStatus !== 'entregue'), [sales]);
+  const pendingPaymentList = useMemo(() => sales.filter((s) => isActiveOrder(s) && s.paymentStatus === 'pendente_pagamento' && getInvoiceTotals(s).balance > 0), [sales]);
 
   const totalPendingPaymentAmount = useMemo(() => {
     return pendingPaymentList.reduce((acc, s) => acc + getInvoiceTotals(s).balance, 0);
@@ -198,13 +201,13 @@ export const SalesView: React.FC<SalesViewProps> = ({
     return sales
       .filter((s) => {
         // Tab filtering
-        if (activeTabFilter === 'pending_delivery' && s.deliveryStatus !== 'pendente_entrega') {
+        if (activeTabFilter === 'pending_delivery' && (!isActiveOrder(s) || s.deliveryStatus === 'entregue')) {
           return false;
         }
-        if (activeTabFilter === 'pending_payment' && (s.paymentStatus !== 'pendente_pagamento' || getInvoiceTotals(s).balance <= 0)) {
+        if (activeTabFilter === 'pending_payment' && (!isActiveOrder(s) || s.paymentStatus !== 'pendente_pagamento' || getInvoiceTotals(s).balance <= 0)) {
           return false;
         }
-        if (activeTabFilter === 'completed' && (s.deliveryStatus === 'pendente_entrega' || s.paymentStatus === 'pendente_pagamento')) {
+        if (activeTabFilter === 'completed' && (!isActiveOrder(s) || s.deliveryStatus !== 'entregue' || s.paymentStatus === 'pendente_pagamento')) {
           return false;
         }
 
@@ -237,14 +240,15 @@ export const SalesView: React.FC<SalesViewProps> = ({
   }, [sales, searchTerm, activeTabFilter]);
 
   // Aggregate metrics across ALL sales
-  const totalRevenue = sales.reduce((acc, s) => acc + s.totalRevenue, 0);
+  const totalRevenue = sales.filter(s => s.commercialStatus !== "cancelled" && s.commercialStatus !== "draft").reduce((acc, s) => acc + s.totalRevenue, 0);
   const totalReceived = sales.reduce((acc, s) => acc + getInvoiceTotals(s).paid, 0);
-  const totalProfit = sales.reduce((acc, s) => acc + getSaleFinancials(s, products).ownerEarnings, 0);
+  const totalProfit = sales.filter(isActiveOrder).reduce((acc, s) => acc + getSaleFinancials(s, products).ownerEarnings, 0);
   const isTotalLoss = totalProfit < 0;
-  const totalPiecesSold = sales.reduce((acc, s) => acc + s.quantity, 0);
+  const totalPiecesSold = sales.filter(isActiveOrder).reduce((acc, s) => acc + s.quantity, 0);
 
   // Quick Action: Mark Delivery as Complete
   const handleMarkAsDelivered = (sale: Sale) => {
+    if (onOpenWorkflow) { onOpenWorkflow(sale.id); return; }
     const today = localDateString();
     const updated: Sale = {
       ...sale,
@@ -256,6 +260,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
   // Quick Action: Mark Payment as Received
   const handleMarkAsPaid = (sale: Sale) => {
+    if (onOpenWorkflow) { onOpenWorkflow(sale.id); return; }
     const today = localDateString();
     const updated: Sale = {
       ...sale,
@@ -526,7 +531,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
               <tbody className="divide-y divide-stone-100">
                 {filteredSales.map((sale) => {
                   const isPendingDelivery = sale.deliveryStatus === 'pendente_entrega';
-                  const isPendingPayment = sale.paymentStatus === 'pendente_pagamento';
+                  const isPendingPayment = isActiveOrder(sale) && sale.paymentStatus === 'pendente_pagamento';
                   const saleImageUrl = getSaleImageUrl(sale);
 
                   return (
@@ -782,6 +787,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
                       {/* Actions */}
                       <td className="py-3 px-4 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1">
+                          {onOpenWorkflow && <button onClick={() => onOpenWorkflow(sale.id)} className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900" title="Pagamentos, crédito e entregas">Movimentos</button>}
+                          {sale.commercialStatus === "cancelled" && <span className="text-xs text-red-700">Cancelado</span>}
                           <button onClick={() => setInvoiceSale(sale)} title="Gerar fatura" aria-label="Gerar fatura" className="p-1.5 text-blue-700 hover:bg-blue-50 rounded-lg"><FileText className="w-4 h-4" /></button>
                           <button
                             onClick={() => handleOpenEdit(sale)}
@@ -792,12 +799,10 @@ export const SalesView: React.FC<SalesViewProps> = ({
                           </button>
                           <button
                             onClick={() => {
-                              if (confirm(`Deseja excluir o registro do pedido de ${sale.productName}?`)) {
-                                onDeleteSale(sale.id);
-                              }
+                              onDeleteSale(sale.id);
                             }}
                             className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                            title="Excluir pedido"
+                            title="Cancelar pedido"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -835,8 +840,9 @@ export const SalesView: React.FC<SalesViewProps> = ({
             setEditingSale(null);
             onClearInitialCustomer?.();
           }}
-          onSave={(sale) => {
-            onSaveSale(sale);
+          onSave={async (sale) => {
+            const success = await onSaveSale(sale);
+            if (success === false) return;
             setIsModalOpen(false);
             setEditingSale(null);
             onClearInitialCustomer?.();
@@ -871,7 +877,7 @@ interface OrderSaleModalProps {
     customer?: { id?: string; name?: string }
   ) => { productId: string; productionId: string; producedQuantity: number; unitCost: number } | null;
   onClose: () => void;
-  onSave: (sale: Sale) => void;
+  onSave: (sale: Sale) => void | Promise<void>;
 }
 
 const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
@@ -1337,17 +1343,19 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
   // Delivery settings
   const [deliveryStatus, setDeliveryStatus] = useState<DeliveryStatus>(
-    existingSale?.deliveryStatus || (orderType === 'encomenda' ? 'pendente_entrega' : 'entregue')
+    existingSale?.deliveryStatus || 'pendente_entrega'
   );
   const [deliveryScheduledDate, setDeliveryScheduledDate] = useState(
     existingSale?.deliveryScheduledDate || (orderType === 'encomenda' ? '' : '')
   );
 
+  const [isDraft, setIsDraft] = useState(existingSale?.commercialStatus === "draft");
+  const [shippingCharged, setShippingCharged] = useState(String(existingSale?.shippingCharged || 0));
   const [amountPaid, setAmountPaid] = useState(String(existingSale?.amountPaid || 0));
 
   // Payment settings
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(
-    existingSale?.paymentStatus || 'pago'
+    existingSale?.paymentStatus || 'pendente_pagamento'
   );
   const [paymentScheduledDate, setPaymentScheduledDate] = useState(
     existingSale?.paymentScheduledDate || ''
@@ -1360,7 +1368,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       if (type === 'encomenda') {
         setDeliveryStatus('pendente_entrega');
       } else {
-        setDeliveryStatus('entregue');
+        setDeliveryStatus('pendente_entrega');
       }
     }
   };
@@ -1378,7 +1386,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     const cost = prod.unitCostFromBatch > 0 ? prod.unitCostFromBatch : prod.totalCost;
 
     // Check if product already exists in items list: if so, increment quantity
-    const existingIndex = items.findIndex((it) => it.productId === prod.id);
+    const existingIndex = items.findIndex((it) => it.productId === prod.id && it.unitPrice === p && it.unitCost === cost);
     if (existingIndex >= 0) {
       const updated = [...items];
       const existing = updated[existingIndex];
@@ -1482,7 +1490,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     : effectiveDiscountType === 'fixed'
       ? Math.min(subtotalRevenue, effectiveDiscountValue)
       : 0;
-  const totalRevenue = Math.max(0, subtotalRevenue - discountAmount);
+  const totalRevenue = Math.max(0, subtotalRevenue - discountAmount) + Math.max(0,Number(shippingCharged)||0);
   const totalProfit = totalRevenue - totalBusinessCost;
   const commercialProfit = totalProfit - totalLaborRemuneration;
   const marginPercent = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
@@ -1531,6 +1539,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       unitPrice: totalQuantity > 0 ? totalRevenue / totalQuantity : firstItem.unitPrice,
       unitCost: totalQuantity > 0 ? totalCost / totalQuantity : firstItem.unitCost,
       items,
+      shippingCharged: Math.max(0,Number(shippingCharged)||0),
       subtotalRevenue,
       discountType: effectiveDiscountType,
       discountValue: effectiveDiscountType ? effectiveDiscountValue : undefined,
@@ -1555,7 +1564,8 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       deliveryStatus,
       deliveryScheduledDate: deliveryStatus === 'pendente_entrega' ? (deliveryScheduledDate || undefined) : undefined,
       deliveryActualDate: deliveryStatus === 'entregue' ? (existingSale?.deliveryActualDate || today) : undefined,
-      amountPaid: paymentStatus === 'pago' ? totalRevenue : Math.min(totalRevenue, Math.max(0, Number(amountPaid) || 0)),
+      commercialStatus: isDraft ? 'draft' : 'confirmed',
+      amountPaid: existingSale ? existingSale.amountPaid : isDraft ? 0 : paymentStatus === 'pago' ? totalRevenue : Math.max(0, Number(amountPaid) || 0),
       paymentStatus,
       paymentScheduledDate: paymentStatus === 'pendente_pagamento' ? (paymentScheduledDate || undefined) : undefined,
       paymentActualDate: paymentStatus === 'pago' ? (existingSale?.paymentActualDate || today) : undefined,
@@ -1627,6 +1637,9 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[82vh] overflow-y-auto">
+          <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Após salvar, use Movimentos para registrar pagamentos, crédito e entregas. Editar este formulário preserva os valores já recebidos.</p>
+<label className="block text-sm">Frete cobrado do cliente (R$)<input type="number" min="0" step="0.01" className="mt-1 w-full rounded-xl border p-2 text-base" value={shippingCharged} onChange={e=>setShippingCharged(e.target.value)}/></label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={isDraft} disabled={!!existingSale && (existingSale.amountPaid || 0)>0} onChange={e => setIsDraft(e.target.checked)} />Salvar como rascunho, sem reservar estoque</label>
           {/* Order Type Toggle */}
           <div>
             <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2">
@@ -2613,7 +2626,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
             {paymentStatus === 'pendente_pagamento' && (
               <label className="block text-sm font-semibold text-stone-700">Valor já pago / Entrada (R$)
-                <input type="number" min="0" max={totalRevenue} step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)}
+                <input type="number" min="0" step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)}
                   className="mt-1 w-full px-3 py-2 text-base border border-stone-300 rounded-lg" />
               </label>
             )}
