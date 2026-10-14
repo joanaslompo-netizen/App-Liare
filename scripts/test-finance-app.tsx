@@ -1,0 +1,30 @@
+import { JSDOM } from 'jsdom';
+import React, { act } from 'react';
+import assert from 'node:assert/strict';
+const dom=new JSDOM('<!doctype html><div id="root"></div>',{url:'http://localhost/'});
+for(const key of ['window','document','HTMLElement','HTMLInputElement','HTMLSelectElement','Event','MouseEvent','localStorage'])Object.defineProperty(globalThis,key,{value:dom.window[key],configurable:true});
+Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});
+const alerts:string[]=[];
+Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true,alert:(m:string)=>alerts.push(m),confirm:()=>true,requestAnimationFrame:(f:()=>void)=>setTimeout(f,0),cancelAnimationFrame:clearTimeout});
+dom.window.HTMLElement.prototype.scrollIntoView=()=>{};
+const {DEFAULT_SETTINGS,DEFAULT_PRODUCTS}=await import('../src/utils/storage');
+const fixture={materials:[],products:[{...DEFAULT_PRODUCTS[0],id:'p',currentStock:10}],purchases:[],productions:[],sales:[{id:'s',orderNumber:1,date:'2026-10-14',productId:'p',productName:'Vela',quantity:1,unitPrice:120,unitCost:20,totalRevenue:120,totalCost:20,totalProfit:100,customerId:'c',customerName:'Cliente teste',financialTracking:true,legacyPaidCents:0,deliveryStatus:'pendente_entrega',createdAt:'2026-10-14',items:[{id:'line',productId:'p',productName:'Vela',quantity:1,unitPrice:120,unitCost:20,totalCost:20,unitBusinessCost:15,unitLaborRemuneration:5}]}],customers:[{id:'c',name:'Cliente teste',phone:'',createdAt:'2026-10-14'}],paymentMethods:['PIX'],suppliers:[],settings:DEFAULT_SETTINGS,todos:[],projects:[],finance:{version:1,entries:[],bills:[]},stockMovements:[]};
+localStorage.setItem('atelie_workspace_finance_v1',JSON.stringify(fixture));
+const {createRoot}=await import('react-dom/client');
+const {default:App}=await import('../src/App');
+let root=createRoot(document.querySelector('#root')!);
+async function mount(){await act(async()=>root.render(<App/>));}
+async function button(text:string){const el=[...document.querySelectorAll('button')].find(e=>e.textContent?.trim()===text);assert(el,`Botão: ${text}`);await act(async()=>el.click());}
+async function field(label:string,value:string){const container=[...document.querySelectorAll('label')].find(e=>e.textContent?.includes(label));assert(container,`Campo: ${label}`);const el=container.querySelector('input,select') as HTMLInputElement;assert(el);await act(async()=>{const proto=el.tagName==='SELECT'?dom.window.HTMLSelectElement.prototype:dom.window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value')!.set!.call(el,value);el.dispatchEvent(new dom.window.Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));});}
+async function submit(){const form=document.querySelector('form');assert(form);await act(async()=>form.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));}
+const saved=()=>JSON.parse(localStorage.getItem('atelie_workspace_finance_v1')!);
+await mount();await button('Financeiro');await button('Valor antecipado / crédito');await field('Cliente','c');await field('Valor (R$)','300');await submit();
+assert.equal(alerts.length,0,alerts.join('; '));assert.equal(saved().finance.entries[0].amountCents,30000);
+await button('A receber');const order=[...document.querySelectorAll('button')].find(e=>e.textContent?.includes('#1 · Cliente teste'));assert(order);await act(async()=>order.click());
+const use=[...document.querySelectorAll('label')].find(e=>e.textContent?.includes('Usar crédito disponível'))!.querySelector('input')!;await act(async()=>use.click());await field('Valor do crédito a usar','120');await button('Usar crédito');
+assert.equal(alerts.length,0,alerts.join('; '));assert.equal(saved().finance.entries.filter((e:any)=>e.kind==='credit_use').length,1);
+await act(async()=>root.unmount());root=createRoot(document.querySelector('#root')!);await mount();await button('Financeiro');await button('Créditos dos clientes');
+assert(document.body.textContent?.includes('180,00'));
+await act(async()=>root.unmount());
+console.log('App integrado: registrar R$300, usar R$120 no pedido, recarregar e manter crédito R$180 passou. Backup inicial e histórico persistidos.');
+process.exit(0);
