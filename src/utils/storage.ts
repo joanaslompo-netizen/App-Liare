@@ -1848,6 +1848,8 @@ const CURRENT_SCHEMA_VERSION = 'v5_remove_sub1_and_production_direct';
 
 export const loadStoredData = () => {
   try {
+    const checkpoint = localStorage.getItem("atelie_workspace_finance_v1");
+    if (checkpoint) { try { const data = JSON.parse(checkpoint); if (Array.isArray(data.materials) && Array.isArray(data.sales) && data.settings) return data; } catch { console.warn("Snapshot local inválido; usando as coleções preservadas."); } }
     const version = localStorage.getItem(SCHEMA_VERSION_KEY);
     const storedMaterials = localStorage.getItem(STORAGE_KEYS.MATERIALS);
     const storedProducts = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
@@ -2121,17 +2123,19 @@ export const recalculateProductPricing = (
   });
 
   const materialsCost = updatedItems.reduce((acc, it) => acc + (it.totalCost || 0), 0);
+  const embeddedLaborCost = getEmbeddedRecipeLaborCost(updatedItems, allMaterials, allProducts);
   const laborCost = (product.productionTimeMinutes / 60) * product.hourlyRate;
   const { fixedCost, totalCost, unitCostFromBatch, suggestedPrice,
     currentActualPrice: actualPrice, netProfit, calculatedMarginPercent } = calculateRecipePricing(
     materialsCost, laborCost, product.fixedCostPercent || 0, product.otherCosts || 0,
-    product.batchYield, product.profitMarginPercent, product.actualPrice
+    product.batchYield, product.profitMarginPercent, product.actualPrice, embeddedLaborCost
   );
 
   return {
     ...product,
     items: updatedItems,
     materialsCost,
+    embeddedLaborCost,
     laborCost,
     fixedCost,
     totalCost,
@@ -2168,3 +2172,15 @@ export const cascadeRecalculateAllProducts = (
 
   return updatedList;
 };
+
+export const saveWorkspaceSnapshot = (workspace: unknown) => localStorage.setItem("atelie_workspace_finance_v1", JSON.stringify(workspace));
+
+export function getEmbeddedRecipeLaborCost(items: RecipeItem[], materials: Material[], products: Product[], visiting = new Set<string>()): number {
+  return items.reduce((sum,item) => {
+    if(item.type === 'product') { const p=products.find(p=>p.id===item.targetId); return sum + (p ? ((p.laborCost||0)+(p.embeddedLaborCost||0))/Math.max(1,p.batchYield||1) : 0)*item.quantity; }
+    const m=materials.find(m=>m.id===item.targetId);
+    if(!m?.isMadeInAtelier||m.usageType==='durable'||visiting.has(m.id))return sum;
+    const inner=getEmbeddedRecipeLaborCost(m.recipeItems||[],materials,products,new Set([...visiting,m.id]));
+    return sum+item.quantity*((m.productionTimeMinutes||0)/60*(m.hourlyRate||0)+inner)/Math.max(0.0001,m.batchYield||1);
+  },0);
+}

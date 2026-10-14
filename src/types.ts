@@ -57,6 +57,10 @@ export interface Material {
   packageQuantity: number; // How much came in the package (e.g. 50 metros)
   packageUnit: UnitOfMeasure; // Unit of package (e.g. m)
   packagePrice: number; // Price paid for package in R$
+  inventoryUnitCost?: number;
+  lastPurchaseUnitCost?: number;
+  businessUnitCost?: number;
+  laborUnitCost?: number;
   unitCost: number; // Cost per base unit (R$ / unit)
   currentStock: number; // Current quantity in stock (in base unit)
   minStock: number; // Minimum stock threshold for alert
@@ -143,6 +147,9 @@ export interface Product {
   useProductionStages?: boolean;
   /** Etapas configuradas para esta receita, na ordem em que são executadas. */
   productionStages?: ProductionStageDefinition[];
+  embeddedLaborCost?: number;
+  inventoryBusinessCost?: number;
+  inventoryLaborCost?: number;
   materialsCost: number; // Sum of material + sub-product items
   productionTimeMinutes: number;
   hourlyRate: number; // R$/hour for artisan pro-labore
@@ -176,6 +183,8 @@ export interface Product {
 }
 
 export interface PurchaseItem {
+  baseQuantity?: number;
+  landedCost?: number;
   materialId: string;
   materialName: string;
   quantity: number;
@@ -185,6 +194,8 @@ export interface PurchaseItem {
 }
 
 export interface Purchase {
+  cancelledAt?: string;
+  stockApplied?: boolean;
   id: string;
   date: string; // YYYY-MM-DD
   supplierId?: string;
@@ -223,10 +234,13 @@ export interface Customer {
 }
 
 export type OrderType = 'pronta_entrega' | 'encomenda';
-export type DeliveryStatus = 'entregue' | 'pendente_entrega';
+export type DeliveryStatus = 'entregue' | 'pendente_entrega' | 'parcial';
 export type PaymentStatus = 'pago' | 'pendente_pagamento';
 
 export interface SaleItem {
+  deliveredQuantity?: number;
+  returnedQuantity?: number;
+  costIncomplete?: boolean;
   id?: string;
   productId: string;
   productName: string;
@@ -262,6 +276,15 @@ export interface SaleItem {
 }
 
 export interface Sale {
+  shippingCharged?: number;
+  commercialStatus?: 'draft' | 'confirmed' | 'cancelled';
+  cancelledAt?: string;
+  financialTracking?: boolean;
+  legacyPaidCents?: number;
+  legacyDeliveryDate?: string;
+  returnAdjustmentCents?: number;
+  deliveryHistory?: DeliveryEvent[];
+  paymentLabel?: string;
   orderNumber?: number;
   amountPaid?: number;
   id: string;
@@ -447,6 +470,7 @@ export type NavTab =
   | 'purchases' 
   | 'sales' 
   | 'reports' 
+  | 'finance'
   | 'suppliers'
   | 'customers';
 
@@ -457,4 +481,64 @@ export interface TodoItem {
   priority?: 'high' | 'normal' | 'low';
   dueDate?: string;
   createdAt: string;
+}
+
+
+export interface DeliveryEvent {
+  id: string;
+  date: string;
+  itemId: string;
+  quantity: number;
+  kind: 'delivery' | 'return';
+  restock?: boolean;
+  unitBusinessCost?: number;
+  unitLaborRemuneration?: number;
+  unitRevenueCents?: number;
+  note?: string;
+}
+export type FinanceEntryKind = 'receipt' | 'credit_use' | 'credit_grant' | 'credit_opening' | 'credit_release' | 'credit_refund' | 'refund' | 'expense_payment' | 'purchase_payment' | 'capital' | 'withdrawal' | 'cash_opening' | 'transfer' | 'settlement' | 'reversal';
+export interface FinanceEntry {
+  id: string;
+  kind: FinanceEntryKind;
+  date: string;
+  createdAt: string;
+  amountCents: number;
+  allocatedCents?: number;
+  feeCents?: number;
+  concessionCents?: number;
+  restoredCreditCents?: number;
+  customerId?: string;
+  saleId?: string;
+  purchaseId?: string;
+  billId?: string;
+  referenceId?: string;
+  method?: string;
+  account?: string;
+  targetAccount?: string;
+  pendingSettlement?: boolean;
+  note?: string;
+  legacy?: boolean;
+}
+export interface FinanceBill {
+  includedInRecipeCosts?: boolean;
+  id: string;
+  name: string;
+  category: string;
+  amountCents: number;
+  dueDate: string;
+  competenceDate: string;
+  createdAt: string;
+  cancelledAt?: string;
+  purchaseId?: string;
+}
+export interface FinanceData { version: 1; entries: FinanceEntry[]; bills: FinanceBill[]; }
+export interface StockMovement {
+  id: string;
+  date: string;
+  targetId: string;
+  type: 'material' | 'product';
+  quantity: number;
+  reason: string;
+  referenceId?: string;
+  businessUnitCost?: number;
 }

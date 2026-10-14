@@ -16,7 +16,7 @@ export interface SaleFinancials {
 export const getProductFinancialSplit = (product: Product): ProductFinancialSplit => {
   const yieldQty = Math.max(0.0001, product.batchYield || 1);
   const businessCostPerUnit =
-    ((product.materialsCost || 0) + (product.fixedCost || 0) + (product.otherCosts || 0)) / yieldQty;
+    ((product.materialsCost || 0) - (product.embeddedLaborCost || 0) + (product.fixedCost || 0) + (product.otherCosts || 0)) / yieldQty;
   const laborRemunerationPerUnit = (product.laborCost || 0) / yieldQty;
 
   return {
@@ -36,9 +36,7 @@ export const getSaleItemFinancialSplit = (
     };
   }
 
-  const productId = item.isCustom ? item.customProductId || item.productId : item.productId;
-  const product = products.find((p) => p.id === productId);
-  if (product) return getProductFinancialSplit(product);
+// Historical rows without a cost split keep their recorded total; current recipes never rewrite history.
 
   return {
     businessCostPerUnit: item.unitCost,
@@ -47,6 +45,7 @@ export const getSaleItemFinancialSplit = (
 };
 
 export const getSaleFinancials = (sale: Sale, products: Product[]): SaleFinancials => {
+  if (sale.commercialStatus === 'cancelled' || sale.commercialStatus === 'draft') return {businessCost:0,laborRemuneration:0,ownerEarnings:0,commercialProfit:0,marginPercent:0};
   const fallbackItem: SaleItem = {
     productId: sale.productId,
     productName: sale.productName,
@@ -91,17 +90,18 @@ export const calculateRecipePricing = (
   otherCosts: number,
   batchYield: number,
   profitMarginPercent: number,
-  chosenPrice?: number
+  chosenPrice?: number,
+  embeddedLaborCost = 0
 ) => {
   const yieldQty = Math.max(1, batchYield || 1);
   const fixedCost = (materialsCost + laborCost) * ((fixedCostPercent || 0) / 100);
   const totalCost = materialsCost + laborCost + fixedCost + otherCosts;
   const unitCostFromBatch = totalCost / yieldQty;
-  const laborUnitCost = laborCost / yieldQty;
-  const businessUnitCost = (materialsCost + fixedCost + otherCosts) / yieldQty;
+  const laborUnitCost = (laborCost + embeddedLaborCost) / yieldQty;
+  const businessUnitCost = (materialsCost - embeddedLaborCost + fixedCost + otherCosts) / yieldQty;
   const margin = Math.min(Math.max(profitMarginPercent || 0, 0), 95) / 100;
   const suggestedPrice = Math.round(
-    (materialsCost / yieldQty / (1 - margin) + laborUnitCost + (fixedCost + otherCosts) / yieldQty) * 100
+    ((materialsCost - embeddedLaborCost) / yieldQty / (1 - margin) + laborUnitCost + (fixedCost + otherCosts) / yieldQty) * 100
   ) / 100;
   const currentActualPrice = chosenPrice != null && Number.isFinite(chosenPrice) && chosenPrice >= 0
     ? chosenPrice : suggestedPrice;
@@ -119,5 +119,5 @@ export const getRecipePricing = (product: Product) => calculateRecipePricing(
   product.otherCosts || 0,
   product.batchYield || 1,
   product.profitMarginPercent || 0,
-  product.actualPrice
+  product.actualPrice, product.embeddedLaborCost || 0
 );

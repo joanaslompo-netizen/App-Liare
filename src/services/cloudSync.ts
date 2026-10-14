@@ -1,3 +1,4 @@
+import { applyFinanceCommand, emptyFinance, validateFinanceData, type FinanceCommand } from "../utils/financeLedger";
 import {
   doc,
   getDoc,
@@ -7,9 +8,11 @@ import {
   Unsubscribe
 } from 'firebase/firestore';
 import { db, User } from '../lib/firebase';
-import { Material, Product, Purchase, Sale, Customer, Supplier, AtelierSettings, TodoItem, Production, ProductionProject } from '../types';
+import { Material, Product, Purchase, Sale, Customer, Supplier, AtelierSettings, TodoItem, Production, ProductionProject, FinanceData, StockMovement } from '../types';
 
 export interface WorkspaceData {
+  finance?: FinanceData;
+  stockMovements?: StockMovement[];
   materials: Material[];
   products: Product[];
   productions?: Production[];
@@ -34,6 +37,7 @@ export interface WorkspaceSyncBase {
   entities: Record<WorkspaceEntityKey, Record<string, string>>;
   paymentMethods: string;
   settings: string;
+  bills?: Record<string, string>;
 }
 
 export type CloudSyncStatus = 'offline' | 'idle' | 'pending' | 'syncing' | 'synced' | 'error';
@@ -80,6 +84,7 @@ function sanitizeForFirestore<T>(data: T): T {
 
 function workspaceFromData(data: any): WorkspaceData {
   return {
+    finance: data.finance || emptyFinance(), stockMovements: data.stockMovements || [],
     materials: data.materials || [], products: data.products || [], productions: data.productions || [], projects: data.projects || [],
     purchases: data.purchases || [], sales: data.sales || [], customers: data.customers || [],
     paymentMethods: data.paymentMethods || [], suppliers: data.suppliers || [], settings: data.settings,
@@ -138,6 +143,7 @@ export function createWorkspaceSyncBase(workspace: WorkspaceData): WorkspaceSync
     entities,
     paymentMethods: fingerprint(workspace.paymentMethods || []),
     settings: fingerprint(workspace.settings),
+    bills: Object.fromEntries((workspace.finance?.bills || []).map(b => [b.id, fingerprint(b)])),
   };
 }
 
@@ -152,6 +158,8 @@ export function mergeWorkspaceData(
 ): WorkspaceData {
   return {
     ...cloud,
+    finance: { version: 1, entries: unionRecords(local.finance?.entries, cloud.finance?.entries), bills: mergeEntityList(base.bills || {}, local.finance?.bills, cloud.finance?.bills) },
+    stockMovements: unionRecords(local.stockMovements, cloud.stockMovements),
     materials: mergeEntityList(base.entities.materials, local.materials, cloud.materials),
     products: mergeEntityList(base.entities.products, local.products, cloud.products),
     productions: mergeEntityList(base.entities.productions, local.productions || [], cloud.productions || []),
@@ -262,9 +270,12 @@ export async function uploadWorkspaceToCloud(
     const now = new Date().toISOString();
     const nextRevision = cloudRevision + 1;
     const compactWorkspace = compactWorkspaceForCloud(workspace);
+    validateFinanceData(compactWorkspace.finance || emptyFinance());
     const payload = sanitizeForFirestore({
       userId,
-      version: 2,
+      version: 3,
+      finance: compactWorkspace.finance || emptyFinance(),
+      stockMovements: compactWorkspace.stockMovements || [],
       revision: nextRevision,
       updatedAt: now,
       lastModifiedBy: deviceLabel,
@@ -315,5 +326,30 @@ export function subscribeToWorkspace(
   }, (error) => {
     console.warn('Erro na escuta em tempo real do Firestore:', error);
     if (onError) onError(error);
+  });
+}
+
+function unionRecords<T extends { id: string }>(local: T[] = [], cloud: T[] = []): T[] {
+  const map = new Map(local.map(e => [e.id, e])); for (const e of cloud) map.set(e.id, e); return [...map.values()];
+}
+/** Each credit/order operation is recomputed inside the Firestore transaction. */
+export async function executeFinanceInCloud(userId: string, local: WorkspaceData, base: WorkspaceSyncBase | null, command: FinanceCommand): Promise<WorkspaceData> {
+  const ref = doc(db, 'users', userId, 'workspaces', 'default');
+  const previous = doc(db, 'users', userId, 'workspaces', 'previous');
+  return runTransaction(db, async transaction => {
+    const snap = await transaction.get(ref);
+    const cloud = snap.exists() ? workspaceFromData(snap.data()) : null;
+    const merged = cloud ? mergeWorkspaceData(base || createWorkspaceSyncBase(cloud), local, cloud) : local;
+    // Financial events and physical deliveries from the server cannot be overwritten by a stale form.
+    if (cloud) merged.sales = merged.sales.map(s => {
+      const current = cloud.sales.find(x => x.id === s.id);
+      if (!current?.financialTracking) return s;
+      return { ...s, commercialStatus: current.commercialStatus, cancelledAt: current.cancelledAt, financialTracking: true, legacyPaidCents: current.legacyPaidCents, returnAdjustmentCents:current.returnAdjustmentCents, deliveryHistory: current.deliveryHistory, items: s.items?.map(it => { const ci = current.items?.find(x => x.id === it.id); return ci ? { ...it, deliveredQuantity: ci.deliveredQuantity, returnedQuantity: ci.returnedQuantity, stockConsumedQuantity: ci.stockConsumedQuantity } : it; }) };
+    });
+    const updated = applyFinanceCommand(merged, command);
+    const payload = sanitizeForFirestore({ ...compactWorkspaceForCloud(updated), userId, version: 3, revision: (cloud?.revision || 0) + 1, updatedAt: new Date().toISOString(), lastModifiedBy: 'Financeiro' });
+    if (snap.exists()) transaction.set(previous, sanitizeForFirestore({ ...snap.data(), backedUpAt: payload.updatedAt }));
+    transaction.set(ref, payload);
+    return workspaceFromData(payload);
   });
 }

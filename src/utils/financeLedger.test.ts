@@ -1,0 +1,100 @@
+import assert from 'node:assert/strict';
+import { applyFinanceCommand, activeEntries, allocateCents, billBalance, cashEffect, creditBalance, emptyFinance, makeEntry, money, orderBalance, orderPaid, projectOrder } from './financeLedger';
+import { salesReportLines, aggregateReportLines } from './salesReports';
+import { calculateRecipePricing, getSaleFinancials } from './financials';
+import { DEFAULT_PRODUCTS, DEFAULT_SETTINGS, recalculateProductPricing } from './storage';
+import type { Material, Product, Sale } from '../types';
+const product:Product={...DEFAULT_PRODUCTS[0],id:'p',name:'Vela A',currentStock:10,materialsCost:20,laborCost:10,batchYield:1,fixedCost:0,otherCosts:0,productionTimeMinutes:15,hourlyRate:40,actualPrice:100,embeddedLaborCost:0,inventoryBusinessCost:20,inventoryLaborCost:10};
+const customer={id:'c',name:'Cliente',phone:'',createdAt:'2026-10-01'};
+const sale:Sale={id:'s',date:'2026-10-01',productId:'p',productName:'Vela A',quantity:2,unitPrice:100,unitCost:30,totalRevenue:200,totalCost:60,totalProfit:160,marginPercent:80,customerId:'c',createdAt:'2026-10-01',commercialStatus:'confirmed',items:[{id:'line',productId:'p',productName:'Vela A',quantity:2,unitPrice:100,unitCost:30,unitBusinessCost:20,unitLaborRemuneration:10,totalCost:60}]};
+const initial=()=>({sales:[] as Sale[],products:[{...product}],materials:[] as Material[],purchases:[],customers:[customer],settings:{...DEFAULT_SETTINGS},finance:emptyFinance(),stockMovements:[]});
+let w=initial();
+w=applyFinanceCommand(w,{type:'save_order',sale});
+assert.equal(w.sales[0].items![0].reservedQuantity,2);
+const first=makeEntry('receipt',50,{id:'r1',saleId:'s',date:'2026-10-10'});
+w=applyFinanceCommand(w,{type:'entry',entry:first});
+w=applyFinanceCommand(w,{type:'entry',entry:first});
+assert.equal(w.finance.entries.length,1);assert.equal(orderBalance(w.sales[0],w.finance),15000);
+w=applyFinanceCommand(w,{type:'entry',entry:makeEntry('receipt',150,{id:'r2',saleId:'s',date:'2026-11-10'})});
+assert.equal(orderBalance(w.sales[0],w.finance),0);
+assert.equal(w.finance.entries.filter(e=>e.date.startsWith('2026-10')).reduce((n,e)=>n+cashEffect(e,w.finance),0),5000);
+assert.equal(w.finance.entries.filter(e=>e.date.startsWith('2026-11')).reduce((n,e)=>n+cashEffect(e,w.finance),0),15000);
+w=applyFinanceCommand(w,{type:'save_order',sale:{...w.sales[0],totalRevenue:250}});
+assert.equal(orderBalance(w.sales[0],w.finance),5000);
+w=applyFinanceCommand(w,{type:'save_order',sale:{...w.sales[0],totalRevenue:180}});
+assert.equal(orderBalance(w.sales[0],w.finance),0);assert.equal(creditBalance(w.finance,'c'),2000);
+assert.equal(orderPaid(w.sales[0],w.finance),18000);
+
+let credit=initial();
+credit=applyFinanceCommand(credit,{type:'entry',entry:makeEntry('receipt',300,{id:'advance',customerId:'c'})});
+credit=applyFinanceCommand(credit,{type:'save_order',sale:{...sale,totalRevenue:120}});
+credit=applyFinanceCommand(credit,{type:'entry',entry:makeEntry('credit_use',120,{saleId:'s',customerId:'c',id:'use1'})});
+assert.equal(creditBalance(credit.finance,'c'),18000);
+credit=applyFinanceCommand(credit,{type:'save_order',sale:{...sale,id:'s2'}});
+credit=applyFinanceCommand(credit,{type:'entry',entry:makeEntry('credit_use',180,{saleId:'s2',customerId:'c',id:'use2'})});
+credit=applyFinanceCommand(credit,{type:'entry',entry:makeEntry('receipt',20,{saleId:'s2',id:'pix'})});
+assert.equal(creditBalance(credit.finance,'c'),0);
+assert.equal(credit.finance.entries.reduce((n,e)=>n+cashEffect(e,credit.finance),0),32000);
+assert.throws(()=>applyFinanceCommand(credit,{type:'entry',entry:makeEntry('credit_use',1,{saleId:'s',customerId:'c'})}),/crédito suficiente/);
+credit=applyFinanceCommand(credit,{type:'cancel_order',saleId:'s2',date:'2026-11-12',id:'cancel',destination:'refund'});
+assert.equal(creditBalance(credit.finance,'c'),18000);
+assert.equal(credit.finance.entries.reduce((n,e)=>n+cashEffect(e,credit.finance),0),30000);
+assert.equal(credit.sales.find(s=>s.id==='s2')!.commercialStatus,'cancelled');
+
+let gift=initial();gift=applyFinanceCommand(gift,{type:'entry',entry:makeEntry('credit_grant',50,{customerId:'c',id:'gift'})});
+assert.throws(()=>applyFinanceCommand(gift,{type:'entry',entry:makeEntry('credit_refund',10,{customerId:'c'})}),/cortesia/);
+gift=applyFinanceCommand(gift,{type:'save_order',sale});
+gift=applyFinanceCommand(gift,{type:'entry',entry:makeEntry('credit_use',50,{customerId:'c',saleId:'s',id:'gift_used'})});
+assert.equal(gift.finance.entries.find(e=>e.id==='gift_used')!.concessionCents,5000);
+assert.throws(()=>applyFinanceCommand(gift,{type:'entry',entry:makeEntry('reversal',50,{referenceId:'gift'})}),/já foi usado/);
+
+let delivery=initial();delivery=applyFinanceCommand(delivery,{type:'save_order',sale});
+delivery=applyFinanceCommand(delivery,{type:'deliver',saleId:'s',itemId:'line',quantity:1,date:'2026-10-15',kind:'delivery',id:'d1'});
+assert.equal(delivery.sales[0].deliveryStatus,'parcial');assert.equal(delivery.products[0].currentStock,9);
+assert.throws(()=>applyFinanceCommand(delivery,{type:'cancel_order',saleId:'s',date:'2026-10-15',id:'bad',destination:'credit'}),/devolução/);
+assert.throws(()=>applyFinanceCommand(delivery,{type:'save_order',sale:{...delivery.sales[0],items:[]}}),/histórico/);
+delivery=applyFinanceCommand(delivery,{type:'deliver',saleId:'s',itemId:'line',quantity:1,date:'2026-11-01',kind:'return',restock:false,id:'return'});
+assert.equal(delivery.products[0].currentStock,9);
+assert.equal(salesReportLines(delivery.sales,delivery.products,delivery.finance,'2026-10','delivered')[0].revenueCents,10000);
+assert.equal(salesReportLines(delivery.sales,delivery.products,delivery.finance,'2026-11','delivered')[0].revenueCents,-10000);
+delivery=applyFinanceCommand(delivery,{type:'cancel_order',saleId:'s',date:'2026-11-01',id:'cancel_del',destination:'credit'});
+assert.equal(salesReportLines(delivery.sales,delivery.products,delivery.finance,'2026-10','delivered')[0].revenueCents,10000);
+
+let partial=initial();partial=applyFinanceCommand(partial,{type:'save_order',sale,initialPaymentCents:20000});
+partial=applyFinanceCommand(partial,{type:'deliver',saleId:'s',itemId:'line',quantity:2,date:'2026-10-15',kind:'delivery',id:'full'});
+partial=applyFinanceCommand(partial,{type:'deliver',saleId:'s',itemId:'line',quantity:1,date:'2026-10-16',kind:'return',restock:true,id:'one_return'});
+partial=applyFinanceCommand(partial,{type:'refund_order',saleId:'s',amountCents:10000,destination:'refund',date:'2026-10-16',id:'partial_refund',account:'Principal'});
+assert.equal(orderPaid(partial.sales[0],partial.finance),10000);assert.equal(orderBalance(partial.sales[0],partial.finance),0);
+assert.equal(partial.sales[0].returnAdjustmentCents,10000);assert.equal(partial.products[0].currentStock,9);
+assert.throws(()=>applyFinanceCommand(partial,{type:'refund_order',saleId:'s',amountCents:1,destination:'refund',date:'2026-10-16',id:'too_much',account:'Principal'}),/supera/);
+
+const mixed={...sale,totalRevenue:90,quantity:2,items:[{...sale.items![0],quantity:1,unitPrice:60},{...sale.items![0],id:'other',productId:'q',productName:'Vela B',quantity:1,unitPrice:40}]};
+const report=salesReportLines([mixed],[product],emptyFinance(),'2026-10','orders');
+assert.deepEqual(report.map(l=>l.revenueCents),[5400,3600]);assert.equal(aggregateReportLines(report).length,2);
+assert.equal(allocateCents(1,[1,1,1]).reduce((n,v)=>n+v,0),1);
+const legacy={...sale,items:undefined,totalRevenue:100,totalCost:20,unitCost:20,quantity:1};
+assert.equal(getSaleFinancials(legacy,[{...product,materialsCost:999}]).businessCost,20);
+assert.equal(projectOrder({...legacy,paymentStatus:undefined,amountPaid:undefined},emptyFinance()).amountPaid,0);
+
+let purchase=initial();purchase.materials=[{id:'wax',name:'Cera',unit:'g',packageUnit:'kg',packageQuantity:1,unitCost:0.04,currentStock:1000} as Material];
+purchase=applyFinanceCommand(purchase,{type:'purchase',purchase:{id:'buy',date:'2026-10-14',supplierName:'Fornecedor',items:[{materialId:'wax',materialName:'Cera',quantity:1,unit:'kg',packagePrice:60,totalPrice:60}],shippingCost:10,totalAmount:70,createdAt:'2026-10-14'},updateStock:true,paidNow:false,dueDate:'2026-11-01',account:'Principal'});
+assert.equal(purchase.materials[0].currentStock,2000);assert.equal(purchase.materials[0].inventoryUnitCost,0.055);assert.equal(purchase.materials[0].lastPurchaseUnitCost,0.07);
+assert.equal(billBalance(purchase.finance.bills[0],purchase.finance),7000);
+purchase=applyFinanceCommand(purchase,{type:'entry',entry:makeEntry('purchase_payment',20,{id:'buy_paid',billId:'bill_buy',purchaseId:'buy'})});
+assert.equal(billBalance(purchase.finance.bills[0],purchase.finance),5000);
+assert.throws(()=>applyFinanceCommand(purchase,{type:'cancel_purchase',purchaseId:'buy',date:'2026-10-15'}),/Estorne/);
+purchase=applyFinanceCommand(purchase,{type:'entry',entry:makeEntry('reversal',20,{referenceId:'buy_paid'})});
+purchase=applyFinanceCommand(purchase,{type:'cancel_purchase',purchaseId:'buy',date:'2026-10-15'});
+assert.equal(purchase.materials[0].currentStock,1000);assert(Math.abs(purchase.materials[0].inventoryUnitCost!-0.04)<1e-9);
+
+let card=initial();card=applyFinanceCommand(card,{type:'save_order',sale});card=applyFinanceCommand(card,{type:'entry',entry:makeEntry('receipt',100,{id:'card',saleId:'s',feeCents:300,pendingSettlement:true})});
+assert.equal(card.finance.entries.reduce((n,e)=>n+cashEffect(e,card.finance),0),0);
+card=applyFinanceCommand(card,{type:'entry',entry:makeEntry('settlement',100,{referenceId:'card',date:'2026-11-10',feeCents:300})});
+assert.equal(card.finance.entries.reduce((n,e)=>n+cashEffect(e,card.finance),0),9700);
+assert.throws(()=>applyFinanceCommand(card,{type:'entry',entry:makeEntry('settlement',100,{referenceId:'card'})}),/já foi liquidado/);
+
+const label={id:'label',name:'Etiqueta',unit:'un',unitCost:6,isMadeInAtelier:true,batchYield:1,productionTimeMinutes:6,hourlyRate:40,recipeItems:[{id:'paper',type:'material',targetId:'paper',name:'Papel',quantity:1,unit:'un',unitCost:2,totalCost:2}]} as Material;
+const recipe=recalculateProductPricing({...product,items:[{id:'l',type:'material',targetId:'label',name:'Etiqueta',quantity:1,unit:'un',unitCost:6,totalCost:6}],productionTimeMinutes:0,hourlyRate:0,fixedCostPercent:0,profitMarginPercent:60,actualPrice:0},[{id:'paper',unitCost:2} as Material,label],[product]);
+assert.equal(recipe.embeddedLaborCost,4);assert.equal(recipe.suggestedPrice,9); // R$2 × 2.5 + R$4, no markup on labor.
+assert.equal(calculateRecipePricing(20,10,0,0,1,60).suggestedPrice,60);
+console.log('Financeiro: parcelas por data, crédito/excedente/cortesia, estornos, cancelamento misto, entregas/devoluções, histórico, compras, custo médio e cartões passaram.');

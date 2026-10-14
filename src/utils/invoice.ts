@@ -8,11 +8,10 @@ const money = (value: number) => escapeHtml(formatCurrency(value));
 const date = (value?: string) => value ? escapeHtml(formatDate(value)) : 'A combinar';
 
 export const getInvoiceTotals = (sale: Sale) => {
-  const total = Math.max(0, sale.totalRevenue || 0);
-  const paid = sale.paymentStatus !== 'pendente_pagamento'
-    ? total : Math.min(total, Math.max(0, sale.amountPaid || 0));
+  const total = Math.max(0, (sale.totalRevenue || 0)-(sale.returnAdjustmentCents||0)/100);
+  const paid = Math.max(0, sale.amountPaid ?? (sale.paymentStatus === 'pago' ? total : 0));
   const discount = Math.max(0, sale.discountAmount || 0);
-  return { total, paid, balance: total - paid, discount, subtotal: total + discount };
+  return { total, paid, balance: Math.max(0, total - paid), discount, subtotal: total + discount + (sale.returnAdjustmentCents||0)/100 - (sale.shippingCharged||0) };
 };
 
 export const buildInvoiceHtml = (
@@ -54,6 +53,8 @@ export const buildInvoiceHtml = (
   <section class="bottom"><div class="payment">${settings.pixKey ? `<h2>Pagamento via Pix</h2><p>Chave Pix: ${escapeHtml(settings.pixKey)}</p>${settings.pixHolder ? `<p>Titular: ${escapeHtml(settings.pixHolder)}</p>` : ''}<p class="muted">Envie o comprovante após o pagamento.</p><p class="muted">Para pagar com cartão, solicite o link pelo WhatsApp do ateliê.</p>` : ''}</div>
   <div class="summary"><div class="sum"><strong>Subtotal</strong><strong>${money(totals.subtotal)}</strong></div>
   ${totals.discount ? `<div class="sum"><span>Desconto${sale.discountCode ? ` (${escapeHtml(sale.discountCode)})` : ''}</span><span>−${money(totals.discount)}</span></div>` : ''}
+  ${sale.shippingCharged ? `<div class="sum"><span>Frete</span><span>${money(sale.shippingCharged)}</span></div>` : ''}
+  ${sale.returnAdjustmentCents ? `<div class="sum"><span>Devoluções compensadas</span><span>−${money(sale.returnAdjustmentCents/100)}</span></div>` : ''}
   <div class="sum total"><span>Total da fatura</span><strong>${money(totals.total)}</strong></div><div class="sum"><span>Valor pago</span><span>${money(totals.paid)}</span></div>
   <div class="sum balance"><span>Saldo devedor</span><strong>${money(totals.balance)}</strong></div></div></section>
   ${sale.notes ? `<section class="notes"><h2>Observações da encomenda</h2>${escapeHtml(sale.notes)}</section>` : ''}
