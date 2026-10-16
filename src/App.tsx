@@ -1,5 +1,6 @@
 import { getProductFinancialSplit } from "./utils/financials";
-import { FinanceView, OrderWorkflowModal } from "./components/FinanceView";
+import { FinanceView } from "./components/FinanceView";
+import { OrderDetailView, type OrderFocus } from "./components/OrderDetailView";
 import { applyFinanceCommand, emptyFinance, projectOrder, type FinanceCommand } from "./utils/financeLedger";
 import { executeFinanceInCloud } from "./services/cloudSync";
 import { saveWorkspaceSnapshot } from "./utils/storage";
@@ -139,6 +140,8 @@ export default function App() {
   const [financeBusy, setFinanceBusy] = useState(false);
   const financeLock = useRef(false);
   const [workflowSaleId, setWorkflowSaleId] = useState<string | null>(null);
+  const [workflowFocus, setWorkflowFocus] = useState<OrderFocus>('overview');
+  const orderReturnScroll = useRef(0);
   const displaySales = useMemo(() => sales.map(s => projectOrder(s, finance)), [sales, finance]);
   const [projects, setProjects] = useState<ProductionProject[]>(initialData.projects || []);
 
@@ -172,6 +175,8 @@ export default function App() {
   const [homeSaleId, setHomeSaleId] = useState<string | null>(null);
   const [salesInitialFilter, setSalesInitialFilter] = useState<'all' | 'pending_delivery' | 'pending_payment'>('all');
 
+  useEffect(() => { setWorkflowSaleId(null); }, [activeTab]);
+
   // Modals state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isExampleSelectorOpen, setIsExampleSelectorOpen] = useState(false);
@@ -182,6 +187,7 @@ export default function App() {
   const [homeNewPurchaseSignal, setHomeNewPurchaseSignal] = useState(0);
 
   useEffect(() => {
+    if (activeTab !== 'sales') setQuickNewSaleSignal(0);
     if (activeTab !== 'productions') setHomeNewProductionSignal(0);
     if (activeTab !== 'purchases') setHomeNewPurchaseSignal(0);
   }, [activeTab]);
@@ -1534,11 +1540,22 @@ export default function App() {
     const existing = workspaceRef.current.sales.find(s => s.id === sale.id);
     const initialPaymentCents = !existing ? Math.round((sale.amountPaid || 0) * 100) : undefined;
     const success = await handleFinanceAction({ type: 'save_order', sale, initialPaymentCents, initialMethod: sale.paymentMethod });
-    if (success) setWorkflowSaleId(sale.id);
+    if (success) { setWorkflowFocus('overview'); setWorkflowSaleId(sale.id); }
     return success;
   }, [handleFinanceAction]);
 
-  const handleDeleteSale = useCallback((id: string) => { setWorkflowSaleId(id); }, []);
+  const openOrderDetail = useCallback((id: string, focus: OrderFocus = 'overview') => {
+    orderReturnScroll.current = window.scrollY;
+    setWorkflowFocus(focus);
+    setWorkflowSaleId(id);
+    setIsQuickMoreOpen(false);
+    window.scrollTo(0, 0);
+  }, []);
+  const closeOrderDetail = useCallback(() => {
+    setWorkflowSaleId(null);
+    requestAnimationFrame(() => window.scrollTo(0, orderReturnScroll.current));
+  }, []);
+  const handleDeleteSale = useCallback((id: string) => { openOrderDetail(id); }, [openOrderDetail]);
 
   // ----------------------------------------------------
   // Project Handlers
@@ -1673,6 +1690,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => {
+              setWorkflowSaleId(null);
               setActiveTab('home');
               setFilterLowStockInitial(false);
               setIsQuickMoreOpen(false);
@@ -1717,6 +1735,17 @@ export default function App() {
 
       {/* Main Workspace Canvas */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-28">
+        {workflowSaleId && sales.find(sale => sale.id === workflowSaleId) && <OrderDetailView
+          key={workflowSaleId} sale={sales.find(sale => sale.id === workflowSaleId)!}
+          finance={finance} products={products} customers={customers} settings={settings}
+          onAction={handleFinanceAction} onSave={handleSaveSale} onBack={closeOrderDetail}
+          focus={workflowFocus} onProduce={product => {
+            setWorkflowSaleId(null);
+            if (product) { setHomeNewProductionSignal(0); handleOpenProductionFromProduct(product); }
+            else { setProductionInitialProduct(null); setHomeNewProductionSignal(value => value + 1); setActiveTab('productions'); }
+          }}
+        />}
+        <div hidden={!!workflowSaleId}>
         {activeTab === 'home' && (
           <HomeView
             artisanName={settings.artisanName}
@@ -1762,11 +1791,7 @@ export default function App() {
                 setActiveTab('productions');
               }
             }}
-            onOpenSale={(saleId) => {
-              setHomeSaleId(saleId);
-              setSalesInitialFilter('all');
-              setActiveTab('sales');
-            }}
+            onOpenSale={(saleId, focus) => openOrderDetail(saleId, focus)}
             onOpenSettings={() => setIsSettingsOpen(true)}
           />
         )}
@@ -1850,7 +1875,7 @@ export default function App() {
             paymentMethods={paymentMethods}
             discountCodes={settings.discountCodes || []}
             onSaveSale={handleSaveSale}
-            onOpenWorkflow={setWorkflowSaleId}
+            onOpenWorkflow={openOrderDetail}
             onReserveSaleItem={handleReserveSaleItem}
             onReleaseSaleItemReservation={handleReleaseSaleItemReservation}
             onProduceCustomItem={handleProduceCustomItem}
@@ -1881,7 +1906,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'finance' && <FinanceView onSaveCustomer={handleSaveCustomer} sales={sales} customers={customers} finance={finance} creditOrigins={settings.creditOrigins} onSaveCreditOrigins={origins => setSettings(previous => ({ ...previous, creditOrigins: origins }))} onAction={handleFinanceAction} onOpenOrder={setWorkflowSaleId} />}
+        {activeTab === 'finance' && <FinanceView onSaveCustomer={handleSaveCustomer} sales={sales} customers={customers} finance={finance} creditOrigins={settings.creditOrigins} onSaveCreditOrigins={origins => setSettings(previous => ({ ...previous, creditOrigins: origins }))} onAction={handleFinanceAction} onOpenOrder={id => openOrderDetail(id, 'payment')} />}
 
         {activeTab === 'reports' && (
           <ReportsView
@@ -1905,6 +1930,7 @@ export default function App() {
             onSelectSupplierMaterials={handleSelectSupplierMaterials}
           />
         )}
+        </div>
       </main>
 
       {/* Central quick action menu */}
@@ -2056,7 +2082,6 @@ export default function App() {
         </div>
       </nav>
 
-      {workflowSaleId && sales.find(s => s.id === workflowSaleId) && <OrderWorkflowModal key={workflowSaleId} sale={sales.find(s => s.id === workflowSaleId)!} finance={finance} onAction={handleFinanceAction} onClose={() => setWorkflowSaleId(null)} />}
       {financeBusy && <div role="status" className="fixed inset-0 z-[80] flex items-center justify-center bg-stone-900/30"><p className="rounded-xl bg-white p-5 font-semibold">Registrando com segurança…</p></div>}
       {/* Settings & Backup Modal */}
       <SettingsModal

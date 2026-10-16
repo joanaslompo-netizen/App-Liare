@@ -6,7 +6,7 @@ for(const key of ['window','document','HTMLElement','HTMLInputElement','HTMLSele
 Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});
 const alerts:string[]=[];
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true,alert:(m:string)=>alerts.push(m),confirm:()=>true,requestAnimationFrame:(f:()=>void)=>setTimeout(f,0),cancelAnimationFrame:clearTimeout});
-dom.window.HTMLElement.prototype.scrollIntoView=()=>{};
+dom.window.HTMLElement.prototype.scrollIntoView=()=>{};dom.window.scrollTo=()=>{};
 const {DEFAULT_SETTINGS,DEFAULT_PRODUCTS}=await import('../src/utils/storage');
 const fixture={materials:[],products:[{...DEFAULT_PRODUCTS[0],id:'p',currentStock:10}],purchases:[],productions:[],sales:[{id:'s',orderNumber:1,date:'2026-10-14',productId:'p',productName:'Vela',quantity:1,unitPrice:120,unitCost:20,totalRevenue:120,totalCost:20,totalProfit:100,customerId:'c',customerName:'Cliente teste',financialTracking:true,legacyPaidCents:0,deliveryStatus:'pendente_entrega',createdAt:'2026-10-14',items:[{id:'line',productId:'p',productName:'Vela',quantity:1,unitPrice:120,unitCost:20,totalCost:20,unitBusinessCost:15,unitLaborRemuneration:5}]}],customers:[{id:'c',name:'Cliente teste',phone:'',createdAt:'2026-10-14'}],paymentMethods:['PIX'],suppliers:[],settings:DEFAULT_SETTINGS,todos:[],projects:[],finance:{version:1,entries:[],bills:[]},stockMovements:[]};
 localStorage.setItem('atelie_workspace_finance_v1',JSON.stringify(fixture));
@@ -28,6 +28,7 @@ assert.equal(([...document.querySelectorAll('label')].find(label=>label.textCont
 await field('Cliente','Cli');assert.equal((document.querySelector('[role=combobox]') as HTMLInputElement).value,'Cli');const customerOption=document.querySelector('[role=option]') as HTMLElement;assert(customerOption);await act(async()=>customerOption.click());await field('Origem / ação','Feira de Natal');await button('Salvar esta origem como categoria');assert.equal(saved().settings.creditOrigins.length,5);await field('Valor (R$)','300');await submit();
 assert.equal(alerts.length,0,alerts.join('; '));assert.equal(saved().finance.entries[0].amountCents,30000);assert.equal(saved().finance.entries[0].origin,'Feira de Natal');
 await button('A receber');const order=[...document.querySelectorAll('button')].find(e=>e.textContent?.includes('#1 · Cliente teste'));assert(order);await act(async()=>order.click());
+assert(document.querySelector('[data-testid=order-detail]'));await button('Receber pagamento');
 const use=[...document.querySelectorAll('label')].find(e=>e.textContent?.includes('Usar crédito disponível'))!.querySelector('input')!;await act(async()=>use.click());await field('Valor do crédito a usar','120');await button('Usar crédito');
 assert.equal(alerts.length,0,alerts.join('; '));assert.equal(saved().finance.entries.filter((e:any)=>e.kind==='credit_use').length,1);
 await act(async()=>root.unmount());root=createRoot(document.querySelector('#root')!);await mount();await button('Financeiro');await button('Créditos dos clientes');

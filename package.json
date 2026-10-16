@@ -10,7 +10,8 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:group1": "node --import tsx scripts/test-group1-forms.tsx && node --import tsx src/utils/dataIntegrity.test.ts && node --import tsx src/utils/materialProductionCost.test.ts && node --import tsx src/utils/recipeFamilies.test.ts && node --import tsx src/utils/invoice.test.ts",
-    "test:finance": "node --import tsx src/utils/financeLedger.test.ts && node --import tsx src/services/cloudSync.test.ts && node --import tsx scripts/test-finance-app.tsx"
+    "test:finance": "node --import tsx src/utils/financeLedger.test.ts && node --import tsx src/services/cloudSync.test.ts && node --import tsx scripts/test-finance-app.tsx",
+    "test:orders": "node --import tsx scripts/test-order-details.tsx"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

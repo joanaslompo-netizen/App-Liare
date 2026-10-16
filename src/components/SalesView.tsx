@@ -59,7 +59,7 @@ interface SalesViewProps {
   paymentMethods: string[];
   discountCodes: DiscountCode[];
   onSaveSale: (sale: Sale) => void | boolean | Promise<boolean>;
-  onOpenWorkflow?: (id: string) => void;
+  onOpenWorkflow?: (id: string, focus?: 'payment' | 'delivery') => void;
   onReserveSaleItem: (saleId: string, itemId: string) => number | null;
   onReleaseSaleItemReservation: (saleId: string, itemId: string) => number | null;
   onProduceCustomItem: (
@@ -249,7 +249,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
   // Quick Action: Mark Delivery as Complete
   const handleMarkAsDelivered = (sale: Sale) => {
-    if (onOpenWorkflow) { onOpenWorkflow(sale.id); return; }
+    if (onOpenWorkflow) { onOpenWorkflow(sale.id, 'delivery'); return; }
     const today = localDateString();
     const updated: Sale = {
       ...sale,
@@ -261,7 +261,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
   // Quick Action: Mark Payment as Received
   const handleMarkAsPaid = (sale: Sale) => {
-    if (onOpenWorkflow) { onOpenWorkflow(sale.id); return; }
+    if (onOpenWorkflow) { onOpenWorkflow(sale.id, 'payment'); return; }
     const today = localDateString();
     const updated: Sale = {
       ...sale,
@@ -272,6 +272,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   };
 
   const handleOpenEdit = (sale: Sale) => {
+    if (onOpenWorkflow) { onOpenWorkflow(sale.id); return; }
     setEditingSale(sale);
     setIsModalOpen(true);
   };
@@ -540,7 +541,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                       {/* Date & Type */}
                       <td className="py-3 px-4 whitespace-nowrap text-stone-700">
                         <div className="flex flex-col">
-                          <strong className="text-sm text-stone-900">Pedido #{formatOrderNumber(sale.orderNumber)}</strong>
+                          <button type="button" onClick={() => handleOpenEdit(sale)} className="text-left text-sm font-bold text-[#a86149] hover:underline">Pedido #{formatOrderNumber(sale.orderNumber)}</button>
                           <span className="font-semibold text-stone-900 flex items-center gap-1.5 text-xs">
                             <Calendar className="w-3.5 h-3.5 text-stone-400" />
                             {formatDate(sale.date)}
@@ -788,16 +789,16 @@ export const SalesView: React.FC<SalesViewProps> = ({
                       {/* Actions */}
                       <td className="py-3 px-4 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1">
-                          {onOpenWorkflow && <button onClick={() => onOpenWorkflow(sale.id)} className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900" title="Pagamentos, crédito e entregas">Movimentos</button>}
+                          {onOpenWorkflow && <button onClick={() => onOpenWorkflow(sale.id)} className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900" title="Abrir ficha do pedido">Abrir pedido</button>}
                           {sale.commercialStatus === "cancelled" && <span className="text-xs text-red-700">Cancelado</span>}
                           <button onClick={() => setInvoiceSale(sale)} title="Gerar fatura" aria-label="Gerar fatura" className="p-1.5 text-blue-700 hover:bg-blue-50 rounded-lg"><FileText className="w-4 h-4" /></button>
-                          <button
+                          {!onOpenWorkflow && <button
                             onClick={() => handleOpenEdit(sale)}
                             className="p-1.5 text-stone-400 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
                             title="Editar pedido"
                           >
                             <Edit2 className="w-4 h-4" />
-                          </button>
+                          </button>}
                           <button
                             onClick={() => {
                               onDeleteSale(sale.id);

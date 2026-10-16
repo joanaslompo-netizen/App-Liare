@@ -27,7 +27,7 @@ interface HomeViewProps {
   onOpenNewPurchase?: () => void;
   onOpenProduction?: (product?: Product) => void;
   onOpenSettings?: () => void;
-  onOpenSale?: (saleId: string) => void;
+  onOpenSale?: (saleId: string, focus?: 'payment' | 'delivery' | 'production') => void;
 }
 
 const panelClass = 'rounded-2xl border border-[#e5dad1] bg-white p-5 shadow-xs';
@@ -120,8 +120,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   const completedTodosCount = todos.filter(t => t.completed).length;
   const filteredTodos = todos.filter(t => todoFilter === 'completed' ? t.completed : !t.completed);
-  const openSale = (sale: Sale, filter: 'pending_delivery' | 'pending_payment' = 'pending_delivery') =>
-    onOpenSale ? onOpenSale(sale.id) : onNavigate('sales', filter);
+  const openSale = (sale: Sale, filter: 'pending_delivery' | 'pending_payment' | 'production' = 'pending_delivery') =>
+    onOpenSale ? onOpenSale(sale.id, filter === 'pending_payment' ? 'payment' : filter === 'production' ? 'production' : 'delivery') : onNavigate('sales', filter === 'production' ? 'all' : filter);
   const openProduction = (product?: Product) => onOpenProduction ? onOpenProduction(product) : onNavigate('productions');
 
   const addTodo = (text: string, priority: 'high' | 'normal' | 'low' = 'normal') => {
@@ -194,7 +194,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           <section className={panelClass}>
             <PanelHeading icon={Factory} title="Produzir · encomendas" count={productionNeeds.length} />
             <p className="mb-1 px-2 text-xs text-[#74675f]">Peças que faltam separar para os pedidos. Abra para organizar a produção.</p>
-            {productionNeeds.length ? <div className="divide-y divide-[#f0e7e0]">{(showProduction ? productionNeeds : productionNeeds.slice(0, 4)).map(need => <button type="button" key={need.key} onClick={() => openSale(need.sale)} className={rowClass}>
+            {productionNeeds.length ? <div className="divide-y divide-[#f0e7e0]">{(showProduction ? productionNeeds : productionNeeds.slice(0, 4)).map(need => <button type="button" key={need.key} onClick={() => openSale(need.sale, 'production')} className={rowClass}>
               <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-[#352f2b]">{need.name}</span><span className="mt-1 block text-xs text-[#74675f]">{need.sale.customerName || 'Cliente sem nome'}{need.sale.deliveryScheduledDate ? ` · ${formatDate(need.sale.deliveryScheduledDate)}` : ''}</span></span>
               <strong className="shrink-0 rounded-lg bg-[#eef1e6] px-2 py-1 text-sm text-[#52603e]">{need.quantity} un</strong><ArrowRight className="h-4 w-4 shrink-0 text-[#a86149]" />
             </button>)}</div> : <EmptyState>Pedidos sem falta de peças.</EmptyState>}
