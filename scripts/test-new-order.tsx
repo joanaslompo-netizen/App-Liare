@@ -31,7 +31,7 @@ await click('Adicionar');assert(page().querySelector('[role="alert"]')?.textCont
 const addMaterial=[...page().querySelectorAll('button')].find(el=>el.textContent?.trim()==='+ Insumo');assert(addMaterial);await act(async()=>addMaterial.click());
 // Changing stages and item types keeps the unfinished personalized item.
 await labelCheck('Personalizado');await labelCheck('Personalizado');await click('Voltar');await click('Continuar para produtos');assert.equal((page().querySelector('[aria-label="Nome do item personalizado"]') as HTMLInputElement).value,'Peça exclusiva');await click('Adicionar');
-await click('Conferir pedido');await click('Código');await fill('Cupom de desconto','coupon');
+await click('Conferir pedido');assert(!saved, 'Conferir mostra a revisão e não salva');assert(page().querySelector('button[type="submit"]')?.textContent==='Concluir Pedido');await click('Código');await fill('Cupom de desconto','coupon');
 await fill('Frete cobrado','12'); // freight is first numeric field in the review section
 await click('PIX');await fill('Data prevista para recebimento','2026-10-21');
 const paid=[...page().querySelectorAll('label')].find(el=>el.textContent?.includes('Valor já pago'))!.querySelector('input')!;await fill('Valor já pago','35');

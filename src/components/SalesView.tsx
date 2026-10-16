@@ -1652,7 +1652,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
         <header className="flex items-start justify-between gap-4 mb-6">
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-[#947c6c] mb-2">Liare · Pedidos</p>
-            <h2 ref={orderHeading} className="text-3xl font-semibold tracking-tight">{existingSale ? `Editar Pedido #${formatOrderNumber(existingSale.orderNumber)}` : 'Novo pedido'}</h2>
+            <h2 ref={orderHeading} className="scroll-mt-28 text-3xl font-semibold tracking-tight">{existingSale ? `Editar Pedido #${formatOrderNumber(existingSale.orderNumber)}` : 'Novo pedido'}</h2>
             <p className="text-sm text-[#75665c] mt-2">{existingSale ? 'Atualize os dados do pedido.' : 'Um passo de cada vez, do primeiro contato à entrega.'}</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-xl border border-[#e5dad1] bg-white px-4 py-2.5 text-sm hover:bg-[#fbf7f2]">{existingSale ? 'Fechar' : 'Cancelar pedido'}</button>
@@ -2666,7 +2666,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
             </section>}
             <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#e5dad1] bg-white p-4">
               {!existingSale && step > 0 ? <button type="button" onClick={() => goToStep(step - 1)} className="rounded-xl border border-[#e5dad1] px-4 py-3 text-sm">Voltar</button> : <span className="text-xs text-[#75665c]">{existingSale ? 'Revise antes de salvar.' : 'Seus dados são mantidos entre as etapas.'}</span>}
-              {existingSale || step === 2 ? <button type="submit" disabled={isSaving} className="rounded-xl bg-[#a86149] px-5 py-3 text-sm font-semibold text-white hover:bg-[#915039] disabled:opacity-50">{isSaving ? 'Salvando…' : existingSale ? 'Salvar Alterações' : isDraft ? 'Salvar rascunho' : 'Concluir Pedido'}</button> : <button type="button" onClick={() => goToStep(step + 1)} className="rounded-xl bg-[#a86149] px-5 py-3 text-sm font-semibold text-white hover:bg-[#915039]">{step === 0 ? 'Continuar para produtos' : 'Conferir pedido'}</button>}
+              {existingSale || step === 2 ? <button key="save-order" type="submit" disabled={isSaving} className="rounded-xl bg-[#a86149] px-5 py-3 text-sm font-semibold text-white hover:bg-[#915039] disabled:opacity-50">{isSaving ? 'Salvando…' : existingSale ? 'Salvar Alterações' : isDraft ? 'Salvar rascunho' : 'Concluir Pedido'}</button> : <button key="next-step" type="button" onClick={(event) => { event.preventDefault(); goToStep(step + 1); }} className="rounded-xl bg-[#a86149] px-5 py-3 text-sm font-semibold text-white hover:bg-[#915039]">{step === 0 ? 'Continuar para produtos' : 'Conferir pedido'}</button>}
             </div>
           </div>
           <aside aria-label="Resumo do novo pedido" className="space-y-4 lg:sticky lg:top-6">
