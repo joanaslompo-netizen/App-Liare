@@ -1,5 +1,5 @@
 import { localDateString } from '../utils/localDate';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Plus, 
   Search, 
@@ -32,6 +32,7 @@ interface PurchasesViewProps {
   onSavePurchase: (purchase: Purchase, updateStock: boolean, payment?: {paidNow: boolean; dueDate: string; account: string}) => void | boolean | Promise<boolean>;
   onDeletePurchase: (id: string) => void;
   onOpenSuppliers?: () => void;
+  openNewPurchaseSignal?: number;
 }
 
 export const PurchasesView: React.FC<PurchasesViewProps> = ({
@@ -41,11 +42,16 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
   onSavePurchase,
   onDeletePurchase,
   onOpenSuppliers,
+  openNewPurchaseSignal = 0,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSupplierFilter, setSelectedSupplierFilter] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [viewingPurchase, setViewingPurchase] = useState<Purchase | null>(null);
+
+  useEffect(() => {
+    if (openNewPurchaseSignal > 0) setIsModalOpen(true);
+  }, [openNewPurchaseSignal]);
 
   // Filter purchases
   const filteredPurchases = useMemo(() => {

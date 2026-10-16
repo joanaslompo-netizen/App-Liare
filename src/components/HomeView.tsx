@@ -1,26 +1,13 @@
-import { isActiveOrder, orderItems } from "../utils/financeLedger";
-import { localDateString } from '../utils/localDate';
-import { getInvoiceTotals } from '../utils/invoice';
 import React, { useMemo, useState } from 'react';
 import {
-  AlertTriangle,
-  ArrowRight,
-  BarChart3,
-  Calendar,
-  Check,
-  CheckCircle2,
-  Clock,
-  CreditCard,
-  Factory,
-  Package,
-  Plus,
-  ShoppingBag,
-  Sparkles,
-  Trash2,
-  TrendingUp,
-  Truck,
+  AlertTriangle, ArrowRight, Check, CheckCircle2, ChevronDown,
+  CreditCard, Factory, Package, Plus, ShoppingCart, SlidersHorizontal,
+  Sparkles, Trash2, Truck, type LucideIcon,
 } from 'lucide-react';
 import { Material, Product, Purchase, Sale, TodoItem, NavTab } from '../types';
+import { isActiveOrder, orderItems } from '../utils/financeLedger';
+import { localDateString } from '../utils/localDate';
+import { getInvoiceTotals } from '../utils/invoice';
 import { formatCurrency, formatPercent, formatDate } from '../utils/formatters';
 import { getSaleFinancials } from '../utils/financials';
 
@@ -37,670 +24,242 @@ interface HomeViewProps {
   onOpenNewProduct?: () => void;
   onOpenNewMaterial?: () => void;
   onOpenNewSale?: () => void;
+  onOpenNewPurchase?: () => void;
+  onOpenProduction?: (product?: Product) => void;
   onOpenSettings?: () => void;
   onOpenSale?: (saleId: string) => void;
 }
 
-// Redeploy marker: summary banner
+const panelClass = 'rounded-2xl border border-[#e5dad1] bg-white p-5 shadow-xs';
+const rowClass = 'group flex w-full items-center gap-3 rounded-xl px-2 py-3 text-left transition-colors hover:bg-[#faf5f0] focus-visible:outline-2 focus-visible:outline-[#a86149]';
+const linkClass = 'inline-flex items-center gap-1 rounded-lg px-1 py-1 text-xs font-semibold text-[#92553f] hover:text-[#6f3e2d] focus-visible:outline-2 focus-visible:outline-[#a86149]';
+const suggestions = [
+  'Repor materiais com estoque baixo no fornecedor',
+  'Precificar novos produtos e atualizar margens de lucro',
+  'Cobrar recebimento dos pedidos pendentes',
+  'Embalar encomendas e despachar aos clientes',
+];
+
+function PanelHeading({ icon: Icon, title, count, children }: {
+  icon: LucideIcon; title: string; count?: number; children?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#f4eee7] text-[#94634c]"><Icon className="h-4 w-4" /></span>
+        <h3 className="text-base font-bold tracking-tight text-[#352f2b]">{title}</h3>
+        {count != null && <span className="rounded-full bg-[#f4eee7] px-2 py-0.5 text-xs font-semibold text-[#6f5b4f]">{count}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function EmptyState({ children }: { children: React.ReactNode }) {
+  return <p className="flex items-center gap-2 px-2 py-4 text-sm text-[#687153]"><CheckCircle2 className="h-4 w-4 shrink-0" />{children}</p>;
+}
+
+function MoreRows({ expanded, count, onClick }: { expanded: boolean; count: number; onClick: () => void }) {
+  if (count <= 4) return null;
+  return <button type="button" onClick={onClick} aria-expanded={expanded} className={`${linkClass} mt-2`}>
+    {expanded ? 'Mostrar menos' : `Ver mais ${count - 4}`}<ChevronDown className={`h-3.5 w-3.5 ${expanded ? 'rotate-180' : ''}`} />
+  </button>;
+}
+
 export const HomeView: React.FC<HomeViewProps> = ({
-  artisanName,
-  atelierName,
-  materials,
-  products,
-  sales,
-  todos,
-  onUpdateTodos,
-  onNavigate,
-  onOpenNewProduct,
-  onOpenNewMaterial,
-  onOpenNewSale,
-  onOpenSale,
+  artisanName, materials, products, sales, todos, onUpdateTodos,
+  onNavigate, onOpenNewSale, onOpenNewPurchase, onOpenProduction, onOpenSale,
 }) => {
   const [newTodoText, setNewTodoText] = useState('');
   const [newTodoPriority, setNewTodoPriority] = useState<'high' | 'normal' | 'low'>('normal');
-  const [todoFilter, setTodoFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const [todoFilter, setTodoFilter] = useState<'pending' | 'completed'>('pending');
+  const [showProduction, setShowProduction] = useState(false);
+  const [showRestock, setShowRestock] = useState(false);
+  const [showMaterials, setShowMaterials] = useState(false);
+  const today = localDateString();
 
-  const lowStockMaterials = useMemo(
-    () => materials.filter((m) => !m.isVirtualRecipe && m.usageType !== 'durable' && !m.isPaused && m.minStock > 0 && m.currentStock <= m.minStock),
-    [materials]
-  );
+  const lowStockMaterials = useMemo(() => materials.filter(m =>
+    !m.isVirtualRecipe && m.usageType !== 'durable' && !m.isPaused && m.minStock > 0 && m.currentStock <= m.minStock
+  ), [materials]);
+  const restockProducts = useMemo(() => products.filter(p =>
+    !p.isPaused && (p.minStock ?? 0) > 0 && (p.currentStock ?? 0) <= (p.minStock ?? 0)
+  ).map(product => ({ product, quantity: Math.max(0, (product.standardStock || product.minStock || 0) - (product.currentStock || 0)) }))
+    .filter(item => item.quantity > 0), [products]);
 
-  const lowStockProducts = useMemo(
-    () => products.filter((p) => !p.isPaused && (p.minStock ?? 0) > 0 && (p.currentStock ?? 0) <= (p.minStock ?? 0)),
-    [products]
-  );
+  const pendingDeliveries = useMemo(() => sales.filter(s => isActiveOrder(s) && s.deliveryStatus !== 'entregue')
+    .sort((a, b) => (a.deliveryScheduledDate || '9999-12-31').localeCompare(b.deliveryScheduledDate || '9999-12-31')), [sales]);
+  const pendingPayments = useMemo(() => sales.filter(s => isActiveOrder(s) && s.paymentStatus === 'pendente_pagamento' && getInvoiceTotals(s).balance > 0)
+    .sort((a, b) => (a.paymentScheduledDate || '9999-12-31').localeCompare(b.paymentScheduledDate || '9999-12-31')), [sales]);
+  const totalPendingPaymentAmount = pendingPayments.reduce((sum, sale) => sum + getInvoiceTotals(sale).balance, 0);
+  const overdueDeliveries = pendingDeliveries.filter(s => s.deliveryScheduledDate && s.deliveryScheduledDate < today).length;
+  const currentMonth = today.slice(0, 7);
+  const monthSales = sales.filter(s => isActiveOrder(s) && s.date.startsWith(currentMonth));
+  const monthRevenue = monthSales.reduce((sum, sale) => sum + sale.totalRevenue, 0);
+  const monthProfit = monthSales.reduce((sum, sale) => sum + getSaleFinancials(sale, products).ownerEarnings, 0);
+  const monthMargin = monthRevenue > 0 ? monthProfit / monthRevenue * 100 : 0;
+  const monthLabel = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date());
+  const dateLabel = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
 
-  const pendingDeliveries = useMemo(
-    () => sales.filter((s) => isActiveOrder(s) && s.deliveryStatus !== 'entregue'),
-    [sales]
-  );
-
-  const pendingPayments = useMemo(
-    () => sales.filter((s) => isActiveOrder(s) && s.paymentStatus === 'pendente_pagamento' && getInvoiceTotals(s).balance > 0)
-      .sort((a, b) => (a.paymentScheduledDate || '9999-12-31').localeCompare(b.paymentScheduledDate || '9999-12-31')),
-    [sales]
-  );
-
-  const totalPendingPaymentAmount = useMemo(
-    () => pendingPayments.reduce((acc, s) => acc + getInvoiceTotals(s).balance, 0),
-    [pendingPayments]
-  );
-
-  const currentMonth = localDateString().slice(0, 7);
-  const monthSales = sales.filter((s) => isActiveOrder(s) && s.date.startsWith(currentMonth));
-  const monthRevenue = monthSales.reduce((acc, s) => acc + s.totalRevenue, 0);
-  const monthProfit = monthSales.reduce((acc, s) => acc + getSaleFinancials(s, products).ownerEarnings, 0);
-  const monthMargin = monthRevenue > 0 ? (monthProfit / monthRevenue) * 100 : 0;
-  const isMonthLoss = monthProfit < 0;
-
-  const todayFormatted = new Intl.DateTimeFormat('pt-BR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  }).format(new Date());
-  const capitalizedDate = todayFormatted.charAt(0).toUpperCase() + todayFormatted.slice(1);
-
-  const completedTodosCount = todos.filter((t) => t.completed).length;
-  const totalTodosCount = todos.length;
-  const completionPercentage = totalTodosCount > 0
-    ? Math.round((completedTodosCount / totalTodosCount) * 100)
-    : 0;
-
-  const filteredTodos = todos.filter((t) => {
-    if (todoFilter === 'pending') return !t.completed;
-    if (todoFilter === 'completed') return t.completed;
-    return true;
-  });
-
-  const handleAddTodo = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTodoText.trim()) return;
-
-    const newTodo: TodoItem = {
-      id: `todo_${Date.now()}`,
-      text: newTodoText.trim(),
-      completed: false,
-      priority: newTodoPriority,
-      createdAt: localDateString(),
-    };
-
-    onUpdateTodos([newTodo, ...todos]);
-    setNewTodoText('');
-  };
-
-  const handleToggleTodo = (id: string) => {
-    onUpdateTodos(
-      todos.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
-    );
-  };
-
-  const handleDeleteTodo = (id: string) => {
-    onUpdateTodos(todos.filter((t) => t.id !== id));
-  };
-
-  const handleAddSuggestion = (text: string) => {
-    if (todos.some((t) => t.text.toLowerCase() === text.toLowerCase())) return;
-    const newTodo: TodoItem = {
-      id: `todo_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      text,
-      completed: false,
-      priority: 'normal',
-      createdAt: localDateString(),
-    };
-    onUpdateTodos([newTodo, ...todos]);
-  };
-
-  const recentSales = [...sales]
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 4);
-
-  const totalLowStock = lowStockMaterials.length + lowStockProducts.length;
-
-  const upcomingDeliveries = useMemo(
-    () =>
-      [...pendingDeliveries]
-        .sort((a, b) => {
-          const aDate = a.deliveryScheduledDate || '9999-12-31';
-          const bDate = b.deliveryScheduledDate || '9999-12-31';
-          return aDate.localeCompare(bDate);
-        })
-        .slice(0, 3),
-    [pendingDeliveries]
-  );
-
+  // Keep each need linked to its order, so clicking a row opens the correct record.
   const productionNeeds = useMemo(() => {
-    const needs = new Map<string, {name:string; quantity:number}>();
-    for (const sale of sales.filter(isActiveOrder)) for (const item of orderItems(sale)) {
-      const delivered = (item.deliveredQuantity ?? item.stockConsumedQuantity ?? (sale.deliveryStatus === 'entregue' ? item.quantity : 0)) - (item.returnedQuantity || 0);
-      const missing = Math.max(0,item.quantity-delivered-(item.reservedQuantity||0));
-      if(missing){const key=item.isCustom?item.customProductId||item.id||sale.id:item.productId; const previous=needs.get(key);needs.set(key,{name:item.productName,quantity:(previous?.quantity||0)+missing});}
+    const needs: { key: string; name: string; quantity: number; sale: Sale }[] = [];
+    for (const sale of sales.filter(isActiveOrder)) {
+      const byProduct = new Map<string, { key: string; name: string; quantity: number; sale: Sale }>();
+      for (const item of orderItems(sale)) {
+        const delivered = (item.deliveredQuantity ?? item.stockConsumedQuantity ?? (sale.deliveryStatus === 'entregue' ? item.quantity : 0)) - (item.returnedQuantity || 0);
+        const missing = Math.max(0, item.quantity - delivered - (item.reservedQuantity || 0));
+        if (!missing) continue;
+        const key = item.isCustom ? item.customProductId || item.id || sale.id : item.productId;
+        const previous = byProduct.get(key);
+        byProduct.set(key, { key: `${sale.id}:${key}`, name: item.productName, quantity: (previous?.quantity || 0) + missing, sale });
+      }
+      needs.push(...byProduct.values());
     }
-    return [...needs.values()];
-  },[sales]);
+    return needs.sort((a, b) => (a.sale.deliveryScheduledDate || '9999-12-31').localeCompare(b.sale.deliveryScheduledDate || '9999-12-31'));
+  }, [sales]);
+
+  const completedTodosCount = todos.filter(t => t.completed).length;
+  const filteredTodos = todos.filter(t => todoFilter === 'completed' ? t.completed : !t.completed);
+  const openSale = (sale: Sale, filter: 'pending_delivery' | 'pending_payment' = 'pending_delivery') =>
+    onOpenSale ? onOpenSale(sale.id) : onNavigate('sales', filter);
+  const openProduction = (product?: Product) => onOpenProduction ? onOpenProduction(product) : onNavigate('productions');
+
+  const addTodo = (text: string, priority: 'high' | 'normal' | 'low' = 'normal') => {
+    if (!text.trim()) return;
+    onUpdateTodos([{ id: `todo_${crypto.randomUUID()}`, text: text.trim(), priority, completed: false, createdAt: today }, ...todos]);
+  };
+
   return (
-    <div className="space-y-4 sm:space-y-6 pb-12">
-      <section className="px-1 sm:px-0">
-        <div className="grid grid-cols-[1fr_auto] items-start gap-4 sm:gap-8">
-          <div className="min-w-0 pt-1">
-            <div className="text-[11px] sm:text-xs font-medium text-[#8b817a] mb-1">
-              {capitalizedDate}
-            </div>
-            <h2 className="text-[28px] sm:text-3xl leading-none font-bold text-[#2f2925] tracking-tight">
-              Olá, {artisanName || 'Artesã'}
-            </h2>
-            <p className="text-[13px] sm:text-sm text-[#766b64] mt-2 leading-snug max-w-md">
-              Um ateliê organizado acende grandes planos. ✦
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:justify-end sm:max-w-md pt-0.5">
-            <button
-              id="btn-home-quick-sale"
-              onClick={onOpenNewSale ? onOpenNewSale : () => onNavigate('sales')}
-              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-[#b96f55] hover:bg-[#a86149] text-white text-[10px] sm:text-xs font-bold flex items-center justify-center gap-1 shadow-xs transition-all cursor-pointer"
-            >
-              <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-              <span>Pedido</span>
-            </button>
-            <button
-              id="btn-home-quick-production"
-              onClick={() => onNavigate('productions')}
-              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-[#eef1e6] hover:bg-[#e4e9d8] text-[#66704f] text-[10px] sm:text-xs font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer"
-            >
-              <Factory className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-              <span>Produção</span>
-            </button>
-            <button
-              id="btn-home-quick-product"
-              onClick={onOpenNewProduct ? onOpenNewProduct : () => onNavigate('products')}
-              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-white/80 hover:bg-white text-[#5e5149] text-[10px] sm:text-xs font-semibold flex items-center justify-center gap-1 border border-[#eadfd6] transition-colors cursor-pointer"
-            >
-              <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-              <span>Receita</span>
-            </button>
-            <button
-              id="btn-home-quick-material"
-              onClick={onOpenNewMaterial ? onOpenNewMaterial : () => onNavigate('materials')}
-              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-white/80 hover:bg-white text-[#5e5149] text-[10px] sm:text-xs font-semibold flex items-center justify-center gap-1 border border-[#eadfd6] transition-colors cursor-pointer"
-            >
-              <Package className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-              <span>Material</span>
-            </button>
-          </div>
+    <div className="space-y-5 pb-8">
+      <section className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+        <div>
+          <p className="mb-1 text-xs font-medium capitalize text-[#74675f]">{dateLabel}</p>
+          <h2 className="text-3xl font-bold tracking-tight text-[#302a25]">Olá, {artisanName || 'Artesã'}</h2>
+          <p className="mt-1.5 text-sm text-[#74675f]">Tudo o que precisa de atenção no ateliê.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <button id="btn-home-quick-sale" type="button" onClick={() => onOpenNewSale ? onOpenNewSale() : onNavigate('sales')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#b96f55] px-3.5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#a15e47]"><Plus className="h-4 w-4" />Novo pedido</button>
+          <button id="btn-home-quick-production" type="button" onClick={() => openProduction()} className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#dce1d1] bg-[#eef1e6] px-3.5 py-2.5 text-sm font-semibold text-[#52603e] hover:bg-[#e4e9d8]"><Factory className="h-4 w-4" />Registrar produção</button>
+          <button id="btn-home-quick-purchase" type="button" onClick={() => onOpenNewPurchase ? onOpenNewPurchase() : onNavigate('purchases')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#e5dad1] bg-white px-3.5 py-2.5 text-sm font-semibold text-[#57493f] hover:bg-[#faf5f0]"><ShoppingCart className="h-4 w-4" />Registrar compra</button>
+          <button id="btn-home-quick-stock" type="button" onClick={() => onNavigate('materials')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#e5dad1] bg-white px-3.5 py-2.5 text-sm font-semibold text-[#57493f] hover:bg-[#faf5f0]"><SlidersHorizontal className="h-4 w-4" />Ajustar estoque</button>
         </div>
       </section>
-      <section className="rounded-2xl bg-white border border-stone-200 p-4"><h3 className="font-bold mb-2">Produzir</h3><div className="grid sm:grid-cols-2 gap-3"><div><p className="text-xs font-semibold text-stone-500">Para pedidos · unidades ainda não separadas</p>{productionNeeds.length ? productionNeeds.map((n,i)=><button key={i} onClick={()=>onNavigate('sales')} className="block w-full text-left py-2 text-sm">{n.name} · <strong>{n.quantity} un</strong></button>) : <p className="mt-2 text-sm text-stone-500">Pedidos sem falta de peças.</p>}</div><div><p className="text-xs font-semibold text-stone-500">Reposição de pronta-entrega</p>{lowStockProducts.map(p=><button key={p.id} onClick={()=>onNavigate('productions')} className="block w-full text-left py-2 text-sm">{p.name} · <strong>{Math.max(0,(p.standardStock||p.minStock||0)-(p.currentStock||0))} un</strong></button>)}</div></div></section>
-      <section
-        onClick={() => onNavigate('reports')}
-        className="rounded-[28px] sm:rounded-3xl bg-[#b96f55] text-white px-4.5 pt-4.5 pb-3.5 sm:p-6 shadow-sm cursor-pointer transition-transform hover:-translate-y-0.5"
-      >
-        <div className="flex items-center gap-2 mb-3.5 sm:mb-5">
-          <span className="text-[13px] sm:text-[15px] font-semibold text-white/90">
-            Pedidos do mês
-          </span>
-          <span className="text-[13px] sm:text-[15px] text-white/65">·</span>
-          <span className="text-[13px] sm:text-[15px] font-semibold text-white/90">
-            {new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date())}
-          </span>
-        </div>
 
-        <div className="grid grid-cols-3">
-          <div className="min-w-0 pr-2 sm:pr-5">
-            <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5">
-              <div className="w-6.5 h-6.5 sm:w-8 sm:h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                <BarChart3 className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
-              </div>
-              <span className="text-[12px] sm:text-[13px] text-white/75 whitespace-nowrap">
-                Valor contratado
-              </span>
-            </div>
-            <strong className="block text-[21px] sm:text-[28px] leading-none font-semibold tracking-tight whitespace-nowrap">
-              {formatCurrency(monthRevenue)}
-            </strong>
-          </div>
-
-          <div className="min-w-0 px-2 sm:px-5 border-l border-white/20">
-            <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5">
-              <div className="w-6.5 h-6.5 sm:w-8 sm:h-8 rounded-full bg-[#e9efdc] flex items-center justify-center shrink-0">
-                <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4 text-[#65734f]" />
-              </div>
-              <span className="text-[12px] sm:text-[13px] text-white/75 whitespace-nowrap">
-                Estimativa
-              </span>
-            </div>
-            <strong className="block text-[21px] sm:text-[28px] leading-none font-semibold tracking-tight whitespace-nowrap">
-              {monthProfit > 0 ? '+' : ''}{formatCurrency(monthProfit)}
-            </strong>
-          </div>
-
-          <div className="min-w-0 pl-2 sm:pl-5 border-l border-white/20">
-            <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5">
-              <div className="w-6.5 h-6.5 sm:w-8 sm:h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                <CreditCard className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
-              </div>
-              <span className="text-[12px] sm:text-[13px] text-white/75 whitespace-nowrap">
-                A receber
-              </span>
-            </div>
-            <strong className="block text-[21px] sm:text-[28px] leading-none font-semibold tracking-tight whitespace-nowrap">
-              {formatCurrency(totalPendingPaymentAmount)}
-            </strong>
-          </div>
-        </div>
-
-        <div className="mt-3.5 sm:mt-5 flex items-center gap-3 sm:gap-4">
-          <div className="flex-1 h-2 rounded-full bg-white/25 overflow-hidden">
-            <div
-              className="h-full rounded-full bg-white/90 transition-all"
-              style={{ width: `${Math.max(4, Math.min(100, Math.abs(monthMargin)))}%` }}
-            />
-          </div>
-          <div className="flex items-center gap-1 text-[12px] sm:text-[13px] text-white/85 whitespace-nowrap">
-            <span>Margem {formatPercent(monthMargin)}</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </div>
-        </div>
+      <section aria-label="Resumo financeiro" className="grid gap-3 sm:grid-cols-3">
+        <button type="button" onClick={() => onNavigate('reports')} className="rounded-2xl border border-[#e5dad1] bg-white px-5 py-4 text-left transition-colors hover:border-[#c98a72]">
+          <span className="block text-xs font-semibold text-[#74675f]">Pedidos de {monthLabel}</span>
+          <strong className="mt-1 block text-2xl font-bold tracking-tight text-[#352f2b]">{formatCurrency(monthRevenue)}</strong>
+          <span className="mt-1 block text-xs text-[#74675f]">Valor contratado no mês</span>
+        </button>
+        <button type="button" onClick={() => onNavigate('reports')} className="rounded-2xl border border-[#dfc5b8] bg-[#f3e4da] px-5 py-4 text-left transition-colors hover:border-[#b96f55]">
+          <span className="block text-xs font-semibold text-[#80503c]">Quanto fica para você · estimado</span>
+          <strong className={`mt-1 block text-2xl font-bold tracking-tight ${monthProfit < 0 ? 'text-[#a44132]' : 'text-[#75452f]'}`}>{formatCurrency(monthProfit)}</strong>
+          <span className="mt-1 block text-xs text-[#80503c]">Inclui sua remuneração · margem {formatPercent(monthMargin)}</span>
+        </button>
+        <button type="button" onClick={() => onNavigate('sales', 'pending_payment')} className="rounded-2xl border border-[#dce1d1] bg-[#f1f3ec] px-5 py-4 text-left transition-colors hover:border-[#94a17e]">
+          <span className="block text-xs font-semibold text-[#5d684b]">Total a receber</span>
+          <strong className="mt-1 block text-2xl font-bold tracking-tight text-[#52603e]">{formatCurrency(totalPendingPaymentAmount)}</strong>
+          <span className="mt-1 block text-xs text-[#5d684b]">{pendingPayments.length} {pendingPayments.length === 1 ? 'pedido com saldo' : 'pedidos com saldo'} · todos os meses</span>
+        </button>
       </section>
-      <section className="bg-white rounded-3xl border border-[#eadfd6] p-4 sm:p-5 shadow-xs">
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[#eef1e6] text-[#66704f] flex items-center justify-center shrink-0">
-              <Truck className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-base sm:text-lg font-bold text-[#2f2925] tracking-tight">
-                Próximas entregas a despachar
-              </h3>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => onNavigate('sales', 'pending_delivery')}
-            className="text-[11px] sm:text-xs font-semibold text-[#a86149] hover:text-[#8b503c] flex items-center gap-1 cursor-pointer shrink-0"
-          >
-            Ver todos
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
 
-        {upcomingDeliveries.length > 0 ? (
-          <div className="divide-y divide-[#f0e7e0]">
-            {upcomingDeliveries.map((sale) => {
-              const scheduled = sale.deliveryScheduledDate
-                ? new Date(`${sale.deliveryScheduledDate}T12:00:00`)
-                : null;
-              const day = scheduled
-                ? new Intl.DateTimeFormat('pt-BR', { day: '2-digit' }).format(scheduled)
-                : '--';
-              const month = scheduled
-                ? new Intl.DateTimeFormat('pt-BR', { month: 'short' }).format(scheduled).replace('.', '')
-                : 'sem data';
-              const primaryItem = sale.items?.[0];
-              const stockProductId = primaryItem
-                ? (primaryItem.isCustom ? primaryItem.customProductId : primaryItem.productId)
-                : sale.productId;
-              const imageUrl =
-                sale.productImageUrl ||
-                primaryItem?.productImageUrl ||
-                products.find((product) => product.id === stockProductId)?.imageUrl;
-              const itemName = primaryItem?.productName || sale.productName || 'Pedido';
-              const requestedQuantity = sale.items?.length
-                ? sale.items.reduce((sum, item) => sum + item.quantity, 0)
-                : sale.quantity;
-
-              return (
-                <button
-                  type="button"
-                  key={sale.id}
-                  onClick={() => onOpenSale ? onOpenSale(sale.id) : onNavigate('sales', 'pending_delivery')}
-                  className="w-full py-2.5 sm:py-3 flex items-center gap-3 text-left cursor-pointer group"
-                >
-                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-[#f7f2ed] flex flex-col items-center justify-center shrink-0">
-                    <strong className="text-base sm:text-lg leading-none text-[#8b503c]">{day}</strong>
-                    <span className="text-[10px] sm:text-[11px] text-[#766b64] mt-0.5 lowercase">{month}</span>
-                  </div>
-
-                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-[#f4eee9] overflow-hidden shrink-0 flex items-center justify-center">
-                    {imageUrl ? (
-                      <img src={imageUrl} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <Package className="w-5 h-5 text-[#a56d4f]" />
-                    )}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <span className="text-xs sm:text-sm font-semibold text-[#352f2b] block truncate">
-                      {itemName}{sale.items && sale.items.length > 1 ? ` + ${sale.items.length - 1} item(ns)` : ''}
-                    </span>
-                    <div className="mt-0.5 flex items-center justify-between gap-3">
-                      <span className="text-[11px] sm:text-xs text-[#857970] truncate">
-                        {sale.customerName || 'Cliente sem nome'}
-                      </span>
-                      <span className="text-xs font-semibold text-stone-700 shrink-0">
-                        {requestedQuantity} {requestedQuantity === 1 ? 'unidade' : 'unidades'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <ArrowRight className="w-4 h-4 text-[#7e746d] group-hover:translate-x-0.5 transition-transform shrink-0" />
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="rounded-2xl bg-[#fbf8f5] border border-[#f0e7e0] py-6 px-4 text-center">
-            <CheckCircle2 className="w-6 h-6 text-[#788063] mx-auto mb-1.5" />
-            <p className="text-xs font-semibold text-[#5e5149]">Nenhuma entrega pendente.</p>
-          </div>
-        )}
-      </section>
-      <section className="grid grid-cols-1 xl:grid-cols-5 gap-6">
-        <div className="xl:col-span-3 bg-white rounded-3xl border border-[#eadfd6] p-6 shadow-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#f0e7e0]">
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-[#352f2b] tracking-tight">Minhas tarefas</h3>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-[#f5e8df] text-[#8b503c] font-semibold border border-[#ead4c8]">
-                  {completedTodosCount}/{totalTodosCount} feitas
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-5">
+          <section className={panelClass}>
+            <PanelHeading icon={Truck} title="Próximas entregas" count={pendingDeliveries.length}>
+              <button type="button" onClick={() => onNavigate('sales', 'pending_delivery')} className={linkClass}>Ver todos<ArrowRight className="h-3.5 w-3.5" /></button>
+            </PanelHeading>
+            {overdueDeliveries > 0 && <p className="mb-1 px-2 text-xs font-semibold text-[#a44132]">{overdueDeliveries} {overdueDeliveries === 1 ? 'entrega atrasada' : 'entregas atrasadas'}</p>}
+            {pendingDeliveries.length ? <div className="divide-y divide-[#f0e7e0]">{pendingDeliveries.slice(0, 4).map(sale => {
+              const date = sale.deliveryScheduledDate;
+              const late = !!date && date < today;
+              const firstItem = orderItems(sale)[0];
+              const name = firstItem?.productName || sale.productName || 'Pedido';
+              const remaining = orderItems(sale).reduce((sum, item) => sum + Math.max(0, item.quantity - ((item.deliveredQuantity ?? item.stockConsumedQuantity ?? 0) - (item.returnedQuantity || 0))), 0);
+              return <button type="button" key={sale.id} onClick={() => openSale(sale)} className={rowClass}>
+                <span className={`flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl ${late ? 'bg-[#fbeae4] text-[#a44132]' : 'bg-[#f4eee7] text-[#80503c]'}`}>
+                  <strong className="text-lg leading-none">{date ? date.slice(8, 10) : '—'}</strong>
+                  <span className="mt-1 text-[10px]">{date ? new Intl.DateTimeFormat('pt-BR', { month: 'short' }).format(new Date(`${date}T12:00:00`)).replace('.', '') : 'sem data'}</span>
                 </span>
-              </div>
-            </div>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-[#352f2b]">{sale.customerName || 'Cliente sem nome'}<span className="ml-2 font-normal text-[#74675f]">{sale.orderNumber ? `#${sale.orderNumber}` : ''}</span></span>
+                  <span className="mt-0.5 block truncate text-xs text-[#675a51]" title={name}>{name}{sale.items && sale.items.length > 1 ? ` + ${sale.items.length - 1} item(ns)` : ''}</span>
+                  <span className={`mt-1 block text-xs ${late ? 'font-semibold text-[#a44132]' : 'text-[#74675f]'}`}>{late ? 'Atrasada · ' : date === today ? 'Hoje · ' : ''}{date ? formatDate(date) : 'Prazo não definido'} · {remaining} un a entregar</span>
+                </span>
+                <ArrowRight className="h-4 w-4 shrink-0 text-[#a86149]" />
+              </button>;
+            })}</div> : <EmptyState>Nenhuma entrega pendente.</EmptyState>}
+          </section>
 
-            <div className="flex items-center gap-1 bg-[#f7f2ed] p-1 rounded-xl text-xs font-medium self-start sm:self-auto">
-              <button
-                type="button"
-                onClick={() => setTodoFilter('all')}
-                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${todoFilter === 'all' ? 'bg-white text-[#352f2b] font-semibold shadow-2xs' : 'text-[#766b64]'}`}
-              >
-                Todas ({todos.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setTodoFilter('pending')}
-                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${todoFilter === 'pending' ? 'bg-white text-[#352f2b] font-semibold shadow-2xs' : 'text-[#766b64]'}`}
-              >
-                Pendentes ({todos.filter((t) => !t.completed).length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setTodoFilter('completed')}
-                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${todoFilter === 'completed' ? 'bg-white text-[#352f2b] font-semibold shadow-2xs' : 'text-[#766b64]'}`}
-              >
-                Concluídas ({completedTodosCount})
-              </button>
-            </div>
-          </div>
-
-          {totalTodosCount > 0 && (
-            <div className="py-3">
-              <div className="flex items-center justify-between text-xs text-[#857970] mb-1">
-                <span>Progresso das tarefas</span>
-                <span className="font-semibold text-[#5e5149]">{completionPercentage}%</span>
-              </div>
-              <div className="w-full h-2 bg-[#f4eee9] rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[#b96f55] transition-all duration-300"
-                  style={{ width: `${completionPercentage}%` }}
-                />
-              </div>
-            </div>
-          )}
-
-          <form onSubmit={handleAddTodo} className="my-3 flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="Adicionar nova tarefa..."
-              value={newTodoText}
-              onChange={(e) => setNewTodoText(e.target.value)}
-              className="flex-1 bg-[#fbf8f5] border border-[#e5d8cf] focus:border-[#b96f55] focus:bg-white px-3.5 py-2.5 rounded-xl text-xs text-[#4d433d] placeholder-[#9d9189] outline-none transition-all shadow-2xs"
-            />
-            <select
-              value={newTodoPriority}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNewTodoPriority(e.target.value as 'high' | 'normal' | 'low')}
-              className="bg-[#fbf8f5] border border-[#e5d8cf] text-[#5e5149] text-xs px-2.5 py-2.5 rounded-xl outline-none"
-              title="Prioridade da tarefa"
-            >
-              <option value="normal">Normal</option>
-              <option value="high">Urgente 🔥</option>
-              <option value="low">Baixa</option>
-            </select>
-            <button
-              type="submit"
-              disabled={!newTodoText.trim()}
-              className="px-4 py-2.5 bg-[#b96f55] hover:bg-[#a86149] disabled:opacity-50 text-white font-medium text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-xs"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Adicionar</span>
-            </button>
-          </form>
-
-          <div className="space-y-2 mt-4 max-h-[390px] overflow-y-auto pr-1">
-            {filteredTodos.length === 0 ? (
-              <div className="text-center py-8 text-[#9d9189] border border-dashed border-[#e8ddd5] rounded-xl bg-[#fbf8f5]">
-                <CheckCircle2 className="w-7 h-7 mx-auto mb-1.5 text-[#c9bbb1]" />
-                <p className="text-xs font-medium">Nenhuma tarefa encontrada neste filtro.</p>
-              </div>
-            ) : (
-              filteredTodos.map((todo) => (
-                <div
-                  key={todo.id}
-                  className={`flex items-center justify-between p-3 rounded-xl border transition-all ${todo.completed ? 'bg-[#faf7f4] border-[#ece3dc] opacity-65' : 'bg-white border-[#eadfd6] hover:border-[#c98a72] shadow-2xs'}`}
-                >
-                  <div
-                    onClick={() => handleToggleTodo(todo.id)}
-                    className="flex items-center gap-3 flex-1 cursor-pointer select-none"
-                  >
-                    <button
-                      type="button"
-                      className={`w-5 h-5 rounded-md flex items-center justify-center transition-colors shrink-0 ${todo.completed ? 'bg-[#788063] text-white' : 'border-2 border-[#d5c8bf] hover:border-[#b96f55] text-transparent'}`}
-                    >
-                      <Check className="w-3 h-3 stroke-[3]" />
-                    </button>
-
-                    <div className="flex flex-col">
-                      <span className={`text-xs ${todo.completed ? 'line-through text-[#a3978f]' : 'text-[#4d433d] font-medium'}`}>
-                        {todo.text}
-                      </span>
-                      {todo.dueDate && (
-                        <span className="text-[10px] text-[#9d9189] flex items-center gap-1 mt-0.5">
-                          <Clock className="w-2.5 h-2.5" /> Até {new Date(todo.dueDate).toLocaleDateString('pt-BR')}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {todo.priority === 'high' && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#f7e2dc] text-[#934b3c]">Urgente</span>
-                    )}
-                    {todo.priority === 'low' && (
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-[#f1eee9] text-[#766b64]">Baixa</span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteTodo(todo.id)}
-                      className="text-[#aa9d94] hover:text-[#a24e40] p-1 transition-colors cursor-pointer"
-                      title="Excluir tarefa"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          <div className="mt-5 pt-4 border-t border-[#f0e7e0]">
-            <span className="text-[11px] font-semibold text-[#857970] uppercase tracking-wider block mb-2 flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-[#b96f55]" />
-              Sugestões rápidas
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                'Repor materiais com estoque baixo no fornecedor',
-                'Precificar novos produtos e atualizar margens de lucro',
-                'Cobrar recebimento dos pedidos pendentes',
-                'Embalar encomendas e despachar aos clientes',
-              ].map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  onClick={() => handleAddSuggestion(suggestion)}
-                  className="text-[11px] px-2.5 py-1 rounded-lg bg-[#f7f2ed] hover:bg-[#f1e4da] hover:text-[#8b503c] text-[#766b64] transition-colors cursor-pointer"
-                >
-                  + {suggestion}
-                </button>
-              ))}
-            </div>
-          </div>
+          <section className={panelClass}>
+            <PanelHeading icon={Factory} title="Produzir · encomendas" count={productionNeeds.length} />
+            <p className="mb-1 px-2 text-xs text-[#74675f]">Peças que faltam separar para os pedidos. Abra para organizar a produção.</p>
+            {productionNeeds.length ? <div className="divide-y divide-[#f0e7e0]">{(showProduction ? productionNeeds : productionNeeds.slice(0, 4)).map(need => <button type="button" key={need.key} onClick={() => openSale(need.sale)} className={rowClass}>
+              <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-[#352f2b]">{need.name}</span><span className="mt-1 block text-xs text-[#74675f]">{need.sale.customerName || 'Cliente sem nome'}{need.sale.deliveryScheduledDate ? ` · ${formatDate(need.sale.deliveryScheduledDate)}` : ''}</span></span>
+              <strong className="shrink-0 rounded-lg bg-[#eef1e6] px-2 py-1 text-sm text-[#52603e]">{need.quantity} un</strong><ArrowRight className="h-4 w-4 shrink-0 text-[#a86149]" />
+            </button>)}</div> : <EmptyState>Pedidos sem falta de peças.</EmptyState>}
+            <MoreRows count={productionNeeds.length} expanded={showProduction} onClick={() => setShowProduction(!showProduction)} />
+          </section>
         </div>
 
-        <div className="xl:col-span-2 space-y-4">
-          <div>
-            <h3 className="text-lg font-bold text-[#352f2b] tracking-tight">Lembretes do ateliê</h3>
-            <p className="text-xs text-[#857970] mt-0.5">
-              Seus três alertas já existentes, reunidos no mesmo lugar.
-            </p>
-          </div>
+        <div className="min-w-0 space-y-5">
+          <section className={panelClass}>
+            <PanelHeading icon={CreditCard} title="Contas a receber" count={pendingPayments.length}>
+              <button type="button" onClick={() => onNavigate('sales', 'pending_payment')} className={linkClass}>Ver todos<ArrowRight className="h-3.5 w-3.5" /></button>
+            </PanelHeading>
+            {pendingPayments.length ? <div className="divide-y divide-[#f0e7e0]">{pendingPayments.slice(0, 3).map(sale => <button type="button" key={sale.id} onClick={() => openSale(sale, 'pending_payment')} className={rowClass}>
+              <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-[#352f2b]">{sale.customerName || 'Cliente sem nome'}</span><span className="mt-1 block text-xs text-[#74675f]">Pedido {sale.orderNumber || 'sem número'}{sale.paymentScheduledDate ? ` · ${formatDate(sale.paymentScheduledDate)}` : ''}</span></span>
+              <strong className="shrink-0 text-sm text-[#52603e]">{formatCurrency(getInvoiceTotals(sale).balance)}</strong>
+            </button>)}</div> : <EmptyState>Nenhum saldo pendente.</EmptyState>}
+          </section>
 
-          <div className="w-full bg-white rounded-2xl border border-[#eadfd6] p-5 shadow-xs">
-            <button type="button" onClick={() => onNavigate('sales', 'pending_payment')} className="w-full text-left flex items-start justify-between gap-3">
-              <div>
-                <h4 className="text-sm font-bold text-[#352f2b]">Contas a receber</h4>
-                <p className="text-xs text-[#857970] mt-0.5">{pendingPayments.length} pedido(s) com saldo pendente</p>
-              </div>
-              <strong className="text-lg font-bold text-[#6d7658]">{formatCurrency(totalPendingPaymentAmount)}</strong>
-            </button>
-            {pendingPayments.slice(0, 3).map((sale) => (
-              <button key={sale.id} type="button"
-                onClick={() => onOpenSale ? onOpenSale(sale.id) : onNavigate('sales', 'pending_payment')}
-                className="w-full mt-3 pt-3 border-t border-[#f0e7e0] flex items-center justify-between gap-3 text-left text-sm">
-                <span className="min-w-0">
-                  <span className="block font-semibold truncate">{sale.customerName || 'Cliente sem nome'}</span>
-                  <span className="text-xs text-stone-600">Pedido {sale.orderNumber || 'sem número'}{sale.paymentScheduledDate ? ` · ${formatDate(sale.paymentScheduledDate)}` : ''}</span>
-                </span>
-                <strong className="shrink-0 text-[#6d7658]">{formatCurrency(getInvoiceTotals(sale).balance)}</strong>
-              </button>
-            ))}
-          </div>
+          <section className={panelClass}>
+            <PanelHeading icon={Package} title="Repor pronta-entrega" count={restockProducts.length} />
+            {restockProducts.length ? <div className="divide-y divide-[#f0e7e0]">{(showRestock ? restockProducts : restockProducts.slice(0, 4)).map(({ product, quantity }) => <button type="button" key={product.id} onClick={() => openProduction(product)} className={rowClass}>
+              <span className="min-w-0 flex-1"><span className="block text-sm font-medium text-[#352f2b]">{product.name}</span><span className="mt-1 block text-xs text-[#74675f]">Em estoque: {product.currentStock || 0} un · registrar produção</span></span>
+              <strong className="shrink-0 rounded-lg bg-[#f4eee7] px-2 py-1 text-sm text-[#80503c]">{quantity} un</strong>
+            </button>)}</div> : <EmptyState>Nenhuma reposição pendente.</EmptyState>}
+            <MoreRows count={restockProducts.length} expanded={showRestock} onClick={() => setShowRestock(!showRestock)} />
+          </section>
 
-          <button
-            type="button"
-            onClick={() => onNavigate('sales', 'pending_delivery')}
-            className="w-full text-left bg-white rounded-2xl border border-[#eadfd6] p-5 shadow-xs hover:border-[#c98a72] transition-colors cursor-pointer"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-xl bg-[#f5e8df] text-[#a86149] flex items-center justify-center shrink-0">
-                  <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-[#352f2b]">Pedidos a despachar</h4>
-                  <p className="text-xs text-[#857970] mt-0.5">
-                    {pendingDeliveries.length} {pendingDeliveries.length === 1 ? 'pedido aguardando' : 'pedidos aguardando'}
-                  </p>
-                </div>
-              </div>
-              <strong className="text-lg font-bold text-[#a86149]">{pendingDeliveries.length}</strong>
-            </div>
-            {pendingDeliveries[0] && (
-              <div className="mt-3 pt-3 border-t border-[#f0e7e0] flex items-center justify-between gap-3 text-xs">
-                <span className="text-[#5e5149] truncate">
-                  {pendingDeliveries[0].customerName || 'Cliente sem nome'}
-                  {pendingDeliveries[0].deliveryScheduledDate ? ` · prazo ${formatDate(pendingDeliveries[0].deliveryScheduledDate)}` : ''}
-                </span>
-                <ArrowRight className="w-3.5 h-3.5 text-[#a86149] shrink-0" />
-              </div>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onNavigate('materials')}
-            className="w-full text-left bg-white rounded-2xl border border-[#eadfd6] p-5 shadow-xs hover:border-[#c98a72] transition-colors cursor-pointer"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-xl bg-[#f6eadf] text-[#a56d4f] flex items-center justify-center shrink-0">
-                  <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-[#352f2b]">Estoque baixo</h4>
-                  <p className="text-xs text-[#857970] mt-0.5">
-                    {totalLowStock} {totalLowStock === 1 ? 'item pede atenção' : 'itens pedem atenção'}
-                  </p>
-                </div>
-              </div>
-              <strong className="text-lg font-bold text-[#a56d4f]">{totalLowStock}</strong>
-            </div>
-            {totalLowStock > 0 ? (
-              <div className="mt-3 pt-3 border-t border-[#f0e7e0] flex items-center justify-between gap-3 text-xs">
-                <span className="text-[#5e5149] truncate">
-                  {lowStockMaterials[0]?.name || lowStockProducts[0]?.name}
-                </span>
-                <ArrowRight className="w-3.5 h-3.5 text-[#a86149] shrink-0" />
-              </div>
-            ) : (
-              <div className="mt-3 pt-3 border-t border-[#f0e7e0] text-xs text-[#6d7658] flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                Estoque dentro dos mínimos.
-              </div>
-            )}
-          </button>
+          <section className={panelClass}>
+            <PanelHeading icon={AlertTriangle} title="Insumos em baixa" count={lowStockMaterials.length}>
+              <button type="button" onClick={() => onNavigate('materials', 'low_stock')} className={linkClass}>Ver estoque<ArrowRight className="h-3.5 w-3.5" /></button>
+            </PanelHeading>
+            {lowStockMaterials.length ? <div className="divide-y divide-[#f0e7e0]">{(showMaterials ? lowStockMaterials : lowStockMaterials.slice(0, 4)).map(material => <div key={material.id} className="flex items-center justify-between gap-3 px-2 py-2.5">
+              <span className="min-w-0 text-sm text-[#352f2b]">{material.name}</span><strong className="shrink-0 text-xs text-[#94634c]">{material.currentStock.toLocaleString('pt-BR')} {material.unit}</strong>
+            </div>)}</div> : <EmptyState>Insumos dentro dos mínimos.</EmptyState>}
+            <MoreRows count={lowStockMaterials.length} expanded={showMaterials} onClick={() => setShowMaterials(!showMaterials)} />
+          </section>
         </div>
+      </div>
+
+      <section className={panelClass}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <PanelHeading icon={CheckCircle2} title="Minhas tarefas" count={todos.length - completedTodosCount} />
+          <div className="mb-2 flex gap-1 rounded-xl bg-[#f4eee7] p-1 text-xs">
+            {(['pending', 'completed'] as const).map(filter => <button key={filter} type="button" aria-pressed={todoFilter === filter} onClick={() => setTodoFilter(filter)} className={`rounded-lg px-3 py-1.5 font-semibold ${todoFilter === filter ? 'bg-white text-[#352f2b] shadow-xs' : 'text-[#74675f]'}`}>{filter === 'pending' ? `Pendentes (${todos.length - completedTodosCount})` : `Concluídas (${completedTodosCount})`}</button>)}
+          </div>
+        </div>
+        <form onSubmit={event => { event.preventDefault(); addTodo(newTodoText, newTodoPriority); setNewTodoText(''); setTodoFilter('pending'); }} className="mb-3 flex flex-wrap gap-2">
+          <input aria-label="Nova tarefa" placeholder="Adicionar nova tarefa..." value={newTodoText} onChange={event => setNewTodoText(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-[#e5dad1] bg-[#fbf8f5] px-3 py-2.5 text-sm outline-none focus:border-[#b96f55]" />
+          <select aria-label="Prioridade da tarefa" value={newTodoPriority} onChange={event => setNewTodoPriority(event.target.value as typeof newTodoPriority)} className="rounded-xl border border-[#e5dad1] bg-[#fbf8f5] px-2 py-2 text-sm text-[#57493f]"><option value="normal">Normal</option><option value="high">Urgente</option><option value="low">Baixa</option></select>
+          <button type="submit" disabled={!newTodoText.trim()} className="inline-flex items-center gap-1.5 rounded-xl bg-[#b96f55] px-4 py-2 text-sm font-semibold text-white hover:bg-[#a15e47] disabled:opacity-50"><Plus className="h-4 w-4" />Adicionar</button>
+        </form>
+        <div className="max-h-80 space-y-2 overflow-y-auto">
+          {filteredTodos.length ? filteredTodos.map(todo => <div key={todo.id} className="flex items-center gap-3 rounded-xl border border-[#e5dad1] px-3 py-2.5">
+            <button type="button" role="checkbox" aria-checked={todo.completed} aria-label={`${todo.completed ? 'Reabrir' : 'Concluir'} tarefa: ${todo.text}`} onClick={() => onUpdateTodos(todos.map(item => item.id === todo.id ? { ...item, completed: !item.completed } : item))} className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${todo.completed ? 'border-[#788063] bg-[#788063] text-white' : 'border-[#b9aaa0] text-transparent hover:border-[#b96f55]'}`}><Check className="h-3.5 w-3.5" /></button>
+            <span className="min-w-0 flex-1"><span className={`block text-sm ${todo.completed ? 'text-[#74675f] line-through' : 'text-[#352f2b]'}`}>{todo.text}</span>{todo.dueDate && <span className="mt-0.5 block text-xs text-[#74675f]">Até {formatDate(todo.dueDate)}</span>}</span>
+            {todo.priority === 'high' && !todo.completed && <span className="rounded-md bg-[#fbeae4] px-2 py-1 text-xs font-semibold text-[#a44132]">Urgente</span>}
+            <button type="button" title="Excluir tarefa" aria-label={`Excluir tarefa: ${todo.text}`} onClick={() => onUpdateTodos(todos.filter(item => item.id !== todo.id))} className="rounded-lg p-2 text-[#8a7a70] hover:bg-[#fbeae4] hover:text-[#a44132]"><Trash2 className="h-3.5 w-3.5" /></button>
+          </div>) : <EmptyState>{todoFilter === 'pending' ? 'Nenhuma tarefa pendente.' : 'Nenhuma tarefa concluída.'}</EmptyState>}
+        </div>
+        <details className="mt-3 border-t border-[#f0e7e0] pt-3">
+          <summary className="cursor-pointer text-xs font-semibold text-[#74675f]">Sugestões de tarefas</summary>
+          <div className="mt-3 flex flex-wrap gap-2">{suggestions.map(text => <button type="button" key={text} onClick={() => { if (!todos.some(todo => todo.text.toLowerCase() === text.toLowerCase())) addTodo(text); }} className="inline-flex items-center gap-1 rounded-lg bg-[#f4eee7] px-2.5 py-2 text-xs text-[#675a51] hover:bg-[#f3e4da]"><Sparkles className="h-3 w-3" />{text}</button>)}</div>
+        </details>
       </section>
-
-      <section className="bg-white rounded-3xl border border-[#eadfd6] p-5 shadow-xs">
-        <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#f0e7e0]">
-          <h3 className="text-xs font-bold text-[#352f2b] uppercase tracking-wider flex items-center gap-1.5">
-            <ShoppingBag className="w-3.5 h-3.5 text-[#766b64]" />
-            Últimos pedidos
-          </h3>
-          <button
-            type="button"
-            onClick={() => onNavigate('sales')}
-            className="text-[11px] font-semibold text-[#a86149] hover:text-[#8b503c] cursor-pointer"
-          >
-            Ver todos
-          </button>
-        </div>
-
-        {recentSales.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {recentSales.map((sale) => (
-              <div
-                key={sale.id}
-                className="flex items-center justify-between p-3 rounded-xl bg-[#fbf8f5] border border-[#f0e7e0] text-xs"
-              >
-                <div className="min-w-0 pr-2">
-                  <span className="font-semibold text-[#352f2b] block truncate">{sale.productName}</span>
-                  <span className="text-[11px] text-[#9d9189]">
-                    {sale.customerName || sale.channel || 'Venda direta'}
-                  </span>
-                </div>
-                <div className="text-right shrink-0">
-                  <span className="font-bold text-[#352f2b] block">{formatCurrency(sale.totalRevenue)}</span>
-                  <span className={`text-[10px] font-semibold ${sale.deliveryStatus === 'pendente_entrega' ? 'text-[#a86149]' : 'text-[#6d7658]'}`}>
-                    {sale.deliveryStatus === 'pendente_entrega' ? 'A entregar' : 'Entregue'}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-[#9d9189] text-center py-4">
-            Nenhum pedido registrado ainda este mês.
-          </p>
-        )}
-      </section>
-
-      {isMonthLoss && (
-        <div className="rounded-2xl border border-[#e9c8bd] bg-[#fbefeb] px-4 py-3 text-xs text-[#87493b] flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 rotate-180 shrink-0" />
-          O resultado do mês está negativo. Toque no resumo para abrir os relatórios.
-        </div>
-      )}
+      {monthProfit < 0 && <p className="rounded-xl border border-[#e9c8bd] bg-[#fbefeb] px-4 py-3 text-sm text-[#87493b]">A estimativa dos pedidos do mês está negativa. Abra os relatórios para conferir os custos.</p>}
     </div>
   );
 };
-

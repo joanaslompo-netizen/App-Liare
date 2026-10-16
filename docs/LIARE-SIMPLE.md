@@ -34,3 +34,15 @@ Esta classificação orienta a reforma; não altera a navegação por si só.
 ## S11 — conceitos distintos
 
 Pausado significa que o material não está em uso no momento; o estoque registrado permanece. Não controlar estoque significa continuar usando e calculando o custo sem inventário físico. O segundo comportamento depende do S10, fora deste grupo; não será simulado usando Pausado.
+
+## Home — computador e iPad, 16/10/2026
+
+- Prioridade atual: uso no computador/iPad; alterações específicas do celular e do botão + ficam para depois.
+- Resumo financeiro compacto, com valor contratado no mês, quanto fica estimado (inclui remuneração) e saldo total a receber. Cálculos financeiros preservados.
+- Entregas e encomendas em destaque; atrasos visíveis; linhas de encomenda abrem o pedido correspondente.
+- Reposição separada de encomendas, limitada a quatro itens inicialmente e sem linhas com reposição de zero unidades. Clique na reposição abre a produção do produto.
+- Insumos em baixa separados da reposição de produtos; acesso ao estoque com filtro.
+- Tarefas com altura conforme conteúdo; pendentes por padrão; concluídas e sugestões acessíveis sob demanda. Blocos redundantes de pedidos removidos da Home; histórico permanece em Pedidos.
+- Atalhos: novo pedido, registrar produção, registrar compra e ajustar estoque. Pedido, compra e produção abrem os formulários; ajuste abre a lista de materiais para escolher o item.
+- Validação: tipagem, compilação, regressão do grupo 1 e simulação integrada dos atalhos (abrir/cancelar/voltar sem alterar dados).
+- A conferência visual da publicação será feita com a sessão de exemplo da nuvem; não representa validação da conta real nem sincronização entre aparelhos.

@@ -178,6 +178,13 @@ export default function App() {
   const [isQuickMoreOpen, setIsQuickMoreOpen] = useState(false);
   const [quickNewSaleSignal, setQuickNewSaleSignal] = useState(0);
   const [quickNewMaterialSignal, setQuickNewMaterialSignal] = useState(0);
+  const [homeNewProductionSignal, setHomeNewProductionSignal] = useState(0);
+  const [homeNewPurchaseSignal, setHomeNewPurchaseSignal] = useState(0);
+
+  useEffect(() => {
+    if (activeTab !== 'productions') setHomeNewProductionSignal(0);
+    if (activeTab !== 'purchases') setHomeNewPurchaseSignal(0);
+  }, [activeTab]);
 
   workspaceRef.current = {
     materials, products, purchases, productions, sales, customers,
@@ -1722,7 +1729,7 @@ export default function App() {
             onUpdateTodos={setTodos}
             onNavigate={(tab, filter) => {
               setActiveTab(tab);
-              if (tab !== 'materials') setFilterLowStockInitial(false);
+              setFilterLowStockInitial(tab === 'materials' && filter === 'low_stock');
               if (tab === 'sales' && (filter === 'pending_delivery' || filter === 'pending_payment' || filter === 'all')) {
                 setSalesInitialFilter(filter);
               } else if (tab === 'sales') {
@@ -1738,7 +1745,22 @@ export default function App() {
             onOpenNewSale={() => {
               setCustomerForNewSale(null);
               setSalesInitialFilter('all');
+              setQuickNewSaleSignal(value => value + 1);
               setActiveTab('sales');
+            }}
+            onOpenNewPurchase={() => {
+              setHomeNewPurchaseSignal(value => value + 1);
+              setActiveTab('purchases');
+            }}
+            onOpenProduction={(product) => {
+              if (product) {
+                setHomeNewProductionSignal(0);
+                handleOpenProductionFromProduct(product);
+              } else {
+                setProductionInitialProduct(null);
+                setHomeNewProductionSignal(value => value + 1);
+                setActiveTab('productions');
+              }
             }}
             onOpenSale={(saleId) => {
               setHomeSaleId(saleId);
@@ -1799,6 +1821,7 @@ export default function App() {
             onSavePurchase={handleSavePurchase}
             onDeletePurchase={handleDeletePurchase}
             onOpenSuppliers={() => setActiveTab('suppliers')}
+            openNewPurchaseSignal={homeNewPurchaseSignal}
           />
         )}
 
@@ -1812,6 +1835,7 @@ export default function App() {
             onDeleteProduction={handleDeleteProduction}
             onNavigateToProducts={() => setActiveTab('products')}
             initialSelectedProduct={productionInitialProduct}
+            openNewProductionSignal={homeNewProductionSignal}
             onClearInitialProduct={() => setProductionInitialProduct(null)}
           />
         )}
