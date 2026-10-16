@@ -28,3 +28,10 @@ Foco aprovado: computador e iPad. Abrir um pedido leva a uma ficha ampla de acom
 - npm run test:group1 e npm run test:finance.
 - npm run test:orders: abertura sem pop-up, quantidade/preço, substituição e inclusão no mesmo pedido, recebimento original preservado, crédito excedente, reserva sem baixa física, entrega parcial, proteção de item entregue, busca e dados preservados ao voltar/reabrir. Dados sintéticos em armazenamento isolado.
 - Conferência visual da versão publicada usa a sessão de exemplos da nuvem. A conta real e a sincronização entre aparelhos não fazem parte dessa comprovação.
+
+## Criação de novo pedido — 16/10/2026
+- Página ampla, com paleta creme/terracota e três etapas: cliente e entrega; produtos; conferir e salvar. Resumo lateral com produtos, desconto, frete e total; custos em área recolhível.
+- As etapas permanecem montadas. Voltar e avançar preserva cliente avulso/cadastrado, cadastro rápido, data, canal, modalidade, entrega, produtos, quantidade/preço, personalizado/composição/seleções variáveis, cupom/desconto manual, frete, categoria de pagamento, entrada, prazo, notas e rascunho.
+- Trocar entre catálogo e personalizado preserva a composição em preenchimento. Concluir bloqueia itens e insumos ainda não adicionados, em vez de descartá-los silenciosamente. Limpar item exige confirmação e não remove itens já adicionados.
+- O salvamento segue a mesma operação financeira. Sem alteração do formato de dados ou da lógica de reserva, recebimento e entrega.
+- test-new-order.tsx verifica criação completa com catálogo + personalizado/composição, navegação de ida/volta, cupom, frete, pagamento parcial, prazos e observações no objeto final. Usa dados sintéticos e não grava na conta real.

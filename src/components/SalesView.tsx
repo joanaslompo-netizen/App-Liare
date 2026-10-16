@@ -5,7 +5,7 @@ import { MoreOptions } from './MoreOptions';
 import { formatOrderNumber } from '../utils/orderNumbers';
 import { getInvoiceTotals } from '../utils/invoice';
 import { InvoiceModal } from './InvoiceModal';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Plus, 
   Search, 
@@ -284,6 +284,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
   return (
     <div className="space-y-6">
+      <div hidden={isModalOpen && !editingSale} className="space-y-6">
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -820,6 +821,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
       )}
 
       {invoiceSale && <InvoiceModal sale={invoiceSale} settings={settings} customers={customers} products={products} onClose={() => setInvoiceSale(null)} />}
+      </div>
       {/* Order / Sale Modal */}
       {isModalOpen && (
         <OrderSaleModal
@@ -899,6 +901,22 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   onClose,
   onSave,
 }) => {
+  const orderSteps = ['Cliente e entrega', 'Produtos', 'Conferir e salvar'];
+  const [step, setStep] = useState(0);
+  const orderHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (!existingSale) orderHeading.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
+  }, [step, existingSale]);
+  const [formError, setFormError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const pendingItem = () => !!(selectedProductIdToAdd || customEditingItemId || customName.trim() || customRecipeItems.length || customMaterialId);
+  const goToStep = (next: number) => {
+    setFormError('');
+    if (next > 0 && !date) { setStep(0); setFormError('Informe a data do pedido para continuar.'); return; }
+    if (next === 2 && pendingItem()) { setStep(1); setFormError('Há um produto em preenchimento. Adicione ou salve esse item antes de conferir o pedido.'); return; }
+    if (next === 2 && items.length === 0) { setStep(1); setFormError('Adicione pelo menos um produto ao pedido.'); return; }
+    setStep(next);
+  };
   const [orderType, setOrderType] = useState<OrderType>(existingSale?.orderType || 'pronta_entrega');
   const [date, setDate] = useState(existingSale?.date || localDateString());
 
@@ -1254,6 +1272,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   };
 
   const handleSaveCustomItem = () => {
+    if (customMaterialId) { setFormError('Adicione o insumo selecionado à composição antes de salvar o item.'); return; }
     const name = customName.trim();
     if (!name) {
       alert('Informe um nome para o item personalizado.');
@@ -1498,8 +1517,20 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   const marginPercent = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
   const isLoss = totalProfit < 0;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
+    if (isAddingPaymentCategory && newPaymentCategoryInput.trim()) { setStep(2); setFormError('Confirme a nova forma de pagamento antes de concluir.'); return; }
+    if (!date) { setStep(0); setFormError('Informe a data do pedido.'); return; }
+    if (!existingSale && (step !== 2 || pendingItem())) { goToStep(2); return; }
+    const invalid = e.currentTarget.querySelector(':invalid') as HTMLInputElement | null;
+    if (invalid) {
+      const section = invalid.closest('section');
+      const index = ['Cliente e entrega', 'Produtos do pedido', 'Conferir e salvar'].indexOf(section?.getAttribute('aria-label') || '');
+      if (index >= 0) setStep(index);
+      setFormError(`Revise o campo ${invalid.getAttribute('aria-label') || 'indicado'}: ${invalid.validationMessage}`);
+      return;
+    }
     if (items.length === 0) {
       alert('Adicione pelo menos um produto ao pedido.');
       return;
@@ -1575,7 +1606,11 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       createdAt: existingSale?.createdAt || today,
     };
 
-    onSave(updatedSale);
+    setIsSaving(true);
+    setFormError('');
+    try { await onSave(updatedSale); }
+    catch { setFormError('Não foi possível salvar. Seus dados continuam aqui; tente novamente.'); }
+    finally { setIsSaving(false); }
   };
 
   const handleAddNewPaymentCategory = () => {
@@ -1612,37 +1647,161 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   };
 
   return (
-    <div className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-2xl my-8 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4.5 border-b border-stone-200 bg-stone-50">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center">
-              <ShoppingBag className="w-5 h-5" />
+    <div className={existingSale ? 'liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto' : 'liare-new-order space-y-6 text-[#352f2b]'}>
+      <div className={existingSale ? 'bg-[#f6f0e9] rounded-2xl border border-[#e5dad1] shadow-2xl w-full max-w-5xl my-8 p-6' : 'w-full'}>
+        <header className="flex items-start justify-between gap-4 mb-6">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-[#947c6c] mb-2">Liare · Pedidos</p>
+            <h2 ref={orderHeading} className="text-3xl font-semibold tracking-tight">{existingSale ? `Editar Pedido #${formatOrderNumber(existingSale.orderNumber)}` : 'Novo pedido'}</h2>
+            <p className="text-sm text-[#75665c] mt-2">{existingSale ? 'Atualize os dados do pedido.' : 'Um passo de cada vez, do primeiro contato à entrega.'}</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-xl border border-[#e5dad1] bg-white px-4 py-2.5 text-sm hover:bg-[#fbf7f2]">{existingSale ? 'Fechar' : 'Cancelar pedido'}</button>
+        </header>
+        {!existingSale && <nav aria-label="Etapas do novo pedido" className="grid grid-cols-3 gap-2 mb-6">
+          {orderSteps.map((label, index) => <button key={label} type="button" aria-current={step === index ? 'step' : undefined} onClick={() => goToStep(index)} className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition-colors ${step === index ? 'border-[#a86149] bg-[#f5e8df] text-[#8b503c]' : 'border-[#e5dad1] bg-white text-[#75665c] hover:bg-[#fbf7f2]'}`}>
+            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm ${step === index ? 'bg-[#a86149] text-white' : 'bg-[#f6f0e9]'}`}>{index + 1}</span><span className="text-sm font-semibold">{label}</span>
+          </button>)}
+        </nav>}
+        <form onSubmit={handleSubmit} noValidate className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="min-w-0 space-y-5">
+            {formError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{formError}</p>}
+<section hidden={!existingSale && step !== 0} aria-label="Cliente e entrega" className="rounded-2xl border border-[#e5dad1] bg-white p-5 sm:p-6 space-y-6">
+ <div><h3 className="text-xl font-semibold">Cliente e entrega</h3><p className="text-sm text-[#75665c] mt-1">Quem está comprando e como vamos atender este pedido.</p></div>
+             <div className="p-4 rounded-xl bg-stone-50 border border-stone-200/90 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <label className="text-xs font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-[#a86149]" />
+                  Cliente do Pedido
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsQuickCustomerOpen(true)}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-amber-900 hover:text-amber-950 bg-amber-100 hover:bg-amber-200/90 border border-amber-300 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                >
+                  <UserPlus className="w-3.5 h-3.5 text-amber-700" />
+                  <span>+ Novo Cliente Rápido</span>
+                </button>
+              </div>
+
+              {selectedCustomer ? (
+                <div className="p-3 bg-amber-50/80 border border-amber-300/90 rounded-xl flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-full bg-amber-200 text-amber-950 font-bold flex items-center justify-center text-xs shrink-0 shadow-2xs">
+                      {selectedCustomer.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-stone-900 text-sm truncate">
+                          {selectedCustomer.name}
+                        </span>
+                        {isBirthdayInMonth(selectedCustomer.birthdate) && (
+                          <span className="inline-flex items-center gap-0.5 text-xs font-extrabold bg-amber-200 text-amber-950 px-1.5 py-0.2 rounded border border-[#a86149]">
+                            <Cake className="w-2.5 h-2.5 text-amber-800" />
+                            Aniversariante!
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-stone-600 mt-0.5 flex-wrap">
+                        {selectedCustomer.phone && <span>{selectedCustomer.phone}</span>}
+                        {selectedCustomer.birthdate && (
+                          <span className="text-stone-500">🎂 {formatBirthday(selectedCustomer.birthdate)}</span>
+                        )}
+                        {(selectedCustomer.defaultDiscountCodeId || (selectedCustomer.defaultDiscountPercent || 0) > 0) && (
+                          <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-[#f5e8df] text-[#8b503c] border border-[#ead4c8]">
+                            {selectedCustomer.defaultDiscountCodeId
+                              ? (discountCodes.find((code) => code.id === selectedCustomer.defaultDiscountCodeId)?.code || 'Cupom')
+                              : `${selectedCustomer.defaultDiscountPercent}%`}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomerId(undefined);
+                      setCustomerName('');
+                      setCustomerContact('');
+                    }}
+                    className="text-xs text-stone-500 hover:text-rose-600 font-medium underline cursor-pointer shrink-0"
+                  >
+                    Trocar / Desvincular
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  <div>
+                    <label className="block text-xs font-semibold text-stone-600 mb-1">
+                      Selecione um cliente já cadastrado ({customers.length} disponíveis):
+                    </label>
+                    <CustomerSearch customers={customers} value={customerId || ''} label="Buscar cliente cadastrado" onChange={id => {
+                      const found = customers.find(customer => customer.id === id);
+                      setCustomerId(found?.id);
+                      if (found) { setCustomerName(found.name); setCustomerContact(found.phone); }
+                    }} />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-stone-200/70">
+                    <div>
+                      <label className="block text-xs font-semibold text-stone-600 mb-0.5">
+                        Ou digite o Nome avulso:
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Amanda Silva (Cliente balcão)"
+                        aria-label="Nome avulso" value={customerName}
+                        onChange={(e) => {
+                          setCustomerName(e.target.value);
+                          setCustomerId(undefined);
+                        }}
+                        className="w-full px-3 py-1.5 text-xs bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-[#a86149] text-stone-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-stone-600 mb-0.5">
+                        Telefone / WhatsApp:
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: (11) 99999-0000"
+                        aria-label="Telefone / WhatsApp" value={customerContact}
+                        onChange={(e) => setCustomerContact(e.target.value)}
+                        className="w-full px-3 py-1.5 text-xs bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-[#a86149] text-stone-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             <div>
-              <h3 className="font-bold text-stone-900 text-lg">
-                {existingSale ? `Editar Pedido #${formatOrderNumber(existingSale.orderNumber)}` : 'Registrar Pedido / Venda'}
-              </h3>
-              <p className="text-xs text-stone-500">
-                Adicione um ou múltiplos produtos, selecione quantidades e acompanhe prazos
-              </p>
+              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                Data do Pedido *
+              </label>
+              <input
+                type="date"
+                required
+                aria-label="Data do pedido" value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full sm:w-60 px-3 py-2 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-[#a86149] text-stone-900"
+              />
             </div>
+          <div>
+            <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+              Canal de Venda
+            </label>
+            <select
+              aria-label="Canal de venda" value={channel}
+              onChange={(e) => setChannel(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-[#a86149] text-stone-900"
+            >
+              <option value="Instagram">Instagram Direct</option>
+              <option value="WhatsApp">WhatsApp</option>
+              <option value="Elo7">Elo7</option>
+              <option value="Feira Criativa">Feira / Bazar</option>
+              <option value="Loja Parceira">Loja Parceira</option>
+              <option value="Outro">Outro</option>
+            </select>
           </div>
-          <button 
-            onClick={onClose} 
-            className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 rounded-lg cursor-pointer transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[82vh] overflow-y-auto">
-          <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Após salvar, use Movimentos para registrar pagamentos, crédito e entregas. Editar este formulário preserva os valores já recebidos.</p>
-<label className="block text-sm">Frete cobrado do cliente (R$)<input type="number" min="0" step="0.01" className="mt-1 w-full rounded-xl border p-2 text-base" value={shippingCharged} onChange={e=>setShippingCharged(e.target.value)}/></label>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={isDraft} disabled={!!existingSale && (existingSale.amountPaid || 0)>0} onChange={e => setIsDraft(e.target.checked)} />Salvar como rascunho, sem reservar estoque</label>
-          {/* Order Type Toggle */}
           <div>
             <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2">
               Modalidade de Atendimento *
@@ -1653,14 +1812,14 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                 onClick={() => handleOrderTypeChange('pronta_entrega')}
                 className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
                   orderType === 'pronta_entrega'
-                    ? 'bg-amber-50 border-amber-400 text-stone-900 ring-2 ring-amber-400/20 shadow-xs'
+                    ? 'bg-amber-50 border-[#a86149] text-stone-900 ring-2 ring-[#a86149]/20 shadow-xs'
                     : 'bg-stone-50/70 border-stone-200 text-stone-600 hover:bg-stone-100'
                 }`}
               >
-                <Tag className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <Tag className="w-4 h-4 text-[#a86149] shrink-0 mt-0.5" />
                 <div>
                   <span className="block text-xs font-bold">Pronta Entrega</span>
-                  <span className="text-[11px] text-stone-500">Peças prontas para entrega imediata</span>
+                  <span className="text-xs text-stone-500">Peças prontas para entrega imediata</span>
                 </div>
               </button>
 
@@ -1669,24 +1828,70 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                 onClick={() => handleOrderTypeChange('encomenda')}
                 className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
                   orderType === 'encomenda'
-                    ? 'bg-amber-50 border-amber-400 text-stone-900 ring-2 ring-amber-400/20 shadow-xs'
+                    ? 'bg-amber-50 border-[#a86149] text-stone-900 ring-2 ring-[#a86149]/20 shadow-xs'
                     : 'bg-stone-50/70 border-stone-200 text-stone-600 hover:bg-stone-100'
                 }`}
               >
-                <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <Clock className="w-4 h-4 text-[#a86149] shrink-0 mt-0.5" />
                 <div>
                   <span className="block text-xs font-bold">Encomenda / Pedido</span>
-                  <span className="text-[11px] text-stone-500">Produzir para entregar depois</span>
+                  <span className="text-xs text-stone-500">Produzir para entregar depois</span>
                 </div>
               </button>
             </div>
           </div>
+          <div className="p-4 rounded-xl bg-stone-50 border border-stone-200/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
+                <Truck className="w-4 h-4 text-[#a86149]" />
+                Controle de Entrega
+              </span>
+              <div className="flex items-center gap-2">
+                <label className="inline-flex items-center gap-1 text-xs cursor-pointer">
+                  <input
+                    type="radio"
+                    name="deliveryStatus"
+                    checked={deliveryStatus === 'entregue'}
+                    onChange={() => setDeliveryStatus('entregue')}
+                    className="text-[#a86149] focus:ring-[#a86149]"
+                  />
+                  <span className="font-semibold text-stone-800">Já Entregue</span>
+                </label>
+                <label className="inline-flex items-center gap-1 text-xs cursor-pointer ml-2">
+                  <input
+                    type="radio"
+                    name="deliveryStatus"
+                    checked={deliveryStatus === 'pendente_entrega'}
+                    onChange={() => setDeliveryStatus('pendente_entrega')}
+                    className="text-[#a86149] focus:ring-[#a86149]"
+                  />
+                  <span className="font-semibold text-amber-900">Entregar Depois 📦</span>
+                </label>
+              </div>
+            </div>
 
-          {/* SECTION: Products & Items (Multi-item support with searchable combobox & quantity selectors) */}
-          <div className="bg-stone-50/80 border border-stone-200 rounded-xl p-4 space-y-3">
+            {deliveryStatus === 'pendente_entrega' && (
+              <div className="pt-2 border-t border-stone-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <label className="text-xs font-semibold text-stone-700 flex items-center gap-1">
+                  <CalendarCheck className="w-3.5 h-3.5 text-[#a86149]" />
+                  Data Programada para Entrega:
+                </label>
+                <input
+                  type="date"
+                  aria-label="Data programada para entrega" value={deliveryScheduledDate}
+                  onChange={(e) => setDeliveryScheduledDate(e.target.value)}
+                  className="w-full sm:w-48 px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-lg focus:ring-2 focus:ring-[#a86149] text-stone-900 font-semibold"
+                />
+              </div>
+            )}
+          </div>
+</section>
+<section hidden={!existingSale && step !== 1} aria-label="Produtos do pedido" className="rounded-2xl border border-[#e5dad1] bg-white p-5 sm:p-6 space-y-6">
+ <div><h3 className="text-xl font-semibold">Produtos do pedido</h3><p className="text-sm text-[#75665c] mt-1">Escolha as peças do catálogo ou monte um item personalizado.</p></div>
+           <div className="bg-stone-50/80 border border-stone-200 rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-stone-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Package className="w-4 h-4 text-amber-600" />
+                <Package className="w-4 h-4 text-[#a86149]" />
                 Produtos do Pedido ({items.length} {items.length === 1 ? 'item' : 'itens'}) *
               </label>
               {items.length > 0 && (
@@ -1698,19 +1903,23 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
             {/* Adicionar item do catálogo ou item personalizado de uso único */}
             <div className="bg-white p-3 rounded-xl border border-stone-200 shadow-2xs space-y-3">
+              {pendingItem() && <button type="button" onClick={() => {
+                if (!confirm('Descartar somente o item em preenchimento? Os itens já adicionados serão mantidos.')) return;
+                resetCustomItemEditor(); setSelectedProductIdToAdd(''); setPriceToAdd(''); setQtyToAdd('1'); setFormError('');
+              }} className="text-xs text-[#a86149] underline">Limpar item em preenchimento</button>}
               <div className="flex items-center justify-between gap-3 flex-wrap">
-                <span className="text-[11px] font-bold text-stone-700">
+                <span className="text-xs font-bold text-stone-700">
                   Buscar e Adicionar Peça ao Pedido:
                 </span>
 
-                <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-stone-600 cursor-pointer select-none">
+                <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-600 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={isCustomItemMode}
                     onChange={(e) => {
                       const checked = e.target.checked;
                       setIsCustomItemMode(checked);
-                      if (!checked) resetCustomItemEditor();
+                      // Keep the unfinished composition when switching item types.
                     }}
                     className="w-3.5 h-3.5 rounded border-stone-300 text-purple-600 focus:ring-purple-500"
                   />
@@ -1721,7 +1930,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
               {!isCustomItemMode ? (
                 <div className="sm:col-span-12">
-                  <label className="block text-[10px] font-bold text-stone-500 mb-0.5">
+                  <label className="block text-xs font-bold text-stone-500 mb-0.5">
                     Produto (Digite o nome para buscar)
                   </label>
 
@@ -1742,7 +1951,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
                       <div className="sm:col-span-4">
-                        <label className="block text-[10px] font-bold text-stone-500 mb-0.5">Qtd</label>
+                        <label className="block text-xs font-bold text-stone-500 mb-0.5">Qtd</label>
                         <div className="flex w-full">
                           <button
                             type="button"
@@ -1760,9 +1969,9 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                             type="number"
                             min="1"
                             step="1"
-                            value={qtyToAdd}
+                            aria-label="Quantidade do produto" value={qtyToAdd}
                             onChange={(e) => setQtyToAdd(e.target.value)}
-                            className="min-w-0 flex-1 px-2.5 py-2 text-sm bg-white border border-stone-300 focus:ring-2 focus:ring-amber-500 text-stone-900 font-bold text-center"
+                            className="min-w-0 flex-1 px-2.5 py-2 text-sm bg-white border border-stone-300 focus:ring-2 focus:ring-[#a86149] text-stone-900 font-bold text-center"
                             placeholder="1"
                           />
                           <button
@@ -1781,12 +1990,12 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                       </div>
 
                       <div className="sm:col-span-4">
-                        <label className="block text-[10px] font-bold text-stone-500 mb-0.5">Preço (R$)</label>
+                        <label className="block text-xs font-bold text-stone-500 mb-0.5">Preço (R$)</label>
                         <input
                           type="number"
                           step="0.01"
                           min="0"
-                          value={priceToAdd}
+                          aria-label="Preço do produto" value={priceToAdd}
                           onChange={(e) => setPriceToAdd(e.target.value)}
                           onBlur={() => {
                             const parsed = parseFloat(priceToAdd);
@@ -1794,7 +2003,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                               setPriceToAdd(Math.max(0, parsed).toFixed(2));
                             }
                           }}
-                          className="w-full px-2.5 py-2 text-sm font-bold text-center bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
+                          className="w-full px-2.5 py-2 text-sm font-bold text-center bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-[#a86149] text-stone-900"
                           placeholder="0,00"
                         />
                       </div>
@@ -1803,7 +2012,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                         <button
                           type="button"
                           onClick={handleAddItem}
-                          className="w-full py-2 px-3 bg-amber-500 hover:bg-amber-600 text-stone-950 text-xs font-bold rounded-lg transition-colors flex items-center justify-center cursor-pointer active:scale-98 shadow-2xs"
+                          className="w-full py-2 px-3 bg-[#a86149] hover:bg-[#915039] text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center cursor-pointer active:scale-98 shadow-2xs"
                         >
                           <span>Adicionar</span>
                         </button>
@@ -1815,12 +2024,12 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                 <div className="rounded-xl border border-purple-200 bg-purple-50/60 p-3 space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
                     <div className="sm:col-span-6">
-                      <label className="block text-[10px] font-bold text-stone-600 mb-0.5">
+                      <label className="block text-xs font-bold text-stone-600 mb-0.5">
                         Nome do item personalizado *
                       </label>
                       <input
                         type="text"
-                        value={customName}
+                        aria-label="Nome do item personalizado" value={customName}
                         onChange={(e) => setCustomName(e.target.value)}
                         placeholder="Ex: Vela em recipiente da cliente"
                         className="w-full px-3 py-2 text-sm bg-white border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 text-stone-900"
@@ -1828,24 +2037,24 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                     </div>
 
                     <div className="sm:col-span-2">
-                      <label className="block text-[10px] font-bold text-stone-600 mb-0.5">Qtd</label>
+                      <label className="block text-xs font-bold text-stone-600 mb-0.5">Qtd</label>
                       <input
                         type="number"
                         min="1"
                         step="1"
-                        value={customQty}
+                        aria-label="Quantidade personalizada" value={customQty}
                         onChange={(e) => setCustomQty(e.target.value)}
                         className="w-full px-2.5 py-2 text-sm bg-white border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 text-stone-900 font-bold text-center"
                       />
                     </div>
 
                     <div className="sm:col-span-2">
-                      <label className="block text-[10px] font-bold text-stone-600 mb-0.5">Preço (opcional)</label>
+                      <label className="block text-xs font-bold text-stone-600 mb-0.5">Preço (opcional)</label>
                       <input
                         type="number"
                         step="0.01"
                         min="0"
-                        value={customPrice}
+                        aria-label="Preço personalizado" value={customPrice}
                         onChange={(e) => setCustomPrice(e.target.value)}
                         className="w-full px-2.5 py-2 text-sm bg-white border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 text-stone-900"
                         placeholder="0,00"
@@ -1867,17 +2076,17 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                   <div className="pt-2 border-t border-purple-200/80 space-y-2">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div>
-                        <span className="text-[11px] font-bold text-purple-950">Insumos / composição</span>
-                        <span className="text-[10px] text-purple-700 ml-1.5">opcional — pode preencher depois</span>
+                        <span className="text-xs font-bold text-purple-950">Insumos / composição</span>
+                        <span className="text-xs text-purple-700 ml-1.5">opcional — pode preencher depois</span>
                       </div>
-                      <span className="text-[10px] font-semibold text-purple-800">
+                      <span className="text-xs font-semibold text-purple-800">
                         Custo atual: {formatCurrency(customRecipeItems.reduce((sum, item) => sum + (item.totalCost || 0), 0))}
                       </span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
                       <div className="sm:col-span-7">
-                        <label className="block text-[10px] font-bold text-stone-500 mb-0.5">Material</label>
+                        <label className="block text-xs font-bold text-stone-500 mb-0.5">Material</label>
                         <SearchableMaterialCombobox
                           materials={materials}
                           selectedMaterialId={customMaterialId}
@@ -1891,12 +2100,12 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                       </div>
 
                       <div className="sm:col-span-3">
-                        <label className="block text-[10px] font-bold text-stone-500 mb-0.5">Quantidade</label>
+                        <label className="block text-xs font-bold text-stone-500 mb-0.5">Quantidade</label>
                         <input
                           type="number"
                           min="0.0001"
                           step="any"
-                          value={customMaterialQty}
+                          aria-label="Quantidade do insumo" value={customMaterialQty}
                           onChange={(e) => setCustomMaterialQty(e.target.value)}
                           className="w-full px-2.5 py-2 text-sm bg-white border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 text-stone-900"
                         />
@@ -1906,7 +2115,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                         <button
                           type="button"
                           onClick={handleAddCustomMaterial}
-                          className="w-full py-2 px-2.5 bg-white hover:bg-purple-50 border border-purple-300 text-purple-900 text-[11px] font-bold rounded-lg"
+                          className="w-full py-2 px-2.5 bg-white hover:bg-purple-50 border border-purple-300 text-purple-900 text-xs font-bold rounded-lg"
                         >
                           + Insumo
                         </button>
@@ -1916,8 +2125,8 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                     {selectedCustomMaterial?.isVirtualRecipe && customVirtualRequirements.length > 0 && (
                       <div className="rounded-lg border border-purple-200 bg-white p-3 space-y-2">
                         <div>
-                          <span className="text-[11px] font-bold text-purple-950">Escolha da receita virtual</span>
-                          <p className="text-[10px] text-purple-700 mt-0.5">
+                          <span className="text-xs font-bold text-purple-950">Escolha da receita virtual</span>
+                          <p className="text-xs text-purple-700 mt-0.5">
                             Selecione agora qual material será usado nas categorias variáveis desta receita.
                           </p>
                         </div>
@@ -1929,7 +2138,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                             );
                             return (
                               <div key={requirement.recipeItemId}>
-                                <label className="block text-[10px] font-bold text-stone-600 mb-0.5">
+                                <label className="block text-xs font-bold text-stone-600 mb-0.5">
                                   {requirement.category} *
                                 </label>
                                 <SearchableMaterialCombobox
@@ -1957,18 +2166,18 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                           <div key={recipeItem.id} className="flex items-center justify-between gap-2 bg-white rounded-lg border border-purple-100 px-2.5 py-2">
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 min-w-0">
-                                <span className="text-[11px] font-bold text-stone-800 block truncate">{recipeItem.name}</span>
+                                <span className="text-xs font-bold text-stone-800 block truncate">{recipeItem.name}</span>
                                 {materials.find((m) => m.id === recipeItem.targetId)?.isVirtualRecipe && (
                                   <span className="shrink-0 text-[9px] font-bold text-purple-800 bg-purple-100 border border-purple-200 rounded px-1.5 py-0.5">
                                     Receita virtual
                                   </span>
                                 )}
                               </div>
-                              <span className="text-[10px] text-stone-500">
+                              <span className="text-xs text-stone-500">
                                 {recipeItem.quantity} {recipeItem.unit} × {formatCurrency(recipeItem.unitCost)}
                               </span>
                               {recipeItem.categorySelections && Object.keys(recipeItem.categorySelections).length > 0 && (
-                                <div className="text-[10px] text-purple-700 mt-0.5">
+                                <div className="text-xs text-purple-700 mt-0.5">
                                   {Object.entries(recipeItem.categorySelections).map(([recipeItemId, materialId]) => {
                                     const virtualMaterial = materials.find((m) => m.id === recipeItem.targetId);
                                     const categoryItem = virtualMaterial?.recipeItems?.find((item) => item.id === recipeItemId);
@@ -1983,7 +2192,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                               )}
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-[11px] font-bold text-stone-800">{formatCurrency(recipeItem.totalCost)}</span>
+                              <span className="text-xs font-bold text-stone-800">{formatCurrency(recipeItem.totalCost)}</span>
                               <button
                                 type="button"
                                 onClick={() => setCustomRecipeItems((prev) => prev.filter((item) => item.id !== recipeItem.id))}
@@ -2005,7 +2214,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                           resetCustomItemEditor();
                           setIsCustomItemMode(false);
                         }}
-                        className="text-[10px] font-semibold text-stone-500 hover:text-stone-800 underline"
+                        className="text-xs font-semibold text-stone-500 hover:text-stone-800 underline"
                       >
                         Cancelar edição do item
                       </button>
@@ -2051,7 +2260,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                               {item.productName}
                             </span>
                           </div>
-                          <span className="text-[11px] text-stone-500">
+                          <span className="text-xs text-stone-500">
                             {item.isCustom && (!item.customRecipeItems || item.customRecipeItems.length === 0)
                               ? 'Custo ainda não preenchido'
                               : `Custo un: ${formatCurrency(item.unitCost)}`}
@@ -2061,7 +2270,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                             const stockInfo = getModalStockInfo(item);
                             return (
                               <div className="mt-1.5">
-                                <div className="flex items-center gap-x-2 gap-y-0.5 flex-wrap text-[10px]">
+                                <div className="flex items-center gap-x-2 gap-y-0.5 flex-wrap text-xs">
                                   <span className="text-stone-500">
                                     Estoque físico: <strong className="text-stone-700">{stockInfo.physical}</strong>
                                   </span>
@@ -2083,7 +2292,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => handleReserveItemInModal(item)}
-                                      className="px-2 py-1 rounded-md bg-stone-900 text-white text-[10px] font-bold hover:bg-stone-800"
+                                      className="px-2 py-1 rounded-md bg-stone-900 text-white text-xs font-bold hover:bg-stone-800"
                                     >
                                       Reservar
                                     </button>
@@ -2092,7 +2301,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => handleReleaseItemInModal(item)}
-                                      className="px-2 py-1 rounded-md border border-stone-300 bg-white text-stone-600 text-[10px] font-semibold hover:bg-stone-100"
+                                      className="px-2 py-1 rounded-md border border-stone-300 bg-white text-stone-600 text-xs font-semibold hover:bg-stone-100"
                                     >
                                       Liberar reserva
                                     </button>
@@ -2113,7 +2322,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                                 type="button"
                                 onClick={() => handleProduceCustomItemNow(item)}
                                 disabled={!existingSale || !item.customRecipeItems?.length}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-purple-200 bg-purple-50 text-purple-800 text-[10px] font-bold hover:bg-purple-100 disabled:opacity-45 disabled:cursor-not-allowed transition-colors"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-purple-200 bg-purple-50 text-purple-800 text-xs font-bold hover:bg-purple-100 disabled:opacity-45 disabled:cursor-not-allowed transition-colors"
                                 title={
                                   !existingSale
                                     ? 'Salve o pedido primeiro para liberar a produção'
@@ -2126,12 +2335,12 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                                 Produzir +1
                               </button>
                               {(item.customProducedQuantity || 0) > 0 && (
-                                <span className="text-[10px] font-semibold text-emerald-700">
+                                <span className="text-xs font-semibold text-emerald-700">
                                   Produzido: {item.customProducedQuantity} un
                                 </span>
                               )}
                               {!existingSale && (
-                                <span className="text-[10px] text-stone-400">
+                                <span className="text-xs text-stone-400">
                                   salve o pedido para produzir
                                 </span>
                               )}
@@ -2156,7 +2365,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                           min="1"
                           value={item.quantity}
                           onChange={(e) => handleUpdateItemQty(itemId, parseInt(e.target.value, 10) || 1)}
-                          className="w-12 py-1 text-xs font-bold text-center bg-stone-50 border border-stone-200 rounded-md focus:ring-1 focus:ring-amber-500 text-stone-900"
+                          className="w-12 py-1 text-xs font-bold text-center bg-stone-50 border border-stone-200 rounded-md focus:ring-1 focus:ring-[#a86149] text-stone-900"
                         />
                         <button
                           type="button"
@@ -2170,14 +2379,14 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
                       {/* Item Price */}
                       <div className="flex items-center gap-1 shrink-0 w-24">
-                        <span className="text-[11px] text-stone-400 font-medium">R$</span>
+                        <span className="text-xs text-stone-400 font-medium">R$</span>
                         <input
                           type="number"
                           step="0.01"
                           min="0"
                           value={item.unitPrice}
                           onChange={(e) => handleUpdateItemPrice(itemId, parseFloat(e.target.value) || 0)}
-                          className="w-full py-1 px-1.5 text-xs font-semibold bg-stone-50 border border-stone-200 rounded-md focus:ring-1 focus:ring-amber-500 text-stone-900 text-right"
+                          className="w-full py-1 px-1.5 text-xs font-semibold bg-stone-50 border border-stone-200 rounded-md focus:ring-1 focus:ring-[#a86149] text-stone-900 text-right"
                         />
                       </div>
 
@@ -2214,222 +2423,10 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
               </div>
             )}
           </div>
-
-          {/* Date, Customer Selection & Quick Add */}
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                Data do Pedido *
-              </label>
-              <input
-                type="date"
-                required
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full sm:w-60 px-3 py-2 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900"
-              />
-            </div>
-
-            {/* Customer Box */}
-            <div className="p-4 rounded-xl bg-stone-50 border border-stone-200/90 space-y-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <label className="text-xs font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <Users className="w-4 h-4 text-amber-600" />
-                  Cliente do Pedido
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setIsQuickCustomerOpen(true)}
-                  className="inline-flex items-center gap-1 text-xs font-bold text-amber-900 hover:text-amber-950 bg-amber-100 hover:bg-amber-200/90 border border-amber-300 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-2xs"
-                >
-                  <UserPlus className="w-3.5 h-3.5 text-amber-700" />
-                  <span>+ Novo Cliente Rápido</span>
-                </button>
-              </div>
-
-              {selectedCustomer ? (
-                <div className="p-3 bg-amber-50/80 border border-amber-300/90 rounded-xl flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-full bg-amber-200 text-amber-950 font-bold flex items-center justify-center text-xs shrink-0 shadow-2xs">
-                      {selectedCustomer.name.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-bold text-stone-900 text-sm truncate">
-                          {selectedCustomer.name}
-                        </span>
-                        {isBirthdayInMonth(selectedCustomer.birthdate) && (
-                          <span className="inline-flex items-center gap-0.5 text-[10px] font-extrabold bg-amber-200 text-amber-950 px-1.5 py-0.2 rounded border border-amber-400">
-                            <Cake className="w-2.5 h-2.5 text-amber-800" />
-                            Aniversariante!
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-stone-600 mt-0.5 flex-wrap">
-                        {selectedCustomer.phone && <span>{selectedCustomer.phone}</span>}
-                        {selectedCustomer.birthdate && (
-                          <span className="text-stone-500">🎂 {formatBirthday(selectedCustomer.birthdate)}</span>
-                        )}
-                        {(selectedCustomer.defaultDiscountCodeId || (selectedCustomer.defaultDiscountPercent || 0) > 0) && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#f5e8df] text-[#8b503c] border border-[#ead4c8]">
-                            {selectedCustomer.defaultDiscountCodeId
-                              ? (discountCodes.find((code) => code.id === selectedCustomer.defaultDiscountCodeId)?.code || 'Cupom')
-                              : `${selectedCustomer.defaultDiscountPercent}%`}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCustomerId(undefined);
-                      setCustomerName('');
-                      setCustomerContact('');
-                    }}
-                    className="text-xs text-stone-500 hover:text-rose-600 font-medium underline cursor-pointer shrink-0"
-                  >
-                    Trocar / Desvincular
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-stone-600 mb-1">
-                      Selecione um cliente já cadastrado ({customers.length} disponíveis):
-                    </label>
-                    <CustomerSearch customers={customers} value={customerId || ''} label="Buscar cliente cadastrado" onChange={id => {
-                      const found = customers.find(customer => customer.id === id);
-                      setCustomerId(found?.id);
-                      if (found) { setCustomerName(found.name); setCustomerContact(found.phone); }
-                    }} />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-stone-200/70">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-stone-600 mb-0.5">
-                        Ou digite o Nome avulso:
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ex: Amanda Silva (Cliente balcão)"
-                        value={customerName}
-                        onChange={(e) => {
-                          setCustomerName(e.target.value);
-                          setCustomerId(undefined);
-                        }}
-                        className="w-full px-3 py-1.5 text-xs bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-stone-600 mb-0.5">
-                        Telefone / WhatsApp:
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ex: (11) 99999-0000"
-                        value={customerContact}
-                        onChange={(e) => setCustomerContact(e.target.value)}
-                        className="w-full px-3 py-1.5 text-xs bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Payment Category Selection: "offline", "site" ou +nova categoria */}
-            <div className="p-4 rounded-xl bg-stone-50 border border-stone-200/90 space-y-2.5">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <label className="text-xs font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <CreditCard className="w-4 h-4 text-amber-600" />
-                  Forma / Canal de Pagamento *
-                </label>
-                {!isAddingPaymentCategory && (
-                  <button
-                    type="button"
-                    onClick={() => setIsAddingPaymentCategory(true)}
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-stone-700 hover:text-stone-900 bg-white hover:bg-stone-100 border border-stone-300 px-2 py-1 rounded-lg transition-colors cursor-pointer"
-                  >
-                    <Plus className="w-3 h-3 text-amber-600" />
-                    <span>+ Nova Categoria</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Badges / Options */}
-              <div className="flex flex-wrap items-center gap-2">
-                {allPaymentCategories.map((method) => {
-                  const isSelected = paymentMethod.toLowerCase() === method.toLowerCase();
-                  const isOffline = method.toLowerCase() === 'offline';
-                  const isSite = method.toLowerCase() === 'site';
-
-                  return (
-                    <button
-                      key={method}
-                      type="button"
-                      onClick={() => setPaymentMethod(method)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
-                        isSelected
-                          ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
-                          : 'bg-white text-stone-700 border-stone-200 hover:border-amber-400 hover:bg-amber-50/40'
-                      }`}
-                    >
-                      {isOffline ? (
-                        <Store className={`w-3.5 h-3.5 ${isSelected ? 'text-amber-400' : 'text-stone-500'}`} />
-                      ) : isSite ? (
-                        <Globe className={`w-3.5 h-3.5 ${isSelected ? 'text-blue-400' : 'text-stone-500'}`} />
-                      ) : (
-                        <Tag className={`w-3.5 h-3.5 ${isSelected ? 'text-amber-400' : 'text-stone-500'}`} />
-                      )}
-                      <span>{method}</span>
-                      {isSelected && <Check className="w-3 h-3 text-amber-400 ml-0.5" />}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Inline input to add custom payment category */}
-              {isAddingPaymentCategory && (
-                <div className="flex items-center gap-2 pt-1">
-                  <input
-                    type="text"
-                    placeholder="Nome da categoria (ex: Pix, Cartão, Boleto, etc.)"
-                    value={newPaymentCategoryInput}
-                    onChange={(e) => setNewPaymentCategoryInput(e.target.value)}
-                    className="px-3 py-1.5 text-xs bg-white border border-amber-400 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900 flex-1"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddNewPaymentCategory();
-                      }
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddNewPaymentCategory}
-                    className="px-3 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-stone-950 rounded-lg cursor-pointer"
-                  >
-                    Adicionar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAddingPaymentCategory(false);
-                      setNewPaymentCategoryInput('');
-                    }}
-                    className="px-2 py-1.5 text-xs text-stone-500 hover:text-stone-800 cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Order Discount */}
-          <div className="p-4 rounded-xl bg-[#fbf7f2] border border-[#eadfd6] space-y-3">
+</section>
+<section hidden={!existingSale && step !== 2} aria-label="Conferir e salvar" className="rounded-2xl border border-[#e5dad1] bg-white p-5 sm:p-6 space-y-6">
+ <div><h3 className="text-xl font-semibold">Conferir e salvar</h3><p className="text-sm text-[#75665c] mt-1">Revise os valores, o recebimento e os detalhes combinados.</p></div>
+           <div className="p-4 rounded-xl bg-[#fbf7f2] border border-[#eadfd6] space-y-3">
             <div className="flex items-center justify-between gap-2">
               <label className="text-xs font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
                 <Percent className="w-4 h-4 text-[#b96f55]" />
@@ -2459,7 +2456,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                       setManualDiscountValue('');
                     }
                   }}
-                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${discountMode === mode ? 'bg-[#b96f55] text-white border-[#b96f55]' : 'bg-white text-stone-600 border-stone-200 hover:border-[#c98a72]'}`}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${discountMode === mode ? 'bg-[#b96f55] text-white border-[#b96f55]' : 'bg-white text-stone-600 border-stone-200 hover:border-[#c98a72]'}`}
                 >
                   {label}
                 </button>
@@ -2468,7 +2465,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
             {discountMode === 'code' && (
               <select
-                value={discountCodeId}
+                aria-label="Cupom de desconto" value={discountCodeId}
                 onChange={(e) => setDiscountCodeId(e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-[#b96f55] text-stone-900"
               >
@@ -2488,7 +2485,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                   min="0"
                   max={discountMode === 'percentage' ? 100 : undefined}
                   step="0.01"
-                  value={manualDiscountValue}
+                  aria-label="Valor do desconto" value={manualDiscountValue}
                   onChange={(e) => setManualDiscountValue(e.target.value)}
                   placeholder={discountMode === 'percentage' ? 'Ex: 10' : 'Ex: 20,00'}
                   className="w-full px-3 py-2 pr-10 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-[#b96f55] text-stone-900"
@@ -2500,81 +2497,101 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
             )}
 
             {selectedCustomer && (
-              <div className="text-[10px] text-stone-500">
+              <div className="text-xs text-stone-500">
                 {selectedCustomer.defaultDiscountCodeId || (selectedCustomer.defaultDiscountPercent || 0) > 0
                   ? 'Benefício padrão do cliente aplicado automaticamente neste novo pedido.'
                   : 'Este cliente não possui benefício padrão cadastrado.'}
               </div>
             )}
           </div>
-
-          {/* Channel */}
-          <div>
-            <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-              Canal de Venda
-            </label>
-            <select
-              value={channel}
-              onChange={(e) => setChannel(e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900"
-            >
-              <option value="Instagram">Instagram Direct</option>
-              <option value="WhatsApp">WhatsApp</option>
-              <option value="Elo7">Elo7</option>
-              <option value="Feira Criativa">Feira / Bazar</option>
-              <option value="Loja Parceira">Loja Parceira</option>
-              <option value="Outro">Outro</option>
-            </select>
-          </div>
-
-          {/* Delivery Configuration Section */}
-          <div className="p-4 rounded-xl bg-stone-50 border border-stone-200/80 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Truck className="w-4 h-4 text-amber-600" />
-                Controle de Entrega
-              </span>
-              <div className="flex items-center gap-2">
-                <label className="inline-flex items-center gap-1 text-xs cursor-pointer">
-                  <input
-                    type="radio"
-                    name="deliveryStatus"
-                    checked={deliveryStatus === 'entregue'}
-                    onChange={() => setDeliveryStatus('entregue')}
-                    className="text-amber-600 focus:ring-amber-500"
-                  />
-                  <span className="font-semibold text-stone-800">Já Entregue</span>
+<label className="block text-sm">Frete cobrado do cliente (R$)<input type="number" min="0" step="0.01" className="mt-1 w-full rounded-xl border p-2 text-base" aria-label="Frete cobrado" value={shippingCharged} onChange={e=>setShippingCharged(e.target.value)}/></label>
+            <div className="p-4 rounded-xl bg-stone-50 border border-stone-200/90 space-y-2.5">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <label className="text-xs font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <CreditCard className="w-4 h-4 text-[#a86149]" />
+                  Forma / Canal de Pagamento *
                 </label>
-                <label className="inline-flex items-center gap-1 text-xs cursor-pointer ml-2">
-                  <input
-                    type="radio"
-                    name="deliveryStatus"
-                    checked={deliveryStatus === 'pendente_entrega'}
-                    onChange={() => setDeliveryStatus('pendente_entrega')}
-                    className="text-amber-600 focus:ring-amber-500"
-                  />
-                  <span className="font-semibold text-amber-900">Entregar Depois 📦</span>
-                </label>
+                {!isAddingPaymentCategory && (
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingPaymentCategory(true)}
+                    className="inline-flex items-center gap-1 text-xs font-bold text-stone-700 hover:text-stone-900 bg-white hover:bg-stone-100 border border-stone-300 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3 text-[#a86149]" />
+                    <span>+ Nova Categoria</span>
+                  </button>
+                )}
               </div>
+
+              {/* Badges / Options */}
+              <div className="flex flex-wrap items-center gap-2">
+                {allPaymentCategories.map((method) => {
+                  const isSelected = paymentMethod.toLowerCase() === method.toLowerCase();
+                  const isOffline = method.toLowerCase() === 'offline';
+                  const isSite = method.toLowerCase() === 'site';
+
+                  return (
+                    <button
+                      key={method}
+                      type="button"
+                      onClick={() => setPaymentMethod(method)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                        isSelected
+                          ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
+                          : 'bg-white text-stone-700 border-stone-200 hover:border-[#a86149] hover:bg-amber-50/40'
+                      }`}
+                    >
+                      {isOffline ? (
+                        <Store className={`w-3.5 h-3.5 ${isSelected ? 'text-amber-400' : 'text-stone-500'}`} />
+                      ) : isSite ? (
+                        <Globe className={`w-3.5 h-3.5 ${isSelected ? 'text-blue-400' : 'text-stone-500'}`} />
+                      ) : (
+                        <Tag className={`w-3.5 h-3.5 ${isSelected ? 'text-amber-400' : 'text-stone-500'}`} />
+                      )}
+                      <span>{method}</span>
+                      {isSelected && <Check className="w-3 h-3 text-amber-400 ml-0.5" />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Inline input to add custom payment category */}
+              {isAddingPaymentCategory && (
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    placeholder="Nome da categoria (ex: Pix, Cartão, Boleto, etc.)"
+                    value={newPaymentCategoryInput}
+                    onChange={(e) => setNewPaymentCategoryInput(e.target.value)}
+                    className="px-3 py-1.5 text-xs bg-white border border-[#a86149] rounded-lg focus:ring-2 focus:ring-[#a86149] text-stone-900 flex-1"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddNewPaymentCategory();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddNewPaymentCategory}
+                    className="px-3 py-1.5 text-xs font-bold bg-[#a86149] hover:bg-[#915039] text-white rounded-lg cursor-pointer"
+                  >
+                    Adicionar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingPaymentCategory(false);
+                      setNewPaymentCategoryInput('');
+                    }}
+                    className="px-2 py-1.5 text-xs text-stone-500 hover:text-stone-800 cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              )}
             </div>
-
-            {deliveryStatus === 'pendente_entrega' && (
-              <div className="pt-2 border-t border-stone-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                <label className="text-xs font-semibold text-stone-700 flex items-center gap-1">
-                  <CalendarCheck className="w-3.5 h-3.5 text-amber-600" />
-                  Data Programada para Entrega:
-                </label>
-                <input
-                  type="date"
-                  value={deliveryScheduledDate}
-                  onChange={(e) => setDeliveryScheduledDate(e.target.value)}
-                  className="w-full sm:w-48 px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900 font-semibold"
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Payment Configuration Section */}
           <div className="p-4 rounded-xl bg-stone-50 border border-stone-200/80 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
@@ -2607,7 +2624,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
             {paymentStatus === 'pendente_pagamento' && (
               <label className="block text-sm font-semibold text-stone-700">Valor já pago / Entrada (R$)
-                <input type="number" min="0" step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)}
+                <input type="number" min="0" step="0.01" aria-label="Valor já pago" value={amountPaid} onChange={e => setAmountPaid(e.target.value)}
                   className="mt-1 w-full px-3 py-2 text-base border border-stone-300 rounded-lg" />
               </label>
             )}
@@ -2619,16 +2636,47 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                 </label>
                 <input
                   type="date"
-                  value={paymentScheduledDate}
+                  aria-label="Data prevista para recebimento" value={paymentScheduledDate}
                   onChange={(e) => setPaymentScheduledDate(e.target.value)}
                   className="w-full sm:w-48 px-3 py-1.5 text-xs bg-white border border-rose-300 rounded-lg focus:ring-2 focus:ring-rose-500 text-stone-900 font-semibold"
                 />
               </div>
             )}
           </div>
+          <div>
+            <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+              Observações / Detalhes do Pedido
+            </label>
+            <input
+              type="text"
+              placeholder="Ex: Fita lilás, cartão 'Com Carinho', combinar entrega no metrô..."
+              aria-label="Observações do pedido" value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-[#a86149] text-stone-900"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={isDraft} disabled={!!existingSale && (existingSale.amountPaid || 0)>0} onChange={e => setIsDraft(e.target.checked)} />Salvar como rascunho, sem reservar estoque</label>
+</section>
 
-          {/* Profit Preview Banner */}
-          {items.length > 0 && (
+            {!existingSale && step === 2 && <section aria-label="Conferência do pedido" className="rounded-2xl border border-[#e5dad1] bg-white p-6 space-y-4">
+              <div className="flex justify-between gap-3"><h3 className="text-lg font-semibold">Tudo certo para salvar?</h3><button type="button" onClick={() => goToStep(0)} className="text-sm text-[#a86149] underline">Rever cliente e entrega</button></div>
+              <div className="text-sm text-[#75665c] space-y-1"><p className="font-semibold text-[#352f2b]">{customerName || 'Cliente avulso'}</p>{customerContact && <p>{customerContact}</p>}<p>{orderType === 'encomenda' ? 'Encomenda' : 'Pronta entrega'} · {channel}</p><p>{deliveryStatus === 'entregue' ? 'Já entregue' : deliveryScheduledDate ? `Entrega prevista: ${deliveryScheduledDate.split('-').reverse().join('/')}` : 'Entrega a combinar'}</p></div>
+              <div className="divide-y divide-[#eee5dc]">{items.map((item, index) => <div key={item.id || index} className="flex justify-between gap-4 py-3 text-sm"><span>{item.quantity} × {item.productName}{item.isCustom && <span className="block text-xs text-[#947c6c]">Personalizado · {item.customRecipeItems?.length || 0} insumo(s)</span>}</span><strong className="shrink-0">{formatCurrency(item.quantity * item.unitPrice)}</strong></div>)}</div>
+              <button type="button" onClick={() => goToStep(1)} className="text-sm text-[#a86149] underline">Rever produtos</button>
+            </section>}
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#e5dad1] bg-white p-4">
+              {!existingSale && step > 0 ? <button type="button" onClick={() => goToStep(step - 1)} className="rounded-xl border border-[#e5dad1] px-4 py-3 text-sm">Voltar</button> : <span className="text-xs text-[#75665c]">{existingSale ? 'Revise antes de salvar.' : 'Seus dados são mantidos entre as etapas.'}</span>}
+              {existingSale || step === 2 ? <button type="submit" disabled={isSaving} className="rounded-xl bg-[#a86149] px-5 py-3 text-sm font-semibold text-white hover:bg-[#915039] disabled:opacity-50">{isSaving ? 'Salvando…' : existingSale ? 'Salvar Alterações' : isDraft ? 'Salvar rascunho' : 'Concluir Pedido'}</button> : <button type="button" onClick={() => goToStep(step + 1)} className="rounded-xl bg-[#a86149] px-5 py-3 text-sm font-semibold text-white hover:bg-[#915039]">{step === 0 ? 'Continuar para produtos' : 'Conferir pedido'}</button>}
+            </div>
+          </div>
+          <aside aria-label="Resumo do novo pedido" className="space-y-4 lg:sticky lg:top-6">
+            <div className="rounded-2xl border border-[#e5dad1] bg-white p-5 space-y-4">
+              <h3 className="text-lg font-semibold">Resumo do pedido</h3>
+              <div className="text-sm text-[#75665c] space-y-1"><p className="font-semibold text-[#352f2b]">{customerName || 'Cliente ainda não informado'}</p><p>{orderType === 'encomenda' ? 'Sob encomenda' : 'Pronta entrega'} · {totalQuantity} peça(s)</p></div>
+              <dl className="space-y-3 text-sm"><div className="flex justify-between"><dt>Produtos</dt><dd>{formatCurrency(subtotalRevenue)}</dd></div><div className="flex justify-between text-[#a86149]"><dt>Desconto</dt><dd>− {formatCurrency(discountAmount)}</dd></div><div className="flex justify-between"><dt>Frete</dt><dd>{formatCurrency(Math.max(0, Number(shippingCharged) || 0))}</dd></div><div className="flex justify-between border-t border-[#e5dad1] pt-4 text-lg font-semibold"><dt>Total</dt><dd>{formatCurrency(totalRevenue)}</dd></div></dl>
+              <div className="rounded-xl bg-[#edf1e5] p-3 text-sm text-[#526044]">{isDraft ? 'Rascunho · sem reserva de estoque' : paymentStatus === 'pago' ? 'Pagamento integral ao salvar' : `Entrada: ${formatCurrency(Math.max(0, Number(amountPaid) || 0))}`}</div>
+            </div>
+            <details className="rounded-2xl border border-[#e5dad1] bg-white p-4"><summary className="cursor-pointer text-sm font-medium">Custos e resultado</summary><div className="mt-4">          {items.length > 0 && (
             <div className={`border rounded-2xl p-4 space-y-2 text-xs ${isLoss ? 'bg-red-50/80 border-red-200' : 'bg-emerald-50/80 border-emerald-200'}`}>
               <div className="flex justify-between text-stone-600">
                 <span>Subtotal ({totalQuantity} peças):</span>
@@ -2672,39 +2720,9 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                 </div>
               </div>
             </div>
-          )}
-
-          {/* Notes */}
-          <div>
-            <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-              Observações / Detalhes do Pedido
-            </label>
-            <input
-              type="text"
-              placeholder="Ex: Fita lilás, cartão 'Com Carinho', combinar entrega no metrô..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900"
-            />
-          </div>
-
-          {/* Footer */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-stone-200">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-100 rounded-xl cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 text-sm font-semibold bg-stone-900 hover:bg-stone-800 text-white rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-98"
-            >
-              <Check className="w-4 h-4 text-amber-400" />
-              <span>{existingSale ? 'Salvar Alterações' : 'Concluir Pedido'}</span>
-            </button>
-          </div>
+          )}</div></details>
+            <p className="px-2 text-xs leading-relaxed text-[#75665c]">Depois de salvar, acompanhe pagamentos, produção e entregas na ficha do pedido.</p>
+          </aside>
         </form>
 
         {/* Quick Customer Registration Modal Overlay */}
@@ -2718,7 +2736,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                   </div>
                   <div>
                     <h4 className="font-bold text-stone-900 text-sm">Cadastro Rápido de Cliente</h4>
-                    <p className="text-[11px] text-stone-500">Adicione os dados e vincule ao pedido instantaneamente</p>
+                    <p className="text-xs text-stone-500">Adicione os dados e vincule ao pedido instantaneamente</p>
                   </div>
                 </div>
                 <button
@@ -2740,7 +2758,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                     placeholder="Ex: Amanda Silva"
                     value={quickName}
                     onChange={(e) => setQuickName(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 text-sm"
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-[#a86149] text-stone-900 text-sm"
                     autoFocus
                   />
                 </div>
@@ -2754,7 +2772,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                     placeholder="Ex: (11) 99999-0000"
                     value={quickPhone}
                     onChange={(e) => setQuickPhone(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 text-sm"
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-[#a86149] text-stone-900 text-sm"
                   />
                 </div>
 
@@ -2762,14 +2780,14 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                 <div>
                   <label className="block font-bold text-stone-700 mb-1 flex items-center justify-between">
                     <span>Data de Aniversário</span>
-                    <span className="text-[10px] text-stone-400 font-normal">Dia e Mês ou Data Completa</span>
+                    <span className="text-xs text-stone-400 font-normal">Dia e Mês ou Data Completa</span>
                   </label>
                   <input
                     type="text"
                     placeholder="Ex: 15/09 ou 1992-09-15"
                     value={quickBirthdate}
                     onChange={(e) => setQuickBirthdate(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 text-sm"
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-[#a86149] text-stone-900 text-sm"
                   />
                 </div>
 
@@ -2782,7 +2800,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                     placeholder="Ex: Gosta de tons lilás, prefere entrega aos sábados..."
                     value={quickNotes}
                     onChange={(e) => setQuickNotes(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 text-sm"
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-[#a86149] text-stone-900 text-sm"
                   />
                 </div>
                 </MoreOptions>
