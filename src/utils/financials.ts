@@ -9,12 +9,14 @@ export const getRecipeCostSummary = (recipe: {
   const embedded = recipe.embeddedLaborCost || 0;
   const materials = (recipe.materialsCost - embedded) / units;
   const labor = (recipe.laborCost + embedded) / units;
-  const materialsAndLabor = materials + labor;
-  const overhead = (recipe.fixedCost + recipe.otherCosts) / units;
-  const total = materialsAndLabor + overhead;
+  const fixed = recipe.fixedCost / units;
+  const materialsWithFixed = materials + fixed;
+  const subtotalWithLabor = materialsWithFixed + labor;
+  const other = recipe.otherCosts / units;
+  const total = subtotalWithLabor + other;
   const profit = recipe.salePrice - total;
   const marginPercent = recipe.salePrice > 0 ? profit / recipe.salePrice * 100 : null;
-  return { materials, labor, materialsAndLabor, overhead, total, profit, marginPercent };
+  return { materials, fixed, materialsWithFixed, labor, subtotalWithLabor, other, total, profit, marginPercent };
 };
 
 export interface ProductFinancialSplit {

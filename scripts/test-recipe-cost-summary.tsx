@@ -8,7 +8,10 @@ const costs = { materialsCost: 40, embeddedLaborCost: 8, laborCost: 6, fixedCost
 const summary = getRecipeCostSummary(costs);
 assert.equal(summary.materials, 16);
 assert.equal(summary.labor, 7);
-assert.equal(summary.materialsAndLabor, 23);
+assert.equal(summary.fixed, 2.3);
+assert.equal(summary.materialsWithFixed, 18.3);
+assert.equal(summary.subtotalWithLabor, 25.3);
+assert.equal(summary.other, 1);
 assert.equal(summary.total, 26.3);
 assert.equal(summary.profit, 23.7);
 assert.equal(summary.marginPercent, 47.4);
@@ -37,9 +40,10 @@ const section = (parent: ParentNode) => parent.querySelector('[aria-label="Resum
 const value = (parent: ParentNode, label: string) => [...parent.querySelectorAll('dt')].find(el => el.textContent === label)?.nextElementSibling?.textContent;
 const check = (el: Element, price = 50) => {
   assert(el, 'Resumo visível');
-  assert.equal(value(el, 'Custo dos materiais'), formatCurrency(16));
+  assert.equal(value(el, 'Materiais + custos fixos'), formatCurrency(18.3));
   assert.equal(value(el, 'Mão de obra total'), formatCurrency(7));
-  assert.equal(value(el, 'Materiais + mão de obra'), formatCurrency(23));
+  assert.equal(value(el, 'Subtotal com mão de obra'), formatCurrency(25.3));
+  assert.equal(value(el, 'Outros custos'), formatCurrency(1));
   assert.equal(value(el, 'Custos totais'), formatCurrency(26.3));
   assert.equal(value(el, 'Lucro após os custos'), formatCurrency(price - 26.3));
   assert.equal(value(el, 'Margem de lucro'), formatPercent((price - 26.3) / price * 100));

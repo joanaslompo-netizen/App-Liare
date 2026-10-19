@@ -24,10 +24,13 @@ export const RecipeCostSummary: React.FC<RecipeCostSummaryProps> = (props) => {
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <dl className="space-y-2 text-xs">
-          <div className="flex justify-between gap-3"><dt>Custo dos materiais</dt><dd className="font-semibold tabular-nums">{formatCurrency(cost.materials)}</dd></div>
+          <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+            <dt>Materiais + custos fixos</dt><dd className="font-semibold tabular-nums">{formatCurrency(cost.materialsWithFixed)}</dd>
+            <dd className="w-full text-[11px] text-stone-500">Materiais: {formatCurrency(cost.materials)} · Fixos: {formatCurrency(cost.fixed)}</dd>
+          </div>
           <div className="flex justify-between gap-3"><dt>Mão de obra total</dt><dd className="font-semibold tabular-nums">{formatCurrency(cost.labor)}</dd></div>
-          <div className="flex justify-between gap-3 border-t border-stone-100 pt-2"><dt>Materiais + mão de obra</dt><dd className="font-semibold tabular-nums">{formatCurrency(cost.materialsAndLabor)}</dd></div>
-          <div className="flex justify-between gap-3 text-stone-500"><dt>Custos fixos + outros</dt><dd className="tabular-nums">{formatCurrency(cost.overhead)}</dd></div>
+          <div className="flex justify-between gap-3 border-t border-stone-100 pt-2"><dt>Subtotal com mão de obra</dt><dd className="font-semibold tabular-nums">{formatCurrency(cost.subtotalWithLabor)}</dd></div>
+          <div className="flex justify-between gap-3 text-stone-500"><dt>Outros custos</dt><dd className="tabular-nums">{formatCurrency(cost.other)}</dd></div>
           <div className="flex justify-between gap-3 rounded-lg bg-stone-100 p-2.5 font-bold text-stone-900"><dt>Custos totais</dt><dd className="tabular-nums">{formatCurrency(cost.total)}</dd></div>
         </dl>
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
