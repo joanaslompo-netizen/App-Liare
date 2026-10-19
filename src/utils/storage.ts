@@ -1,3 +1,4 @@
+import { workspaceStorage as localStorage } from './workspaceStorage';
 import { calculateRecipePricing } from './financials';
 import { synchronizeRecipeFamilies } from './recipeFamilies';
 import { Material, Product, Purchase, Sale, Customer, Supplier, AtelierSettings, RecipeItem, TodoItem, Production, ProductionProject } from '../types';
@@ -1843,128 +1844,40 @@ export const DEFAULT_PRODUCTIONS: Production[] = [
   }
 ];
 
-const SCHEMA_VERSION_KEY = 'atelie_schema_version';
-const CURRENT_SCHEMA_VERSION = 'v5_remove_sub1_and_production_direct';
-
+// This base starts empty and is populated from the restored cloud backup.
+// Example presets remain available only when explicitly selected in the app.
 export const loadStoredData = () => {
-  try {
-    const checkpoint = localStorage.getItem("atelie_workspace_finance_v1");
-    if (checkpoint) { try { const data = JSON.parse(checkpoint); if (Array.isArray(data.materials) && Array.isArray(data.sales) && data.settings) return data; } catch { console.warn("Snapshot local inválido; usando as coleções preservadas."); } }
-    const version = localStorage.getItem(SCHEMA_VERSION_KEY);
-    const storedMaterials = localStorage.getItem(STORAGE_KEYS.MATERIALS);
-    const storedProducts = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-    const storedProductions = localStorage.getItem(STORAGE_KEYS.PRODUCTIONS);
-    const storedPurchases = localStorage.getItem(STORAGE_KEYS.PURCHASES);
-    const storedSales = localStorage.getItem(STORAGE_KEYS.SALES);
-    const storedCustomers = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
-    const storedPaymentMethods = localStorage.getItem(STORAGE_KEYS.PAYMENT_METHODS);
-    const storedSuppliers = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
-    const storedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-    const storedProjects = localStorage.getItem(STORAGE_KEYS.PROJECTS);
-
-    // Sanitize product stock (ensures currentStock and minStock exist, and removes prod_sub_1)
-    const sanitizeProducts = (prods: Product[]) => {
-      return prods
-        .filter((p) => p.id !== 'prod_sub_1')
-        .map((p) => {
-          const def = DEFAULT_PRODUCTS.find((dp) => dp.id === p.id);
-          const sanitizedItems = (p.items || []).map((it) => {
-            if (it.targetId === 'prod_sub_1') {
-              return {
-                ...it,
-                type: 'material' as const,
-                targetId: 'mat_rot_1',
-                name: 'Rótulo Frontal Vinílico Fosco 6x6cm',
-              };
-            }
-            return it;
-          });
-          return {
-            ...p,
-            items: sanitizedItems,
-            currentStock: typeof p.currentStock === 'number' ? p.currentStock : (def?.currentStock ?? 0),
-            minStock: typeof p.minStock === 'number' ? p.minStock : (def?.minStock ?? 2),
-          };
-        });
-    };
-
-    const sanitizeProductions = (prods: Production[]) => {
-      return prods.filter((p) => p.productId !== 'prod_sub_1');
-    };
-
-    // If schema is older than v5, migrate and initialize productions and stock
-    if (version !== CURRENT_SCHEMA_VERSION || !storedProductions) {
-      localStorage.setItem(SCHEMA_VERSION_KEY, CURRENT_SCHEMA_VERSION);
-      if (!storedMaterials) localStorage.setItem(STORAGE_KEYS.MATERIALS, JSON.stringify(DEFAULT_MATERIALS));
-      
-      const loadedProducts: Product[] = storedProducts ? JSON.parse(storedProducts) : DEFAULT_PRODUCTS;
-      const sanitizedProducts = sanitizeProducts(loadedProducts);
-      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(sanitizedProducts));
-
-      const productionsToStore: Production[] = storedProductions ? JSON.parse(storedProductions) : DEFAULT_PRODUCTIONS;
-      const sanitizedProductionsList = sanitizeProductions(productionsToStore);
-      localStorage.setItem(STORAGE_KEYS.PRODUCTIONS, JSON.stringify(sanitizedProductionsList));
-
-      if (!storedPurchases) localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(DEFAULT_PURCHASES));
-      
-      // Update sales with default customer links if not existing
-      const salesToStore = storedSales ? JSON.parse(storedSales) : DEFAULT_SALES;
-      localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(salesToStore));
-      
-      if (!storedCustomers) localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(DEFAULT_CUSTOMERS));
-      if (!storedPaymentMethods) localStorage.setItem(STORAGE_KEYS.PAYMENT_METHODS, JSON.stringify(DEFAULT_PAYMENT_METHODS));
-      if (!storedSuppliers) localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(DEFAULT_SUPPLIERS));
-      if (!storedSettings) localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
-      if (!localStorage.getItem(STORAGE_KEYS.TODOS)) localStorage.setItem(STORAGE_KEYS.TODOS, JSON.stringify(DEFAULT_TODOS));
-
-      return {
-        materials: storedMaterials ? JSON.parse(storedMaterials) : DEFAULT_MATERIALS,
-        products: sanitizedProducts,
-        productions: sanitizedProductionsList,
-        purchases: storedPurchases ? JSON.parse(storedPurchases) : DEFAULT_PURCHASES,
-        sales: salesToStore,
-        customers: storedCustomers ? JSON.parse(storedCustomers) : DEFAULT_CUSTOMERS,
-        paymentMethods: storedPaymentMethods ? JSON.parse(storedPaymentMethods) : DEFAULT_PAYMENT_METHODS,
-        suppliers: storedSuppliers ? JSON.parse(storedSuppliers) : DEFAULT_SUPPLIERS,
-        settings: storedSettings ? JSON.parse(storedSettings) : DEFAULT_SETTINGS,
-        todos: localStorage.getItem(STORAGE_KEYS.TODOS) ? JSON.parse(localStorage.getItem(STORAGE_KEYS.TODOS)!) : DEFAULT_TODOS,
-        projects: storedProjects ? JSON.parse(storedProjects) : [],
-      };
-    }
-
-    const storedTodos = localStorage.getItem(STORAGE_KEYS.TODOS);
-    const parsedProducts = storedProducts ? JSON.parse(storedProducts) : DEFAULT_PRODUCTS;
-    const parsedProductions = storedProductions ? JSON.parse(storedProductions) : DEFAULT_PRODUCTIONS;
-
-    return {
-      materials: storedMaterials ? JSON.parse(storedMaterials) : DEFAULT_MATERIALS,
-      products: sanitizeProducts(parsedProducts),
-      productions: sanitizeProductions(parsedProductions),
-      purchases: storedPurchases ? JSON.parse(storedPurchases) : DEFAULT_PURCHASES,
-      sales: storedSales ? JSON.parse(storedSales) : DEFAULT_SALES,
-      customers: storedCustomers ? JSON.parse(storedCustomers) : DEFAULT_CUSTOMERS,
-      paymentMethods: storedPaymentMethods ? JSON.parse(storedPaymentMethods) : DEFAULT_PAYMENT_METHODS,
-      suppliers: storedSuppliers ? JSON.parse(storedSuppliers) : DEFAULT_SUPPLIERS,
-      settings: storedSettings ? JSON.parse(storedSettings) : DEFAULT_SETTINGS,
-      todos: storedTodos ? JSON.parse(storedTodos) : DEFAULT_TODOS,
-      projects: storedProjects ? JSON.parse(storedProjects) : [],
-    };
-  } catch (err) {
-    console.error('Error loading data from localStorage, falling back to defaults:', err);
-    return {
-      materials: DEFAULT_MATERIALS,
-      products: DEFAULT_PRODUCTS,
-      productions: DEFAULT_PRODUCTIONS,
-      purchases: DEFAULT_PURCHASES,
-      sales: DEFAULT_SALES,
-      customers: DEFAULT_CUSTOMERS,
-      paymentMethods: DEFAULT_PAYMENT_METHODS,
-      suppliers: DEFAULT_SUPPLIERS,
-      settings: DEFAULT_SETTINGS,
-      todos: DEFAULT_TODOS,
-      projects: [],
-    };
+  const checkpoint = localStorage.getItem('atelie_workspace_finance_v1');
+  if (checkpoint) {
+    try {
+      const data = JSON.parse(checkpoint);
+      if (Array.isArray(data.materials) && Array.isArray(data.sales) && data.settings) return data;
+    } catch { /* Keep the original value available for recovery below. */ }
+    localStorage.setItem('atelie_workspace_invalid_snapshot_v1', checkpoint);
+    console.warn('Snapshot local inválido; usando as coleções preservadas.');
   }
+  const read = <T,>(key: string, fallback: T): T => {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    try { return JSON.parse(raw); }
+    catch {
+      localStorage.setItem(`${key}_invalid_backup`, raw);
+      return fallback;
+    }
+  };
+  return {
+    materials: read<Material[]>(STORAGE_KEYS.MATERIALS, []),
+    products: read<Product[]>(STORAGE_KEYS.PRODUCTS, []),
+    productions: read<Production[]>(STORAGE_KEYS.PRODUCTIONS, []),
+    purchases: read<Purchase[]>(STORAGE_KEYS.PURCHASES, []),
+    sales: read<Sale[]>(STORAGE_KEYS.SALES, []),
+    customers: read<Customer[]>(STORAGE_KEYS.CUSTOMERS, []),
+    paymentMethods: read<string[]>(STORAGE_KEYS.PAYMENT_METHODS, []),
+    suppliers: read<Supplier[]>(STORAGE_KEYS.SUPPLIERS, []),
+    settings: read<AtelierSettings>(STORAGE_KEYS.SETTINGS, structuredClone(DEFAULT_SETTINGS)),
+    todos: read<TodoItem[]>(STORAGE_KEYS.TODOS, []),
+    projects: read<ProductionProject[]>(STORAGE_KEYS.PROJECTS, []),
+  };
 };
 
 export const saveMaterials = (materials: Material[]) => {

@@ -1,3 +1,4 @@
+import { workspaceStorage as localStorage } from './utils/workspaceStorage';
 import { getProductFinancialSplit } from "./utils/financials";
 import { FinanceView } from "./components/FinanceView";
 import { OrderDetailView, type OrderFocus } from "./components/OrderDetailView";
@@ -89,7 +90,7 @@ const withDefaultDiscountCodes = (incoming: AtelierSettings): AtelierSettings =>
 const CLOUD_SYNC_PENDING_KEY = 'atelie_cloud_sync_pending_v1';
 const CLOUD_SYNC_BASE_KEY = 'atelie_cloud_sync_base_v1';
 const CLOUD_SYNC_RECOVERY_KEY = 'atelie_cloud_sync_recovery_v1';
-const AUTO_SYNC_DELAY_MS = 10 * 60 * 1000;
+const AUTO_SYNC_DELAY_MS = 2000;
 
 const readStoredCloudBase = (): WorkspaceSyncBase | null => {
   try {
@@ -118,7 +119,7 @@ const storePendingSync = (pending: boolean) => {
 };
 
 export default function App() {
-  // Load initial data from localStorage (or sample seeds)
+  // Load only this workspace’s device cache; a new cache starts empty.
   const [initialData] = useState(() => loadStoredData());
 
   const [materials, setMaterials] = useState<Material[]>(initialData.materials);
@@ -483,7 +484,7 @@ export default function App() {
   }, [applyWorkspaceData]);
 
   // Alterações ficam salvas localmente na hora e entram em uma fila de envio.
-  // Para economizar a cota do Firestore, a nuvem é atualizada após 10 minutos sem novas mudanças.
+  // Agrupa alterações rápidas e envia após dois segundos sem novas mudanças.
   useEffect(() => {
     if (!hasObservedWorkspaceRef.current) {
       hasObservedWorkspaceRef.current = true;
