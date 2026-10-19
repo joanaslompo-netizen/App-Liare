@@ -1,3 +1,4 @@
+import { WORKSPACE_ID, PREVIOUS_WORKSPACE_ID } from '../config/workspace';
 import { applyFinanceCommand, emptyFinance, validateFinanceData, type FinanceCommand } from "../utils/financeLedger";
 import {
   doc,
@@ -235,7 +236,7 @@ export function compactWorkspaceForCloud(workspace: WorkspaceData): WorkspaceDat
 /**
  * Upload protegido por revisão (optimistic concurrency control).
  * Só grava se a revisão na nuvem ainda for exatamente a que este aparelho leu.
- * Antes de substituir o backup atual, preserva uma cópia em workspaces/previous.
+ * Antes de substituir o backup atual, preserva uma cópia na área de recuperação desta base.
  */
 export async function uploadWorkspaceToCloud(
   userId: string,
@@ -245,8 +246,8 @@ export async function uploadWorkspaceToCloud(
 ): Promise<WorkspaceData> {
   if (!userId) throw new Error('Usuário não autenticado.');
 
-  const workspaceRef = doc(db, 'users', userId, 'workspaces', 'default');
-  const previousRef = doc(db, 'users', userId, 'workspaces', 'previous');
+  const workspaceRef = doc(db, 'users', userId, 'workspaces', WORKSPACE_ID);
+  const previousRef = doc(db, 'users', userId, 'workspaces', PREVIOUS_WORKSPACE_ID);
 
   return runTransaction(db, async (transaction) => {
     const snap = await transaction.get(workspaceRef);
@@ -306,13 +307,13 @@ export async function uploadWorkspaceToCloud(
 
 export async function fetchWorkspaceFromCloud(userId: string): Promise<WorkspaceData | null> {
   if (!userId) return null;
-  const snap = await getDoc(doc(db, 'users', userId, 'workspaces', 'default'));
+  const snap = await getDoc(doc(db, 'users', userId, 'workspaces', WORKSPACE_ID));
   return snap.exists() ? workspaceFromData(snap.data()) : null;
 }
 
 export async function fetchPreviousWorkspaceFromCloud(userId: string): Promise<WorkspaceData | null> {
   if (!userId) return null;
-  const snap = await getDoc(doc(db, 'users', userId, 'workspaces', 'previous'));
+  const snap = await getDoc(doc(db, 'users', userId, 'workspaces', PREVIOUS_WORKSPACE_ID));
   return snap.exists() ? workspaceFromData(snap.data()) : null;
 }
 
@@ -321,7 +322,7 @@ export function subscribeToWorkspace(
   onData: (data: WorkspaceData) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  return onSnapshot(doc(db, 'users', userId, 'workspaces', 'default'), (snapshot) => {
+  return onSnapshot(doc(db, 'users', userId, 'workspaces', WORKSPACE_ID), (snapshot) => {
     if (snapshot.exists()) onData(workspaceFromData(snapshot.data()));
   }, (error) => {
     console.warn('Erro na escuta em tempo real do Firestore:', error);
@@ -334,8 +335,8 @@ function unionRecords<T extends { id: string }>(local: T[] = [], cloud: T[] = []
 }
 /** Each credit/order operation is recomputed inside the Firestore transaction. */
 export async function executeFinanceInCloud(userId: string, local: WorkspaceData, base: WorkspaceSyncBase | null, command: FinanceCommand): Promise<WorkspaceData> {
-  const ref = doc(db, 'users', userId, 'workspaces', 'default');
-  const previous = doc(db, 'users', userId, 'workspaces', 'previous');
+  const ref = doc(db, 'users', userId, 'workspaces', WORKSPACE_ID);
+  const previous = doc(db, 'users', userId, 'workspaces', PREVIOUS_WORKSPACE_ID);
   return runTransaction(db, async transaction => {
     const snap = await transaction.get(ref);
     const cloud = snap.exists() ? workspaceFromData(snap.data()) : null;

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import ts from 'typescript';
+import * as workspaceConfig from '../config/workspace';
 import * as ledger from '../utils/financeLedger';
 import { DEFAULT_SETTINGS, DEFAULT_PRODUCTS } from '../utils/storage';
 // Exercise the actual service against a transaction simulator, without credentials or real data.
@@ -15,14 +16,14 @@ const firestore={doc:(_:unknown,...path:string[])=>path.join('/'),runTransaction
     const tx={get:async()=>{await new Promise(r=>setTimeout(r,0));return {exists:()=>true,data:()=>structuredClone(start)};},set:(ref:string,value:unknown)=>writes.set(ref,value)};
     const result=await callback(tx);
     if(cloud.revision!==revision)continue;
-    const value=writes.get('users/test/workspaces/default');if(value)cloud=value;
+    const value=writes.get(`users/test/workspaces/${workspaceConfig.WORKSPACE_ID}`);if(value)cloud=value;
     return result;
   }
   throw Error('Transaction retry limit');
 }};
 const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const exports:any={};
-new Function('require','exports',compiled)((name:string)=>name==='firebase/firestore'?firestore:name==='../lib/firebase'?{db:{}}:name==='../utils/financeLedger'?ledger:assert.fail(`Unexpected import ${name}`),exports);
+new Function('require','exports',compiled)((name:string)=>name==='firebase/firestore'?firestore:name==='../lib/firebase'?{db:{}}:name==='../utils/financeLedger'?ledger:name==='../config/workspace'?workspaceConfig:assert.fail(`Unexpected import ${name}`),exports);
 const local=structuredClone(cloud),base=exports.createWorkspaceSyncBase(local);
 const results=await Promise.allSettled(['a','b'].map(id=>exports.executeFinanceInCloud('test',local,base,{type:'entry',entry:ledger.makeEntry('credit_use',250,{id:`use_${id}`,saleId:id,customerId:'c'})})));
 assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
@@ -31,3 +32,16 @@ assert.equal(cloud.finance.entries.filter((e:any)=>e.kind==='credit_use').length
 const merged=exports.mergeWorkspaceData(base,{...local,finance:ledger.emptyFinance()},cloud);
 assert.equal(ledger.creditBalance(merged.finance,'c'),5000);
 console.log('Sincronização simulada: duas utilizações simultâneas de R$250 sobre crédito R$300 permitem uma só; saldo R$50 e eventos preservados.');
+
+// A remote recipe and a pending local supplier edit survive a three-way merge.
+const syncBaseWorkspace = structuredClone(cloud);
+const device = structuredClone(syncBaseWorkspace);
+const remote = structuredClone(syncBaseWorkspace);
+device.suppliers = [{ id: 'local_supplier', name: 'Fornecedor local' }];
+remote.products.push({ ...remote.products[0], id: 'chatgpt_recipe', name: 'Receita da conexão' });
+remote.revision += 1;
+const combined = exports.mergeWorkspaceData(exports.createWorkspaceSyncBase(syncBaseWorkspace), device, remote);
+assert(combined.products.some((p:any) => p.id === 'chatgpt_recipe'));
+assert(combined.suppliers.some((s:any) => s.id === 'local_supplier'));
+assert.deepEqual(combined.finance, remote.finance);
+console.log('Receita remota e alteração local mescladas sem perder financeiro.');

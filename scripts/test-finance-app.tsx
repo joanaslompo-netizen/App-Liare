@@ -1,3 +1,4 @@
+import { workspaceStorage as localStorage } from '../src/utils/workspaceStorage';
 import { JSDOM } from 'jsdom';
 import React, { act } from 'react';
 import assert from 'node:assert/strict';
