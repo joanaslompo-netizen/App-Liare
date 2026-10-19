@@ -7,6 +7,9 @@ const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (
 const money = (value: number) => escapeHtml(formatCurrency(value));
 const date = (value?: string) => value ? escapeHtml(formatDate(value)) : 'A combinar';
 
+export const getInvoiceDocumentTitle = (sale: Pick<Sale, 'orderNumber'>) =>
+  `Liare - Pedido ${formatOrderNumber(sale.orderNumber)}`;
+
 export const getInvoiceTotals = (sale: Sale) => {
   const total = Math.max(0, (sale.totalRevenue || 0)-(sale.returnAdjustmentCents||0)/100);
   const paid = Math.max(0, sale.amountPaid ?? (sale.paymentStatus === 'pago' ? total : 0));
@@ -29,7 +32,7 @@ export const buildInvoiceHtml = (
     const aroma = product?.fragrance || (!item.productId ? 'A definir' : '');
     return `<tr><td><strong>${escapeHtml(item.productName)}</strong>${aroma ? `<small>Aroma: ${escapeHtml(aroma)}</small>` : ''}</td><td>${escapeHtml(item.quantity)}</td><td>${money(item.unitPrice)}</td><td>${money(item.quantity * item.unitPrice)}</td></tr>`;
   }).join('');
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Fatura LIARE ${escapeHtml(number)}</title><style>
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${escapeHtml(getInvoiceDocumentTitle(sale))}</title><style>
   @page{size:A4;margin:16mm}*{box-sizing:border-box}body{margin:0;background:white;color:#111830;font:12px Arial,sans-serif;line-height:1.5}
   .page{max-width:178mm;margin:auto}header,.details,.bottom{display:flex;justify-content:space-between;gap:24px}
   header{padding-bottom:24px;border-bottom:1px solid #dce1ea}.brand{font:56px Georgia,serif;color:#a17a2c;letter-spacing:2px;margin-bottom:16px}

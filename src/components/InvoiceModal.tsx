@@ -1,13 +1,19 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { X, Printer } from 'lucide-react';
 import { AtelierSettings, Customer, Product, Sale } from '../types';
-import { buildInvoiceHtml } from '../utils/invoice';
+import { buildInvoiceHtml, getInvoiceDocumentTitle } from '../utils/invoice';
 
 export const InvoiceModal = ({ sale, settings, customers, products, onClose }: {
   sale: Sale; settings: AtelierSettings; customers: Customer[]; products: Product[]; onClose: () => void;
 }) => {
   const frame = useRef<HTMLIFrameElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
+  const invoiceTitle = getInvoiceDocumentTitle(sale);
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = invoiceTitle;
+    return () => { document.title = previousTitle; };
+  }, [invoiceTitle]);
   useEffect(() => {
     dialog.current?.showModal();
     const previousOverflow = document.body.style.overflow;
@@ -22,7 +28,7 @@ export const InvoiceModal = ({ sale, settings, customers, products, onClose }: {
         <button aria-label="Fechar fatura" onClick={onClose}><X /></button>
       </header>
       {!settings.pixKey && <p className="px-4 pt-3 text-sm text-amber-800">Cadastre sua chave Pix nas configurações para incluí-la na fatura.</p>}
-      <iframe ref={frame} title="Prévia da fatura A4" srcDoc={html} className="flex-1 min-h-0 w-full border-0" />
+      <iframe ref={frame} title={invoiceTitle} srcDoc={html} className="flex-1 min-h-0 w-full border-0" />
       <footer className="p-4 border-t flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-stone-600">Na impressão, escolha Salvar como PDF. No iPhone, use Compartilhar.</p>
         <button onClick={() => { frame.current?.contentWindow?.focus(); frame.current?.contentWindow?.print(); }}

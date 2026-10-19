@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { buildInvoiceHtml, getInvoiceTotals } from './invoice';
+import { buildInvoiceHtml, getInvoiceDocumentTitle, getInvoiceTotals } from './invoice';
 import { DEFAULT_SETTINGS } from './storage';
 import type { Sale } from '../types';
 const sale = { id: 'test', orderNumber: 42, date: '2026-01-01', productId: '', productName: 'Peça de teste', quantity: 2, unitPrice: 50, totalRevenue: 90, discountAmount: 10, amountPaid: 30, paymentStatus: 'pendente_pagamento', customerName: 'Cliente Teste' } as Sale;
@@ -9,5 +9,9 @@ assert.equal(getInvoiceTotals({ ...sale, paymentStatus: 'pago' }).balance, 60);
 assert.equal(getInvoiceTotals({ ...sale, amountPaid: undefined, paymentStatus: 'pago' }).balance, 0);
 assert.equal(getInvoiceTotals({ ...sale, amountPaid: undefined, paymentStatus: undefined }).balance, 90);
 const html = buildInvoiceHtml(sale, { ...DEFAULT_SETTINGS, pixKey: 'chave-de-teste', pixHolder: 'Ateliê Teste' }, [], []);
+assert.equal(getInvoiceDocumentTitle(sale), 'Liare - Pedido 000042');
+assert.equal(getInvoiceDocumentTitle({ orderNumber: 1234567 }), 'Liare - Pedido 1234567');
+assert.equal(getInvoiceDocumentTitle({}), 'Liare - Pedido A definir');
+assert(html.includes('<title>Liare - Pedido 000042</title>'));
 for (const text of ['chave-de-teste', 'Ateliê Teste', 'Peça de teste', 'Saldo devedor', 'cartão', 'WhatsApp', 'Desconto', '42']) assert(html.includes(text));
 console.log('Fatura: identificação, PIX, cartão/WhatsApp, desconto e saldo parcial preservados.');
