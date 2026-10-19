@@ -1,6 +1,7 @@
 import { getEmbeddedRecipeLaborCost } from "../utils/storage";
 import { localDateString } from '../utils/localDate';
 import { MoreOptions } from './MoreOptions';
+import { RecipeCostSummary } from './RecipeCostSummary';
 import { calculateRecipePricing, getRecipePricing } from '../utils/financials';
 import { inheritRecipe } from '../utils/recipeFamilies';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
@@ -773,57 +774,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Financial Breakdown Card */}
                   <div className="px-5 py-3.5 bg-stone-50 border-y border-stone-100">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                      {/* Total Cost */}
-                      <div className="text-left sm:text-center border-r border-stone-200/60 sm:border-r">
-                        <span className="text-[11px] uppercase tracking-wider text-stone-500 block">
-                          Custo real da peça
-                        </span>
-                        <span className="text-sm font-bold text-stone-900">
-                          {formatCurrency(pricing.businessUnitCost)}
-                        </span>
-                        <span className="text-[10px] text-stone-400 block">por peça</span>
-                      </div>
-
-                      {/* Suggested Price */}
-                      <div className="text-left sm:text-center border-r border-stone-200/60 sm:border-r">
-                        <span className="text-[11px] uppercase tracking-wider text-stone-500 block">
-                          Sugerido
-                        </span>
-                        <span className="text-sm font-semibold text-stone-700">
-                          {formatCurrency(p.suggestedPrice)}
-                        </span>
-                        <span className="text-[10px] text-stone-400 block">
-                          margem mat. {formatPercent(p.profitMarginPercent)}
-                        </span>
-                      </div>
-
-                      {/* Actual Selling Price */}
-                      <div className="text-left sm:text-center border-r border-stone-200/60 sm:border-r">
-                        <span className="text-[11px] uppercase tracking-wider text-amber-800 block font-semibold">
-                          Preço Venda
-                        </span>
-                        <span className="text-base font-extrabold text-stone-900">
-                          {formatCurrency(p.actualPrice)}
-                        </span>
-                        <span className="text-[10px] text-stone-500 block">preço praticado</span>
-                      </div>
-
-                      {/* Net Profit & Margin */}
-                      <div className="text-left sm:text-center">
-                        <span className="text-[11px] uppercase tracking-wider text-emerald-800 block font-semibold">
-                          Fica para você
-                        </span>
-                        <span className="text-sm font-bold text-emerald-600">
-                          {p.netProfit >= 0 ? '+' : ''}{formatCurrency(p.netProfit)}
-                        </span>
-                        <span className="text-[10px] font-semibold text-emerald-700 block">
-                          {formatPercent(p.calculatedMarginPercent)} margem
-                        </span>
-                      </div>
-                    </div>
+                    <RecipeCostSummary materialsCost={p.materialsCost} embeddedLaborCost={p.embeddedLaborCost}
+                      laborCost={(p.productionTimeMinutes || 0) / 60 * (p.hourlyRate || 0)}
+                      fixedCost={pricing.fixedCost} otherCosts={p.otherCosts || 0} batchYield={p.batchYield}
+                      salePrice={p.actualPrice} compact />
                   </div>
 
                   {/* Product Inventory Control & Stock Level */}
@@ -2180,7 +2135,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
               </div>
 
               <div className="text-right">
-                <span className="text-xs text-stone-500 block">Total em Materiais:</span>
+                <span className="text-xs text-stone-500 block">Insumos e componentes · lote:</span>
                 <span className="text-base font-bold text-stone-900">
                   {formatCurrency(materialsCost)}
                 </span>
@@ -2458,7 +2413,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   <tfoot className="bg-stone-50 border-t border-stone-200 font-bold">
                     <tr>
                       <td colSpan={useProductionStages ? 4 : 3} className="py-2.5 px-3 text-stone-700 text-right">
-                        Custo Total de Insumos da Receita:
+                        Total dos insumos e componentes · lote:
                       </td>
                       <td className="py-2.5 px-3 text-right text-stone-900 text-sm">
                         {formatCurrency(materialsCost)}
@@ -2520,7 +2475,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
               </div>
 
               <div className="bg-white p-2.5 rounded-lg border border-stone-200 flex items-center justify-between text-xs">
-                <span className="text-stone-600">Custo da Mão de Obra:</span>
+                <span className="text-stone-600">Mão de obra desta receita · lote:</span>
                 <span className="font-bold text-stone-900">
                   {formatCurrency(laborCost)}
                 </span>
@@ -2582,12 +2537,11 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
           <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 space-y-4">
             <h4 className="text-sm font-bold text-amber-950 uppercase tracking-wider flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-amber-700" />
-              Precificação Inteligente & Margem de Lucro
+              Custos e preço de venda
             </h4>
 
             {/* Sliders & Margins */}
-            <MoreOptions title="Mais opções: margem e preço" >
-<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-bold text-stone-800">
@@ -2631,63 +2585,16 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   className="w-full px-3 py-2 text-base font-bold bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
                 />
                 <span className="text-[11px] text-stone-500 mt-1 block">
-                  Deixe vazio para usar o preço sugerido automaticamente.
-                </span>
-              </div>
-            </div>
-</MoreOptions>
-
-            {/* Financial Summary Highlight Banner */}
-            <div className="bg-white rounded-xl p-4 border border-amber-300 shadow-xs grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-              <div className="border-r border-stone-100">
-                <span className="text-[10px] uppercase tracking-wider text-stone-500 block">
-                  Custo real da peça
-                </span>
-                <span className="text-sm font-bold text-stone-900">
-                  {formatCurrency(businessUnitCost)}
-                </span>
-              </div>
-
-              <div className="border-r border-stone-100">
-                <span className="text-[10px] uppercase tracking-wider text-stone-500 block">
-                  Preço Sugerido
-                </span>
-                <span className="text-sm font-bold text-amber-700">
-                  {formatCurrency(suggestedPrice)}
-                </span>
-              </div>
-
-              <div className="border-r border-stone-100">
-                <span className="text-[10px] uppercase tracking-wider text-emerald-800 block font-semibold">
-                  Total que fica para você
-                </span>
-                <span className="text-base font-extrabold text-emerald-600">
-                  {netProfit >= 0 ? '+' : ''}{formatCurrency(netProfit)}
-                </span>
-              </div>
-
-              <div>
-                <span className="text-[10px] uppercase tracking-wider text-emerald-800 block font-semibold">
-                  Margem que fica para você
-                </span>
-                <span className="text-base font-extrabold text-stone-900">
-                  {formatPercent(calculatedMarginPercent)}
+                  Preço sugerido: {formatCurrency(suggestedPrice)}. Deixe vazio para usar esse valor.
                 </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-              <div className="bg-white/80 border border-amber-200 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
-                <span className="text-stone-600">Remuneração pelo seu trabalho:</span>
-                <span className="font-bold text-stone-900">{formatCurrency(laborUnitCost)}</span>
-              </div>
-              <div className="bg-white/80 border border-amber-200 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
-                <span className="text-stone-600">Lucro além da mão de obra:</span>
-                <span className={`font-bold ${commercialProfit < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                  {commercialProfit >= 0 ? '+' : ''}{formatCurrency(commercialProfit)}
-                </span>
-              </div>
-            </div>
+
+            <RecipeCostSummary materialsCost={materialsCost} embeddedLaborCost={embeddedLaborCost}
+              laborCost={laborCost} fixedCost={fixedCost} otherCosts={parsedOtherCosts}
+              batchYield={parsedYield} salePrice={currentActualPrice} />
+
           </div>
         </form>
 
@@ -2809,7 +2716,7 @@ const FichaTecnicaModal: React.FC<FichaTecnicaModalProps> = ({
                 </tbody>
                 <tfoot className="bg-stone-50 font-bold border-t border-stone-200">
                   <tr>
-                    <td colSpan={3} className="py-2 px-3 text-right">Subtotal Insumos:</td>
+                    <td colSpan={3} className="py-2 px-3 text-right">Insumos e componentes · lote:</td>
                     <td className="py-2 px-3 text-right">{formatCurrency(product.materialsCost)}</td>
                   </tr>
                 </tfoot>
@@ -2817,93 +2724,13 @@ const FichaTecnicaModal: React.FC<FichaTecnicaModalProps> = ({
             </div>
           </div>
 
-          {/* Visual Cost Structure Bar */}
-          {(() => {
-            const total = (product.unitCostFromBatch > 0 ? product.unitCostFromBatch : product.totalCost) || 1;
-            const matPct = (product.materialsCost / total) * 100;
-            const laborPct = (product.laborCost / total) * 100;
-            const fixPct = ((product.fixedCost + product.otherCosts) / total) * 100;
-
-            return (
-              <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-2">
-                <div className="flex items-center justify-between text-[11px] text-stone-600">
-                  <span className="font-bold uppercase tracking-wider text-stone-700">Estrutura do Custo:</span>
-                  <span className="flex items-center gap-3">
-                    <span className="inline-flex items-center gap-1 font-medium">
-                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> Materiais ({formatPercent(matPct)})
-                    </span>
-                    <span className="inline-flex items-center gap-1 font-medium">
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Mão de Obra ({formatPercent(laborPct)})
-                    </span>
-                    <span className="inline-flex items-center gap-1 font-medium">
-                      <span className="w-2.5 h-2.5 rounded-full bg-stone-400" /> Fixos & Outros ({formatPercent(fixPct)})
-                    </span>
-                  </span>
-                </div>
-                <div className="w-full bg-stone-200 rounded-full h-2.5 flex overflow-hidden">
-                  <div style={{ width: `${matPct}%` }} className="bg-blue-500 h-full transition-all" title={`Materiais: ${formatCurrency(product.materialsCost)}`} />
-                  <div style={{ width: `${laborPct}%` }} className="bg-amber-500 h-full transition-all" title={`Mão de obra: ${formatCurrency(product.laborCost)}`} />
-                  <div style={{ width: `${fixPct}%` }} className="bg-stone-400 h-full transition-all" title={`Custos fixos e outros: ${formatCurrency(product.fixedCost + product.otherCosts)}`} />
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Detailed Cost Breakdown Table */}
-          <div className="grid grid-cols-2 gap-4 bg-stone-50 p-4 rounded-xl border border-stone-200">
-            <div className="space-y-1.5">
-              <div className="flex justify-between">
-                <span className="text-stone-600">Tempo de Confecção:</span>
-                <span className="font-semibold">{product.productionTimeMinutes} min</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-stone-600">Taxa da Hora Artesanal:</span>
-                <span className="font-semibold">{formatCurrency(product.hourlyRate)}/h</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-stone-600">Custo Mão de Obra:</span>
-                <span className="font-bold text-stone-900">{formatCurrency(product.laborCost)}</span>
-              </div>
-            </div>
-
-            <div className="space-y-1.5 border-l border-stone-200 pl-4">
-              <div className="flex justify-between">
-                <span className="text-stone-600">Custos Fixos ({product.fixedCostPercent}%):</span>
-                <span className="font-semibold">{formatCurrency(product.fixedCost)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-stone-600">Embalagem & Outros:</span>
-                <span className="font-semibold">{formatCurrency(product.otherCosts)}</span>
-              </div>
-              <div className="flex justify-between pt-1 border-t border-stone-200">
-                <span className="font-bold text-stone-900">Custo Unitário Total:</span>
-                <span className="font-extrabold text-stone-900">
-                  {formatCurrency(product.unitCostFromBatch > 0 ? product.unitCostFromBatch : product.totalCost)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Pricing Outcome */}
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between">
-            <div>
-              <span className="text-[11px] text-amber-900 font-semibold block uppercase">
-                Preço de Venda Praticado
-              </span>
-              <span className="text-2xl font-extrabold text-stone-900">
-                {formatCurrency(product.actualPrice)}
-              </span>
-            </div>
-
-            <div className="text-right">
-              <span className="text-[11px] text-emerald-800 font-semibold block uppercase">
-                Total que fica para você ({formatPercent(pricing.calculatedMarginPercent)})
-              </span>
-              <span className="text-xl font-bold text-emerald-600">
-                {pricing.netProfit >= 0 ? '+' : ''}{formatCurrency(pricing.netProfit)}
-              </span>
-            </div>
-          </div>
+          <p className="text-xs text-stone-500">
+            Tempo desta receita: {formatNumber(product.productionTimeMinutes)} min · Valor da hora: {formatCurrency(product.hourlyRate)}/h · Custos fixos: {formatPercent(product.fixedCostPercent)}
+          </p>
+          <RecipeCostSummary materialsCost={product.materialsCost} embeddedLaborCost={product.embeddedLaborCost}
+            laborCost={(product.productionTimeMinutes || 0) / 60 * (product.hourlyRate || 0)}
+            fixedCost={pricing.fixedCost} otherCosts={product.otherCosts || 0} batchYield={product.batchYield}
+            salePrice={pricing.currentActualPrice} />
 
           {/* Observações / Notas da Receita */}
           {product.notes && (

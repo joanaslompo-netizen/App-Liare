@@ -1,5 +1,26 @@
 import { Product, Sale, SaleItem } from '../types';
 
+/** Display split only: embedded work is already included in materialsCost. */
+export const getRecipeCostSummary = (recipe: {
+  materialsCost: number; embeddedLaborCost?: number; laborCost: number;
+  fixedCost: number; otherCosts: number; batchYield: number; salePrice: number;
+}) => {
+  const units = Math.max(1, recipe.batchYield || 1);
+  const embedded = recipe.embeddedLaborCost || 0;
+  const materials = (recipe.materialsCost - embedded) / units;
+  const labor = (recipe.laborCost + embedded) / units;
+  const fixed = recipe.fixedCost / units;
+  const materialsWithFixed = materials + fixed;
+  const subtotalWithLabor = materialsWithFixed + labor;
+  const other = recipe.otherCosts / units;
+  const total = subtotalWithLabor + other;
+  const costs = materialsWithFixed + other;
+  // Owner remuneration is included in profit for this pricing summary.
+  const profit = recipe.salePrice - costs;
+  const marginPercent = recipe.salePrice > 0 ? profit / recipe.salePrice * 100 : null;
+  return { materials, fixed, materialsWithFixed, labor, subtotalWithLabor, other, costs, total, profit, marginPercent };
+};
+
 export interface ProductFinancialSplit {
   businessCostPerUnit: number;
   laborRemunerationPerUnit: number;
