@@ -778,7 +778,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                     <RecipeCostSummary materialsCost={p.materialsCost} embeddedLaborCost={p.embeddedLaborCost}
                       laborCost={(p.productionTimeMinutes || 0) / 60 * (p.hourlyRate || 0)}
                       fixedCost={pricing.fixedCost} otherCosts={p.otherCosts || 0} batchYield={p.batchYield}
-                      salePrice={p.actualPrice} suggestedPrice={pricing.suggestedPrice} compact />
+                      salePrice={p.actualPrice} compact />
                   </div>
 
                   {/* Product Inventory Control & Stock Level */}
@@ -2585,7 +2585,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   className="w-full px-3 py-2 text-base font-bold bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
                 />
                 <span className="text-[11px] text-stone-500 mt-1 block">
-                  Deixe vazio para usar o preço sugerido automaticamente.
+                  Preço sugerido: {formatCurrency(suggestedPrice)}. Deixe vazio para usar esse valor.
                 </span>
               </div>
             </div>
@@ -2593,7 +2593,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
 
             <RecipeCostSummary materialsCost={materialsCost} embeddedLaborCost={embeddedLaborCost}
               laborCost={laborCost} fixedCost={fixedCost} otherCosts={parsedOtherCosts}
-              batchYield={parsedYield} salePrice={currentActualPrice} suggestedPrice={suggestedPrice} />
+              batchYield={parsedYield} salePrice={currentActualPrice} />
 
           </div>
         </form>
@@ -2730,7 +2730,7 @@ const FichaTecnicaModal: React.FC<FichaTecnicaModalProps> = ({
           <RecipeCostSummary materialsCost={product.materialsCost} embeddedLaborCost={product.embeddedLaborCost}
             laborCost={(product.productionTimeMinutes || 0) / 60 * (product.hourlyRate || 0)}
             fixedCost={pricing.fixedCost} otherCosts={product.otherCosts || 0} batchYield={product.batchYield}
-            salePrice={pricing.currentActualPrice} suggestedPrice={pricing.suggestedPrice} />
+            salePrice={pricing.currentActualPrice} />
 
           {/* Observações / Notas da Receita */}
           {product.notes && (

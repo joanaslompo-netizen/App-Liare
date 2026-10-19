@@ -14,8 +14,11 @@ assert.equal(summary.subtotalWithLabor, 25.3);
 assert.equal(summary.other, 1);
 assert.equal(summary.total, 26.3);
 assert.equal(summary.profit, 23.7);
-assert.equal(summary.marginPercent, 47.4);
-assert.equal(getRecipeCostSummary({ ...costs, salePrice: 0 }).marginPercent, null);
+assert.equal(summary.costs, 19.3);
+assert(Math.abs(summary.marginPercent! - 23.7 / 19.3 * 100) < 1e-9);
+assert(getRecipeCostSummary({ ...costs, salePrice: 0 }).marginPercent! < 0);
+assert.equal(getRecipeCostSummary({ ...costs, materialsCost: 8, fixedCost: 0, otherCosts: 0 }).marginPercent, null);
+assert.equal(getRecipeCostSummary({ ...costs, salePrice: summary.total }).marginPercent, 0);
 assert(Math.abs(getRecipeCostSummary({ ...costs, salePrice: 20 }).profit + 6.3) < 1e-9);
 
 const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'http://localhost/' });
@@ -40,13 +43,12 @@ const section = (parent: ParentNode) => parent.querySelector('[aria-label="Resum
 const value = (parent: ParentNode, label: string) => [...parent.querySelectorAll('dt')].find(el => el.textContent === label)?.nextElementSibling?.textContent;
 const check = (el: Element, price = 50) => {
   assert(el, 'Resumo visível');
-  assert.equal(value(el, 'Materiais + custos fixos'), formatCurrency(18.3));
-  assert.equal(value(el, 'Mão de obra total'), formatCurrency(7));
-  assert.equal(value(el, 'Subtotal com mão de obra'), formatCurrency(25.3));
-  assert.equal(value(el, 'Outros custos'), formatCurrency(1));
-  assert.equal(value(el, 'Custos totais'), formatCurrency(26.3));
-  assert.equal(value(el, 'Lucro após os custos'), formatCurrency(price - 26.3));
-  assert.equal(value(el, 'Margem de lucro'), formatPercent((price - 26.3) / price * 100));
+  assert.deepEqual([...el.querySelectorAll('dt')].map(el => el.textContent), ['Custos:', 'Custos + mão de obra:', 'Valor de venda:', 'Margem:']);
+  assert.equal(value(el, 'Custos:'), formatCurrency(19.3));
+  assert.equal(value(el, 'Custos + mão de obra:'), formatCurrency(26.3));
+  assert.equal(value(el, 'Valor de venda:'), formatCurrency(price));
+  assert.equal(value(el, 'Margem:'), formatPercent((price - 26.3) / 19.3 * 100));
+  assert(el.textContent?.includes('Guia de valor mínimo de venda'));
 };
 const card = document.querySelector('#product-card-test')!;
 check(section(card));

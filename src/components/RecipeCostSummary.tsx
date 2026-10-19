@@ -10,7 +10,6 @@ interface RecipeCostSummaryProps {
   otherCosts: number;
   batchYield: number;
   salePrice: number;
-  suggestedPrice?: number;
   compact?: boolean;
 }
 
@@ -22,28 +21,17 @@ export const RecipeCostSummary: React.FC<RecipeCostSummaryProps> = (props) => {
         <h4 className="text-sm font-bold text-stone-900">Custos e venda</h4>
         <p className="text-xs text-stone-500">Valores por unidade pronta{props.batchYield > 1 ? ` · receita rende ${formatNumber(props.batchYield)} unidades` : ''}</p>
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <dl className="space-y-2 text-xs">
-          <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
-            <dt>Materiais + custos fixos</dt><dd className="font-semibold tabular-nums">{formatCurrency(cost.materialsWithFixed)}</dd>
-            <dd className="w-full text-[11px] text-stone-500">Materiais: {formatCurrency(cost.materials)} · Fixos: {formatCurrency(cost.fixed)}</dd>
-          </div>
-          <div className="flex justify-between gap-3"><dt>Mão de obra total</dt><dd className="font-semibold tabular-nums">{formatCurrency(cost.labor)}</dd></div>
-          <div className="flex justify-between gap-3 border-t border-stone-100 pt-2"><dt>Subtotal com mão de obra</dt><dd className="font-semibold tabular-nums">{formatCurrency(cost.subtotalWithLabor)}</dd></div>
-          <div className="flex justify-between gap-3 text-stone-500"><dt>Outros custos</dt><dd className="tabular-nums">{formatCurrency(cost.other)}</dd></div>
-          <div className="flex justify-between gap-3 rounded-lg bg-stone-100 p-2.5 font-bold text-stone-900"><dt>Custos totais</dt><dd className="tabular-nums">{formatCurrency(cost.total)}</dd></div>
-        </dl>
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <dl className="space-y-3 text-xs">
-            <div className="flex items-center justify-between gap-3"><dt className="font-semibold">Valor de venda</dt><dd className="text-lg font-bold text-stone-900 tabular-nums">{formatCurrency(props.salePrice)}</dd></div>
-            <div className="flex justify-between gap-3"><dt>Lucro após os custos</dt><dd className={`font-bold tabular-nums ${cost.profit < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>{formatCurrency(cost.profit)}</dd></div>
-            <div className="flex justify-between gap-3"><dt>Margem de lucro</dt><dd className={`font-bold tabular-nums ${cost.profit < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>{cost.marginPercent == null ? '—' : formatPercent(cost.marginPercent)}</dd></div>
-          </dl>
-          {!props.compact && <p className="mt-3 text-[11px] text-stone-600">Lucro = venda − custos totais. A margem é esse lucro dividido pelo valor de venda.</p>}
-          {props.suggestedPrice != null && <p className="mt-3 text-[11px] text-stone-600">Preço sugerido: <strong>{formatCurrency(props.suggestedPrice)}</strong></p>}
+      <dl className="space-y-3 text-sm">
+        <div className="flex justify-between gap-3"><dt>Custos:</dt><dd className="font-semibold tabular-nums">{formatCurrency(cost.costs)}</dd></div>
+        <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 rounded-lg bg-stone-100 p-3 text-stone-900">
+          <dt className="font-semibold">Custos + mão de obra:</dt><dd className="font-bold tabular-nums">{formatCurrency(cost.total)}</dd>
+          <dd className="w-full text-[11px] text-stone-500">Guia de valor mínimo de venda</dd>
         </div>
-      </div>
-      {!props.compact && <p className="text-[11px] text-stone-500">A mão de obra total inclui o trabalho desta receita e o trabalho já incluído nos componentes, contado uma única vez.</p>}
+        <div className="flex items-center justify-between gap-3"><dt>Valor de venda:</dt><dd className="text-lg font-bold text-stone-900 tabular-nums">{formatCurrency(props.salePrice)}</dd></div>
+        <div className="flex justify-between gap-3"><dt>Margem:</dt><dd className={`font-bold tabular-nums ${cost.profit < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>{cost.marginPercent == null ? '—' : formatPercent(cost.marginPercent)}</dd></div>
+      </dl>
+      {!props.compact && <p className="text-[11px] text-stone-500">Custos incluem materiais, custos fixos e outros. A mão de obra inclui o trabalho dos componentes, contado uma única vez.</p>}
+      {!props.compact && <p className="text-[11px] text-stone-500">Margem = (venda − custos − mão de obra) ÷ custos × 100.</p>}
     </section>
   );
 };

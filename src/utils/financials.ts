@@ -14,9 +14,10 @@ export const getRecipeCostSummary = (recipe: {
   const subtotalWithLabor = materialsWithFixed + labor;
   const other = recipe.otherCosts / units;
   const total = subtotalWithLabor + other;
+  const costs = materialsWithFixed + other;
   const profit = recipe.salePrice - total;
-  const marginPercent = recipe.salePrice > 0 ? profit / recipe.salePrice * 100 : null;
-  return { materials, fixed, materialsWithFixed, labor, subtotalWithLabor, other, total, profit, marginPercent };
+  const marginPercent = costs > 0 ? profit / costs * 100 : null;
+  return { materials, fixed, materialsWithFixed, labor, subtotalWithLabor, other, costs, total, profit, marginPercent };
 };
 
 export interface ProductFinancialSplit {
