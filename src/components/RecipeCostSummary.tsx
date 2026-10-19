@@ -31,7 +31,7 @@ export const RecipeCostSummary: React.FC<RecipeCostSummaryProps> = (props) => {
         <div className="flex justify-between gap-3"><dt>Margem:</dt><dd className={`font-bold tabular-nums ${cost.profit < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>{cost.marginPercent == null ? '—' : formatPercent(cost.marginPercent)}</dd></div>
       </dl>
       {!props.compact && <p className="text-[11px] text-stone-500">Custos incluem materiais, custos fixos e outros. A mão de obra inclui o trabalho dos componentes, contado uma única vez.</p>}
-      {!props.compact && <p className="text-[11px] text-stone-500">Margem = (venda − custos) ÷ custos × 100. Inclui sua remuneração.</p>}
+      {!props.compact && <p className="text-[11px] text-stone-500">Margem = (venda − custos) ÷ venda × 100. Inclui sua remuneração.</p>}
     </section>
   );
 };
