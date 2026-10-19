@@ -15,7 +15,8 @@ export const getRecipeCostSummary = (recipe: {
   const other = recipe.otherCosts / units;
   const total = subtotalWithLabor + other;
   const costs = materialsWithFixed + other;
-  const profit = recipe.salePrice - total;
+  // Owner remuneration is included in profit for this pricing summary.
+  const profit = recipe.salePrice - costs;
   const marginPercent = costs > 0 ? profit / costs * 100 : null;
   return { materials, fixed, materialsWithFixed, labor, subtotalWithLabor, other, costs, total, profit, marginPercent };
 };

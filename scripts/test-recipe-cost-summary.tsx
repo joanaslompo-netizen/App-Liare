@@ -13,13 +13,14 @@ assert.equal(summary.materialsWithFixed, 18.3);
 assert.equal(summary.subtotalWithLabor, 25.3);
 assert.equal(summary.other, 1);
 assert.equal(summary.total, 26.3);
-assert.equal(summary.profit, 23.7);
+assert.equal(summary.profit, 30.7);
 assert.equal(summary.costs, 19.3);
-assert(Math.abs(summary.marginPercent! - 23.7 / 19.3 * 100) < 1e-9);
+assert(Math.abs(summary.marginPercent! - 30.7 / 19.3 * 100) < 1e-9);
 assert(getRecipeCostSummary({ ...costs, salePrice: 0 }).marginPercent! < 0);
 assert.equal(getRecipeCostSummary({ ...costs, materialsCost: 8, fixedCost: 0, otherCosts: 0 }).marginPercent, null);
-assert.equal(getRecipeCostSummary({ ...costs, salePrice: summary.total }).marginPercent, 0);
-assert(Math.abs(getRecipeCostSummary({ ...costs, salePrice: 20 }).profit + 6.3) < 1e-9);
+assert.equal(getRecipeCostSummary({ ...costs, salePrice: summary.costs }).marginPercent, 0);
+assert(Math.abs(getRecipeCostSummary({ ...costs, salePrice: summary.total }).profit - summary.labor) < 1e-9);
+assert(Math.abs(getRecipeCostSummary({ ...costs, salePrice: 10 }).profit + 9.3) < 1e-9);
 
 const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'http://localhost/' });
 for (const key of ['window', 'document', 'HTMLElement', 'HTMLInputElement', 'Event', 'MouseEvent']) {
@@ -47,7 +48,7 @@ const check = (el: Element, price = 50) => {
   assert.equal(value(el, 'Custos:'), formatCurrency(19.3));
   assert.equal(value(el, 'Custos + mão de obra:'), formatCurrency(26.3));
   assert.equal(value(el, 'Valor de venda:'), formatCurrency(price));
-  assert.equal(value(el, 'Margem:'), formatPercent((price - 26.3) / 19.3 * 100));
+  assert.equal(value(el, 'Margem:'), formatPercent((price - 19.3) / 19.3 * 100));
   assert(el.textContent?.includes('Guia de valor mínimo de venda'));
 };
 const card = document.querySelector('#product-card-test')!;
