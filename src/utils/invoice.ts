@@ -8,7 +8,7 @@ const money = (value: number) => escapeHtml(formatCurrency(value));
 const date = (value?: string) => value ? escapeHtml(formatDate(value)) : 'A combinar';
 
 export const getInvoiceDocumentTitle = (sale: Pick<Sale, 'orderNumber'>) =>
-  `Liare - Pedido ${formatOrderNumber(sale.orderNumber)}`;
+  `Liare - Pedido ${sale.orderNumber ? String(sale.orderNumber).padStart(3, '0') : 'A definir'}`;
 
 export const getInvoiceTotals = (sale: Sale) => {
   const total = Math.max(0, (sale.totalRevenue || 0)-(sale.returnAdjustmentCents||0)/100);
