@@ -2086,7 +2086,13 @@ export const cascadeRecalculateAllProducts = (
   return updatedList;
 };
 
-export const saveWorkspaceSnapshot = (workspace: unknown) => localStorage.setItem("atelie_workspace_finance_v1", JSON.stringify(workspace));
+export const saveWorkspaceSnapshot = (workspace: unknown) => {
+  const saved = localStorage.setItem('atelie_workspace_finance_v1', JSON.stringify(workspace));
+  // Remove only redundant caches of this new base, after its full snapshot is durable.
+  // The former base, recovery copies, sync queue and Google login remain untouched.
+  if (saved) for (const key of Object.values(STORAGE_KEYS)) localStorage.removeItem(key);
+  return saved;
+};
 
 export function getEmbeddedRecipeLaborCost(items: RecipeItem[], materials: Material[], products: Product[], visiting = new Set<string>()): number {
   return items.reduce((sum,item) => {

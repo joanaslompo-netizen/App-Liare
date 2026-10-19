@@ -7,20 +7,9 @@ import { executeFinanceInCloud } from "./services/cloudSync";
 import { saveWorkspaceSnapshot } from "./utils/storage";
 import type { FinanceData, StockMovement } from "./types";
 import { ensureOrderNumbers, getHighestOrderNumber } from './utils/orderNumbers';
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { 
   loadStoredData, 
-  saveMaterials, 
-  saveProducts, 
-  savePurchases, 
-  saveProductions,
-  saveSales, 
-  saveCustomers,
-  savePaymentMethods,
-  saveSuppliers, 
-  saveSettings,
-  saveTodos,
-  saveProjects,
   cascadeRecalculateAllProducts,
   getVirtualRecipeLaborCost,
   DEFAULT_TODOS,
@@ -121,6 +110,7 @@ const storePendingSync = (pending: boolean) => {
 export default function App() {
   // Load only this workspace’s device cache; a new cache starts empty.
   const [initialData] = useState(() => loadStoredData());
+  const localStorageLimited = useSyncExternalStore(localStorage.subscribe, localStorage.isLimited, () => false);
 
   const [materials, setMaterials] = useState<Material[]>(initialData.materials);
   const [products, setProducts] = useState<Product[]>(initialData.products);
@@ -515,51 +505,6 @@ export default function App() {
   }, [materials, products, purchases, productions, sales, customers, paymentMethods, suppliers, settings, todos, projects, finance, stockMovements]);
 
   useEffect(() => { saveWorkspaceSnapshot(workspaceRef.current); }, [materials, products, purchases, productions, sales, customers, paymentMethods, suppliers, settings, todos, projects, finance, stockMovements]);
-
-  // Auto-persist changes to local storage cache as well (offline fallback)
-  useEffect(() => {
-    saveMaterials(materials);
-  }, [materials]);
-
-  useEffect(() => {
-    saveProducts(products);
-  }, [products]);
-
-  useEffect(() => {
-    savePurchases(purchases);
-  }, [purchases]);
-
-  useEffect(() => {
-    saveProductions(productions);
-  }, [productions]);
-
-  useEffect(() => {
-    saveSales(sales);
-  }, [sales]);
-
-  useEffect(() => {
-    saveCustomers(customers);
-  }, [customers]);
-
-  useEffect(() => {
-    savePaymentMethods(paymentMethods);
-  }, [paymentMethods]);
-
-  useEffect(() => {
-    saveSuppliers(suppliers);
-  }, [suppliers]);
-
-  useEffect(() => {
-    saveSettings(settings);
-  }, [settings]);
-
-  useEffect(() => {
-    saveTodos(todos);
-  }, [todos]);
-
-  useEffect(() => {
-    saveProjects(projects);
-  }, [projects]);
 
   // Auth Handlers
   const handleLoginGoogle = async () => {
@@ -1733,6 +1678,12 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {localStorageLimited && <div role="alert" className="mx-auto mt-3 w-full max-w-7xl rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+        {syncStatus === 'synced'
+          ? 'Dados sincronizados na nuvem. O navegador está sem espaço para guardar uma cópia neste aparelho.'
+          : 'Não foi possível salvar uma cópia neste aparelho. Mantenha esta página aberta até sincronizar com a nuvem ou baixe um backup nas Configurações antes de fechar.'}
+      </div>}
 
       {/* Main Workspace Canvas */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-28">
