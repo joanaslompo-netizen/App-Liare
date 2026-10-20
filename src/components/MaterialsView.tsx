@@ -687,6 +687,8 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
   const [recipeYield, setRecipeYield] = useState(String(material?.batchYield || 1));
   const [productionMinutes, setProductionMinutes] = useState(String(material?.productionTimeMinutes || 0));
   const [laborHourlyRate, setLaborHourlyRate] = useState(String(material?.hourlyRate ?? defaultHourlyRate));
+  const [recipeFixedPercent, setRecipeFixedPercent] = useState(String(material?.recipeFixedCostPercent || 0));
+  const [recipeOtherCosts, setRecipeOtherCosts] = useState(String(material?.recipeOtherCosts || 0));
   const [isVirtualRecipe, setIsVirtualRecipe] = useState(material ? !!material.isVirtualRecipe : true);
   const [recipeItems, setRecipeItems] = useState<import('../types').RecipeItem[]>(material?.recipeItems || []);
   const [recipeTargetId, setRecipeTargetId] = useState('');
@@ -799,7 +801,10 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
   const parsedLaborHourlyRate = Math.max(0, Number(laborHourlyRate) || 0);
   const recipeLaborCost = parsedProductionMinutes / 60 * parsedLaborHourlyRate;
   const recipeMaterialsCost = normalizedRecipeItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
-  const recipeTotalCost = recipeMaterialsCost + recipeLaborCost;
+  const parsedRecipeFixedPercent = Math.max(0, Number(recipeFixedPercent) || 0);
+  const parsedRecipeOtherCosts = Math.max(0, Number(recipeOtherCosts) || 0);
+  const recipeFixedCost = (recipeMaterialsCost + recipeLaborCost) * parsedRecipeFixedPercent / 100;
+  const recipeTotalCost = recipeMaterialsCost + recipeLaborCost + recipeFixedCost + parsedRecipeOtherCosts;
   const recipeUnitCost = recipeTotalCost / Math.max(0.0001, parsedRecipeYield || 0);
 
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -877,6 +882,8 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
       productionTimeMinutes: isMadeInAtelier && !isDurable ? parsedProductionMinutes : undefined,
       hourlyRate: isMadeInAtelier && !isDurable ? parsedLaborHourlyRate : undefined,
       recipeLaborCost: isMadeInAtelier && !isDurable ? recipeLaborCost : undefined,
+      recipeFixedCostPercent: isMadeInAtelier && !isDurable ? parsedRecipeFixedPercent : undefined,
+      recipeOtherCosts: isMadeInAtelier && !isDurable ? parsedRecipeOtherCosts : undefined,
       recipeTotalCost: isDurable ? undefined : (isMadeInAtelier ? recipeTotalCost : undefined),
       unitCostFromBatch: isDurable ? undefined : (isMadeInAtelier ? recipeUnitCost : undefined),
       currentStock: isMadeInAtelier && isVirtualRecipe && !isDurable ? 0 : (parseFloat(currentStock) || 0),
@@ -1384,9 +1391,18 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                   <input id="material-hourly-rate" type="number" min="0" step="any" value={laborHourlyRate} onChange={(e) => setLaborHourlyRate(e.target.value)} className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg" />
                 </div>
               </div>
+              <details open={parsedRecipeFixedPercent > 0 || parsedRecipeOtherCosts > 0} className="text-sm text-stone-700">
+                <summary className="cursor-pointer font-semibold">Custos complementares</summary>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                  <div><label htmlFor="material-fixed-percent" className="block font-bold mb-1">Custos fixos (%)</label><input id="material-fixed-percent" type="number" min="0" step="any" value={recipeFixedPercent} onChange={e => setRecipeFixedPercent(e.target.value)} className="w-full px-3 py-2 border border-stone-300 rounded-lg" /></div>
+                  <div><label htmlFor="material-other-costs" className="block font-bold mb-1">Outros custos por lote (R$)</label><input id="material-other-costs" type="number" min="0" step="any" value={recipeOtherCosts} onChange={e => setRecipeOtherCosts(e.target.value)} className="w-full px-3 py-2 border border-stone-300 rounded-lg" /></div>
+                </div>
+              </details>
               <div className="bg-white border border-purple-200 rounded-lg p-3 space-y-1 text-sm text-stone-800">
                 <div className="flex justify-between"><span>Insumos por lote</span><strong>{formatCurrency(recipeMaterialsCost)}</strong></div>
                 <div className="flex justify-between"><span>Mão de obra por lote</span><strong>{formatCurrency(recipeLaborCost)}</strong></div>
+                {recipeFixedCost > 0 && <div className="flex justify-between"><span>Custos fixos por lote</span><strong>{formatCurrency(recipeFixedCost)}</strong></div>}
+                {parsedRecipeOtherCosts > 0 && <div className="flex justify-between"><span>Outros custos por lote</span><strong>{formatCurrency(parsedRecipeOtherCosts)}</strong></div>}
                 <div className="flex justify-between"><span>Custo total do lote</span><strong>{formatCurrency(recipeTotalCost)}</strong></div>
               </div>
 

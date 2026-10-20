@@ -29,4 +29,7 @@ const nested = { ...labels, id: 'kit', batchYield: 1, productionTimeMinutes: 0,
   recipeItems: [item] };
 assert.equal(estimateMaterialUnitCost(nested, [...materials, nested]), 6.5);
 assert.equal(labels.batchYield, 4);
+const withOverhead = { ...labels, recipeFixedCostPercent: 10, recipeOtherCosts: 1.7 };
+assert.equal(estimateMaterialUnitCost(withOverhead, [...materials, withOverhead]), 4);
+assert.equal(recalculateProductPricing(piece, [sheet, print, withOverhead], [piece]).materialsCost, 8);
 console.log('Material cost checks passed: mixed input units, manual yield, labor, virtual recipes and downstream product cost.');
