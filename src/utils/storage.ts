@@ -1993,7 +1993,8 @@ export const estimateMaterialUnitCost = (
 
   const laborCost = Math.max(0, material.productionTimeMinutes || 0) / 60
     * Math.max(0, material.hourlyRate || 0);
-  return (recipeCost + laborCost) / Math.max(0.0001, material.batchYield);
+  const fixedCost = (recipeCost + laborCost) * Math.max(0, material.recipeFixedCostPercent || 0) / 100;
+  return (recipeCost + laborCost + fixedCost + Math.max(0, material.recipeOtherCosts || 0)) / Math.max(0.0001, material.batchYield);
 };
 
 /**
