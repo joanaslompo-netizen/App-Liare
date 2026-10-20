@@ -83,6 +83,8 @@ export interface Material {
   productionTimeMinutes?: number;
   hourlyRate?: number;
   recipeLaborCost?: number;
+  recipeFixedCostPercent?: number;
+  recipeOtherCosts?: number;
   /** Estimated total cost of one recipe batch. */
   recipeTotalCost?: number;
   /** Estimated cost per base unit produced by the recipe. */
