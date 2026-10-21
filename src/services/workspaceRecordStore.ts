@@ -154,7 +154,7 @@ export function createRecordStore(adapter:RecordAdapter,uid:string) {
       const plan=await planRecordWrite(uid,next,current,loaded?.head||null,legacy,label);
       // Web transactions require all reads before any write. createOnly checks also
       // make failed/retried migrations incapable of changing preexisting archives.
-      for(const write of plan.writes)if(write.createOnly && await context.get(write.id))throw new Error('Um registro de destino já existe. Nada foi sobrescrito.');
+      await mapLimited(plan.writes.filter(write=>write.createOnly),async write=>{if(await context.get(write.id))throw new Error('Um registro de destino já existe. Nada foi sobrescrito.');});
       for(const write of plan.writes)context.set(write);
       return plan.data;
     }),
