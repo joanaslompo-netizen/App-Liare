@@ -576,10 +576,7 @@ export const MaterialsView: React.FC<MaterialsViewProps> = ({
                 </div>
 
                 {/* Footer Actions */}
-                <div className="px-4 py-2.5 bg-stone-50 border-t border-stone-100 flex items-center justify-between">
-                  <span className="text-[11px] text-stone-400">
-                    ID: {mat.id}
-                  </span>
+                <div className="px-4 py-2.5 bg-stone-50 border-t border-stone-100 flex items-center justify-end">
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
