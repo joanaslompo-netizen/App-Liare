@@ -2095,6 +2095,13 @@ export const saveWorkspaceSnapshot = (workspace: unknown) => {
   return saved;
 };
 
+/** Remuneration already included in a purchased-or-made recipe line, for display only.
+ * The persisted line keeps its complete valuation for production and stock history.
+ */
+export const getRecipeItemEmbeddedLaborCost = (
+  item: RecipeItem, materials: Material[], products: Product[]
+): number => getEmbeddedRecipeLaborCost([item], materials, products);
+
 export function getEmbeddedRecipeLaborCost(items: RecipeItem[], materials: Material[], products: Product[], visiting = new Set<string>()): number {
   return items.reduce((sum,item) => {
     if(item.type === 'product') { const p=products.find(p=>p.id===item.targetId); return sum + (p ? ((p.laborCost||0)+(p.embeddedLaborCost||0))/Math.max(1,p.batchYield||1) : 0)*item.quantity; }
