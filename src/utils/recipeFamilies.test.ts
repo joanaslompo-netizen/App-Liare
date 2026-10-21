@@ -31,8 +31,10 @@ assert.equal(result.items.length, 3);
 assert.equal(result.items[1].targetId, 'tea');
 assert.equal(result.items[1].quantity, 9);
 assert.equal(result.currentStock, 3);
-assert.equal(result.actualPrice, 45);
+assert.equal(result.actualPrice, mother.actualPrice);
 assert.equal(result.materialsCost, 9.1);
+assert.equal(result.netProfit, 40 - 9.1);
+assert.equal(result.calculatedMarginPercent, ((40 - 9.1) / 40) * 100);
 assert.equal(JSON.stringify(child), snapshot);
 assert.equal(result.name, 'Lapidado — Chá Branco');
 const removed = inheritRecipe(result, { ...changed, items: changed.items.slice(1) }, materials);
@@ -42,6 +44,22 @@ const virtualChild = { ...child, items: [{ ...row('another-row', 'virtual', 110)
 assert.equal(inheritRecipe(virtualChild, virtualMother, materials).items[0].categorySelections?.['v-aroma'], 'tea');
 const unrelated = { ...child, id: 'unrelated', parentRecipeId: undefined };
 assert.equal(synchronizeRecipeFamilies([changed, unrelated], materials)[1], unrelated);
+// Saving a mother with a new price updates every linked variant, including older prices.
+const secondChild = { ...child, id: 'second-child', actualPrice: 0, imageUrl: 'variant.png', minStock: 2 };
+const family = cascadeRecalculateAllProducts(materials, [{ ...mother, actualPrice: 60 }, child, secondChild, unrelated]);
+assert.deepEqual(family.map((p) => p.actualPrice), [60, 60, 60, 45]);
+assert.equal(family[2].imageUrl, secondChild.imageUrl);
+assert.equal(family[2].minStock, secondChild.minStock);
+assert.equal(family[1].items[1].targetId, 'tea');
+assert.equal(family[1].currentStock, child.currentStock);
+// Zero is an explicit price; do not fall back to the child's previous or suggested price.
+assert.equal(cascadeRecalculateAllProducts(materials, [{ ...mother, actualPrice: 0 }, child])[1].actualPrice, 0);
+// New variants and re-linked variants use the mother's price immediately.
+assert.equal(inheritRecipe({ ...child, actualPrice: 12 }, mother, materials).actualPrice, 40);
+const grandchild = { ...child, id: 'grandchild', parentRecipeId: child.id, actualPrice: 5 };
+assert.equal(synchronizeRecipeFamilies([grandchild, child, { ...mother, actualPrice: 70 }], materials)[0].actualPrice, 70);
+const detached = { ...child, parentRecipeId: undefined, actualPrice: 25 };
+assert.equal(cascadeRecalculateAllProducts(materials, [mother, detached])[1].actualPrice, 25);
 assert.doesNotThrow(() => synchronizeRecipeFamilies([
   { ...mother, parentRecipeId: child.id }, child,
 ], materials));

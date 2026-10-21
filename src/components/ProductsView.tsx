@@ -1113,6 +1113,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
 }) => {
   const isEditing = !!product;
   const [parentRecipeId, setParentRecipeId] = useState(product?.parentRecipeId || '');
+  const parentRecipe = allProducts.find((p) => p.id === parentRecipeId);
   const [isFamilyMother, setIsFamilyMother] = useState(!!product?.isFamilyMother);
   const motherRecipes = allProducts.filter((p) =>
     p.id !== product?.id && !p.parentRecipeId && !p.isCustomRecipe
@@ -1307,7 +1308,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     product?.profitMarginPercent != null ? product.profitMarginPercent.toString() : defaultProfitMargin.toString()
   );
   const [actualPrice, setActualPrice] = useState<string>(
-    product?.actualPrice != null ? product.actualPrice.toFixed(2) : ''
+    (parentRecipe?.actualPrice ?? product?.actualPrice)?.toFixed(2) ?? ''
   );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1330,6 +1331,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     setFixedCostPercent(String(mother.fixedCostPercent));
     setOtherCosts(String(mother.otherCosts));
     setProfitMarginPercent(String(mother.profitMarginPercent));
+    setActualPrice(mother.actualPrice.toFixed(2));
   };
 
   // Calculate live totals
@@ -1356,7 +1358,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     businessUnitCost, laborUnitCost, commercialProfit, netProfit, calculatedMarginPercent
   } = calculateRecipePricing(
     materialsCost, laborCost, parsedFixedPct, parsedOtherCosts, parsedYield, parsedMargin,
-    actualPrice.trim() === '' ? undefined : Number(actualPrice), embeddedLaborCost
+    parentRecipe ? parentRecipe.actualPrice : (actualPrice.trim() === '' ? undefined : Number(actualPrice)), embeddedLaborCost
   );
 
   // Filter products available to be added as ingredients:
@@ -1859,8 +1861,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                       )}
                       <p className="text-sm text-stone-700">
                         {parentRecipeId
-                          ? 'Composição, quantidades e mão de obra vêm da mãe. Para alterar esses dados, edite a mãe. Escolha o aroma nesta variação; seu estoque e preço de venda são individuais.'
-                          : 'As variações vinculadas receberão as alterações desta receita nas próximas produções, mantendo seus aromas e estoques.'}
+                          ? 'Composição, quantidades, mão de obra e preço de venda vêm da mãe. Para alterar esses dados, edite a mãe. O aroma e o estoque desta variação são individuais.'
+                          : 'Ao salvar, as variações vinculadas receberão as alterações de composição e preço de venda desta receita, mantendo seus aromas e estoques.'}
                       </p>
                     </div>
                   )}
@@ -2558,7 +2560,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-stone-800 mb-1">
+                <label htmlFor="input-product-actual-price" className="block text-xs font-bold text-stone-800 mb-1">
                   Preço de Venda Praticado (R$)
                 </label>
                 <input
@@ -2567,12 +2569,16 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   min="0"
                   step="0.01"
                   placeholder={suggestedPrice.toFixed(2)}
-                  value={actualPrice}
+                  value={parentRecipe ? parentRecipe.actualPrice.toFixed(2) : actualPrice}
+                  readOnly={!!parentRecipe}
+                  aria-describedby="product-price-help"
                   onChange={(e) => setActualPrice(e.target.value)}
                   className="w-full px-3 py-2 text-base font-bold bg-white border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-stone-900"
                 />
-                <span className="text-[11px] text-stone-500 mt-1 block">
-                  Preço sugerido: {formatCurrency(suggestedPrice)}. Deixe vazio para usar esse valor.
+                <span id="product-price-help" className="text-[11px] text-stone-500 mt-1 block">
+                  {parentRecipe
+                    ? `Preço definido pela receita mãe: ${parentRecipe.name}. Para alterá-lo, edite a mãe.`
+                    : <>Preço sugerido: {formatCurrency(suggestedPrice)}. Deixe vazio para usar esse valor.</>}
                 </span>
               </div>
             </div>

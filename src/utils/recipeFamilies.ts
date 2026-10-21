@@ -6,7 +6,7 @@ const isAroma = (item: RecipeItem, materials: Material[]) => {
   return /essencia|aroma|fragrancia/.test(normalize(category));
 };
 
-/** Keep only the variant's aroma choices; quantities and all other ingredients come from the mother. */
+/** Inherit composition and selling price while preserving each variant's aroma, stock and identity. */
 export const inheritRecipe = (variant: Product, mother: Product, materials: Material[]): Product => {
   const used = new Set<string>();
   const items = mother.items.map((base) => {
@@ -54,6 +54,7 @@ export const inheritRecipe = (variant: Product, mother: Product, materials: Mate
     fixedCostPercent: mother.fixedCostPercent,
     otherCosts: mother.otherCosts,
     profitMarginPercent: mother.profitMarginPercent,
+    actualPrice: mother.actualPrice,
   };
 };
 

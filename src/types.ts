@@ -126,7 +126,7 @@ export interface ProductionStageDefinition {
 
 export interface Product {
   id: string;
-  /** Receita mãe que fornece a composição; aroma, preço de venda e estoque continuam individuais. */
+  /** Receita mãe que fornece composição e preço de venda; aroma e estoque continuam individuais. */
   parentRecipeId?: string;
   /** Vincula explicitamente as variações existentes desta família a esta mãe. */
   isFamilyMother?: boolean;
