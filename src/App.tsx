@@ -1,3 +1,5 @@
+import {syncFailureKind,retryDelay} from './services/syncRetryPolicy';
+import {canonicalJSON} from './services/workspaceRecordStore';
 import { workspaceStorage as localStorage } from './utils/workspaceStorage';
 import { getProductFinancialSplit } from "./utils/financials";
 import { FinanceView } from "./components/FinanceView";
@@ -54,6 +56,7 @@ import {
   User 
 } from './lib/firebase';
 import { 
+  compactWorkspaceForCloud,
   uploadWorkspaceToCloud, 
   subscribeToWorkspace, 
   syncUserProfile, 
@@ -79,7 +82,7 @@ const withDefaultDiscountCodes = (incoming: AtelierSettings): AtelierSettings =>
 const CLOUD_SYNC_PENDING_KEY = 'atelie_cloud_sync_pending_v1';
 const CLOUD_SYNC_BASE_KEY = 'atelie_cloud_sync_base_v1';
 const CLOUD_SYNC_RECOVERY_KEY = 'atelie_cloud_sync_recovery_v1';
-const AUTO_SYNC_DELAY_MS = 2000;
+const AUTO_SYNC_DELAY_MS = 15000;
 
 const readStoredCloudBase = (): WorkspaceSyncBase | null => {
   try {
@@ -156,6 +159,8 @@ export default function App() {
   });
   const localChangeVersionRef = useRef(0);
   const syncInFlightRef = useRef(false);
+  const syncBlockedRef = useRef(false);
+  const syncRetryAttemptRef = useRef(0);
   const syncAgainRef = useRef(false);
   const performCloudSyncRef = useRef<(showFeedback?: boolean) => Promise<void>>(async () => {});
   const hasObservedWorkspaceRef = useRef(false);
@@ -249,6 +254,8 @@ export default function App() {
 
   const performCloudSync = useCallback(async (showFeedback = false) => {
     if (!user || !hasLoadedCloudRef.current) return;
+    if(showFeedback){syncBlockedRef.current=false;syncRetryAttemptRef.current=0;}
+    if(syncBlockedRef.current)return;
 
     if (syncInFlightRef.current) {
       syncAgainRef.current = true;
@@ -263,6 +270,7 @@ export default function App() {
     const startedAtVersion = localChangeVersionRef.current;
     const localSnapshot = workspaceRef.current;
     const mergeBase = cloudBaseRef.current;
+    let nextDelay=AUTO_SYNC_DELAY_MS;
 
     try {
       let uploaded: WorkspaceData | null = null;
@@ -279,6 +287,9 @@ export default function App() {
           ? mergeWorkspaceData(mergeBase || createWorkspaceSyncBase(cloud), localSnapshot, cloud)
           : localSnapshot;
 
+        // Object identity changes alone must not trigger a database write.
+        const business=(data:WorkspaceData)=>{const {version,revision,updatedAt,lastModifiedBy,...rest}=compactWorkspaceForCloud(data);return canonicalJSON(rest);};
+        if(cloud && business(workspaceToUpload)===business(cloud)){uploaded=cloud;break;}
         try {
           uploaded = await uploadWorkspaceToCloud(
             user.uid,
@@ -302,6 +313,8 @@ export default function App() {
 
       if (!uploaded) throw lastConflict || new Error('Não foi possível concluir a sincronização.');
 
+      syncRetryAttemptRef.current=0;
+      syncBlockedRef.current=false;
       cloudWorkspaceRef.current = uploaded;
       cloudRevisionRef.current = uploaded.revision || 0;
       setLastSyncedAt(new Date());
@@ -336,14 +349,19 @@ export default function App() {
           : 'Não foi possível acessar a nuvem agora. Sua alteração continua salva neste aparelho.',
         type: error instanceof CloudSyncConflictError ? 'info' : 'error',
       });
-      syncAgainRef.current = true;
+      const kind=syncFailureKind(error);
+      const delay=kind==='transient'?retryDelay(++syncRetryAttemptRef.current):null;
+      syncBlockedRef.current=delay===null;
+      syncAgainRef.current=delay!==null;
+      if(delay!==null)nextDelay=delay;
+      if(kind==='quota')setSyncNotification({message:'A cota diária do banco foi atingida. Os envios automáticos foram pausados; confira o salvamento neste aparelho ou exporte um backup nas Configurações.',type:'error'});
     } finally {
       syncInFlightRef.current = false;
-      if (syncAgainRef.current) {
+      if (syncAgainRef.current && !syncBlockedRef.current) {
         syncAgainRef.current = false;
         syncTimeoutRef.current = setTimeout(() => {
           void performCloudSyncRef.current(false);
-        }, AUTO_SYNC_DELAY_MS);
+        }, nextDelay);
       }
     }
   }, [applyWorkspaceData, user]);
@@ -357,6 +375,8 @@ export default function App() {
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
 
+      if(unsubscribeDoc){unsubscribeDoc();unsubscribeDoc=null;}
+      syncBlockedRef.current=false;syncRetryAttemptRef.current=0;
       if (currentUser) {
         setSyncStatus('syncing');
         await syncUserProfile(currentUser);
@@ -456,7 +476,10 @@ export default function App() {
           },
           (error) => {
             console.warn('Erro na sincronização em tempo real:', error);
+            syncBlockedRef.current=syncFailureKind(error)!=='transient';
+            if(syncTimeoutRef.current)clearTimeout(syncTimeoutRef.current);
             setSyncStatus('error');
+            setSyncNotification({message:error.message,type:'error'});
           }
         );
       } else {
@@ -474,7 +497,7 @@ export default function App() {
   }, [applyWorkspaceData]);
 
   // Alterações ficam salvas localmente na hora e entram em uma fila de envio.
-  // Agrupa alterações rápidas e envia após dois segundos sem novas mudanças.
+  // Agrupa alterações rápidas e envia após quinze segundos sem novas mudanças.
   useEffect(() => {
     if (!hasObservedWorkspaceRef.current) {
       hasObservedWorkspaceRef.current = true;
@@ -493,7 +516,7 @@ export default function App() {
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     setSyncStatus('pending');
 
-    if (!user || !hasLoadedCloudRef.current) return;
+    if (!user || !hasLoadedCloudRef.current || syncBlockedRef.current) return;
 
     syncTimeoutRef.current = setTimeout(() => {
       void performCloudSyncRef.current(false);

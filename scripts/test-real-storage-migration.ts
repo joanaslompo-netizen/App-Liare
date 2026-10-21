@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {createRecordStore,LEGACY_ID,splitWorkspace,canonicalJSON,HEAD_ID} from '../src/services/workspaceRecordStore';
+const original=JSON.parse(fs.readFileSync(process.argv[2],'utf8')),uid=original.userId;
+const docs=new Map<string,any>([[LEGACY_ID,structuredClone(original)]]);const batches:any[][]=[];
+const get=async(id:string)=>docs.has(id)?{data:structuredClone(docs.get(id))}:null;
+const adapter={get,transaction:async(operation:any)=>{const writes:any[]=[];const result=await operation({get,set:(write:any)=>writes.push(write)});for(const write of writes)docs.set(write.id,structuredClone(write.data));batches.push(writes);return result;}};
+const store=createRecordStore(adapter,uid);
+await store.mutate(c=>c,original.revision,'Migração');
+const migrated=(await store.read())!.data;
+for(const key of Object.keys(original).filter(k=>!['revision','updatedAt','lastModifiedBy'].includes(k)))assert.deepEqual(migrated[key],original[key],key);
+assert.deepEqual(docs.get(LEGACY_ID),original);
+const changed=structuredClone(migrated);changed.products[0].notes=(changed.products[0].notes||'')+' Teste local.';
+await store.mutate(()=>changed,migrated.revision,'Teste local');
+const writes=batches.at(-1)!,legacyBytes=Buffer.byteLength(JSON.stringify(original))*2,newBytes=Buffer.byteLength(JSON.stringify(writes));
+assert.equal(writes.filter(x=>x.id.startsWith('r4_')).length,1);
+assert.deepEqual((await store.previous())!.data,migrated);
+console.log(JSON.stringify({result:'PASS — somente simulação local, sem alterar o banco real',originalRevision:original.revision,recordCount:splitWorkspace(original).values.length,migrationDocuments:batches[0].length,originalJSONBytes:Buffer.byteLength(JSON.stringify(original)),manifestBytes:Buffer.byteLength(JSON.stringify(docs.get(HEAD_ID))),singleRecipeEditBytes:newBytes,oldFullWriteAndBackupBytes:legacyBytes,ratioPercent:100*newBytes/legacyBytes}));

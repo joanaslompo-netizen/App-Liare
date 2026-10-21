@@ -1,11 +1,10 @@
-import { WORKSPACE_ID, PREVIOUS_WORKSPACE_ID } from '../config/workspace';
+import { createRecordStore, HEAD_ID, LEGACY_ID, WorkspaceRevisionError } from './workspaceRecordStore';
+import { firestoreRecordAdapter } from './firestoreRecordAdapter';
 import { applyFinanceCommand, emptyFinance, validateFinanceData, type FinanceCommand } from "../utils/financeLedger";
 import {
   doc,
-  getDoc,
   setDoc,
   onSnapshot,
-  runTransaction,
   Unsubscribe
 } from 'firebase/firestore';
 import { db, User } from '../lib/firebase';
@@ -238,119 +237,64 @@ export function compactWorkspaceForCloud(workspace: WorkspaceData): WorkspaceDat
  * Só grava se a revisão na nuvem ainda for exatamente a que este aparelho leu.
  * Antes de substituir o backup atual, preserva uma cópia na área de recuperação desta base.
  */
+const stores = new Map<string, ReturnType<typeof createRecordStore>>();
+function recordStore(userId:string) {
+  let store=stores.get(userId);
+  if(!store){store=createRecordStore(firestoreRecordAdapter(db,userId),userId);stores.set(userId,store);}
+  return store;
+}
+async function mutateRecords(userId:string,mutator:(current:WorkspaceData|null)=>WorkspaceData,expectedRevision?:number,label='Web') {
+  try { return workspaceFromData(await recordStore(userId).mutate(mutator,expectedRevision,label)); }
+  catch(error){if(error instanceof WorkspaceRevisionError)throw new CloudSyncConflictError(error.cloudData.revision||0,error.expectedRevision,error.cloudData);throw error;}
+}
 export async function uploadWorkspaceToCloud(
-  userId: string,
-  workspace: WorkspaceData,
-  deviceLabel: string = 'Web',
-  expectedRevision?: number
-): Promise<WorkspaceData> {
-  if (!userId) throw new Error('Usuário não autenticado.');
-
-  const workspaceRef = doc(db, 'users', userId, 'workspaces', WORKSPACE_ID);
-  const previousRef = doc(db, 'users', userId, 'workspaces', PREVIOUS_WORKSPACE_ID);
-
-  return runTransaction(db, async (transaction) => {
-    const snap = await transaction.get(workspaceRef);
-    const current = snap.exists() ? snap.data() : null;
-    const cloudRevision = Number(current?.revision || 0);
-
-    // Existing legacy backups have revision 0. A client that has read them also expects 0.
-    const currentWorkspace = current ? workspaceFromData(current) : undefined;
-
-    if (snap.exists() && expectedRevision === undefined) {
-      throw new CloudSyncConflictError(cloudRevision, -1, currentWorkspace);
-    }
-    if (snap.exists() && cloudRevision !== Number(expectedRevision || 0)) {
-      throw new CloudSyncConflictError(
-        cloudRevision,
-        Number(expectedRevision || 0),
-        currentWorkspace
-      );
-    }
-
-    const now = new Date().toISOString();
-    const nextRevision = cloudRevision + 1;
-    const compactWorkspace = compactWorkspaceForCloud(workspace);
-    validateFinanceData(compactWorkspace.finance || emptyFinance());
-    const payload = sanitizeForFirestore({
-      userId,
-      version: 3,
-      finance: compactWorkspace.finance || emptyFinance(),
-      stockMovements: compactWorkspace.stockMovements || [],
-      revision: nextRevision,
-      updatedAt: now,
-      lastModifiedBy: deviceLabel,
-      materials: compactWorkspace.materials,
-      products: compactWorkspace.products,
-      productions: compactWorkspace.productions || [],
-      projects: compactWorkspace.projects || [],
-      purchases: compactWorkspace.purchases,
-      sales: compactWorkspace.sales,
-      customers: compactWorkspace.customers || [],
-      paymentMethods: compactWorkspace.paymentMethods || [],
-      suppliers: compactWorkspace.suppliers,
-      settings: compactWorkspace.settings,
-      todos: compactWorkspace.todos || [],
-    });
-
-    if (current) {
-      transaction.set(previousRef, sanitizeForFirestore({
-        ...current,
-        backupOfRevision: cloudRevision,
-        backedUpAt: now,
-      }));
-    }
-    transaction.set(workspaceRef, payload);
-    return workspaceFromData(payload);
-  });
+  userId:string,workspace:WorkspaceData,deviceLabel='Web',expectedRevision?:number
+):Promise<WorkspaceData> {
+  if(!userId)throw new Error('Usuário não autenticado.');
+  const compact=compactWorkspaceForCloud(workspace);
+  validateFinanceData(compact.finance||emptyFinance());
+  return mutateRecords(userId,()=>sanitizeForFirestore(compact),expectedRevision,deviceLabel);
 }
-
-export async function fetchWorkspaceFromCloud(userId: string): Promise<WorkspaceData | null> {
-  if (!userId) return null;
-  const snap = await getDoc(doc(db, 'users', userId, 'workspaces', WORKSPACE_ID));
-  return snap.exists() ? workspaceFromData(snap.data()) : null;
+export async function fetchWorkspaceFromCloud(userId:string):Promise<WorkspaceData|null> {
+  if(!userId)return null;
+  const loaded=await recordStore(userId).read();
+  return loaded?workspaceFromData(loaded.data):null;
 }
-
-export async function fetchPreviousWorkspaceFromCloud(userId: string): Promise<WorkspaceData | null> {
-  if (!userId) return null;
-  const snap = await getDoc(doc(db, 'users', userId, 'workspaces', PREVIOUS_WORKSPACE_ID));
-  return snap.exists() ? workspaceFromData(snap.data()) : null;
+export async function fetchPreviousWorkspaceFromCloud(userId:string):Promise<WorkspaceData|null> {
+  if(!userId)return null;
+  const loaded=await recordStore(userId).previous();
+  return loaded?workspaceFromData(loaded.data):null;
 }
-
-export function subscribeToWorkspace(
-  userId: string,
-  onData: (data: WorkspaceData) => void,
-  onError?: (err: Error) => void
-): Unsubscribe {
-  return onSnapshot(doc(db, 'users', userId, 'workspaces', WORKSPACE_ID), (snapshot) => {
-    if (snapshot.exists()) onData(workspaceFromData(snapshot.data()));
-  }, (error) => {
-    console.warn('Erro na escuta em tempo real do Firestore:', error);
-    if (onError) onError(error);
-  });
+export function subscribeToWorkspace(userId:string,onData:(data:WorkspaceData)=>void,onError?:(error:Error)=>void):Unsubscribe {
+  let stopped=false,sequence=0;
+  // Both listeners are needed during cutover: a stale tab must never silently
+  // change the legacy workspace behind the new record-based store.
+  const refresh=async()=>{const current=++sequence;try{const data=await fetchWorkspaceFromCloud(userId);if(!stopped&&current===sequence&&data)onData(data);}catch(error){if(!stopped&&current===sequence)onError?.(error as Error);}};
+  const listeners=[HEAD_ID,LEGACY_ID].map(id=>onSnapshot(doc(db,'users',userId,'workspaces',id),snapshot=>{
+    if(!snapshot.metadata.hasPendingWrites)void refresh();
+  },error=>{if(!stopped)onError?.(error);}));
+  return ()=>{stopped=true;sequence++;listeners.forEach(unsubscribe=>unsubscribe());};
 }
 
 function unionRecords<T extends { id: string }>(local: T[] = [], cloud: T[] = []): T[] {
   const map = new Map(local.map(e => [e.id, e])); for (const e of cloud) map.set(e.id, e); return [...map.values()];
 }
 /** Each credit/order operation is recomputed inside the Firestore transaction. */
-export async function executeFinanceInCloud(userId: string, local: WorkspaceData, base: WorkspaceSyncBase | null, command: FinanceCommand): Promise<WorkspaceData> {
-  const ref = doc(db, 'users', userId, 'workspaces', WORKSPACE_ID);
-  const previous = doc(db, 'users', userId, 'workspaces', PREVIOUS_WORKSPACE_ID);
-  return runTransaction(db, async transaction => {
-    const snap = await transaction.get(ref);
-    const cloud = snap.exists() ? workspaceFromData(snap.data()) : null;
-    const merged = cloud ? mergeWorkspaceData(base || createWorkspaceSyncBase(cloud), local, cloud) : local;
-    // Financial events and physical deliveries from the server cannot be overwritten by a stale form.
-    if (cloud) merged.sales = merged.sales.map(s => {
-      const current = cloud.sales.find(x => x.id === s.id);
-      if (!current?.financialTracking) return s;
-      return { ...s, commercialStatus: current.commercialStatus, cancelledAt: current.cancelledAt, financialTracking: true, legacyPaidCents: current.legacyPaidCents, returnAdjustmentCents:current.returnAdjustmentCents, deliveryHistory: current.deliveryHistory, items: s.items?.map(it => { const ci = current.items?.find(x => x.id === it.id); return ci ? { ...it, deliveredQuantity: ci.deliveredQuantity, returnedQuantity: ci.returnedQuantity, stockConsumedQuantity: ci.stockConsumedQuantity } : it; }) };
-    });
-    const updated = applyFinanceCommand(merged, command);
-    const payload = sanitizeForFirestore({ ...compactWorkspaceForCloud(updated), userId, version: 3, revision: (cloud?.revision || 0) + 1, updatedAt: new Date().toISOString(), lastModifiedBy: 'Financeiro' });
-    if (snap.exists()) transaction.set(previous, sanitizeForFirestore({ ...snap.data(), backedUpAt: payload.updatedAt }));
-    transaction.set(ref, payload);
-    return workspaceFromData(payload);
-  });
+export async function executeFinanceInCloud(userId:string,local:WorkspaceData,base:WorkspaceSyncBase|null,command:FinanceCommand):Promise<WorkspaceData> {
+  // Re-read and recalculate inside one transaction. A retry never consumes
+  // stock or credit twice, and unrelated record changes are preserved.
+  const store=recordStore(userId);
+  for(let attempt=0;attempt<3;attempt++) {
+    const loaded=await store.read();const expected=loaded?.data?.revision;
+    try{return await mutateRecords(userId,cloud=>{
+      const merged=cloud?mergeWorkspaceData(base||createWorkspaceSyncBase(cloud),local,cloud):local;
+      if(cloud)merged.sales=merged.sales.map(s=>{
+        const current=cloud.sales.find(x=>x.id===s.id);
+        if(!current?.financialTracking)return s;
+        return {...s,commercialStatus:current.commercialStatus,cancelledAt:current.cancelledAt,financialTracking:true,legacyPaidCents:current.legacyPaidCents,returnAdjustmentCents:current.returnAdjustmentCents,deliveryHistory:current.deliveryHistory,items:s.items?.map(it=>{const ci=current.items?.find(x=>x.id===it.id);return ci?{...it,deliveredQuantity:ci.deliveredQuantity,returnedQuantity:ci.returnedQuantity,stockConsumedQuantity:ci.stockConsumedQuantity}:it;})};
+      });
+      return sanitizeForFirestore(compactWorkspaceForCloud(applyFinanceCommand(merged,command)));
+    },expected,'Financeiro');}catch(error){if(error instanceof CloudSyncConflictError&&attempt<2)continue;throw error;}
+  }
+  throw new Error('Não foi possível concluir a operação financeira.');
 }
