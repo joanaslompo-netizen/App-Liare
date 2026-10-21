@@ -1,3 +1,4 @@
+import { ModalFrame } from './ModalFrame';
 import React, { useState } from 'react';
 import { 
   Sparkles, 
@@ -60,10 +61,10 @@ export const ExampleSelectorModal: React.FC<ExampleSelectorModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+    <ModalFrame onClose={onClose} className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-2xl my-6 overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="px-6 py-4 bg-stone-50 border-b border-stone-200 flex items-center justify-between shrink-0">
+        <div className="liare-modal-header px-6 py-4 bg-stone-50 border-b border-stone-200 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center">
               <Sparkles className="w-5 h-5" />
@@ -77,7 +78,7 @@ export const ExampleSelectorModal: React.FC<ExampleSelectorModalProps> = ({
               </p>
             </div>
           </div>
-          <button 
+          <button aria-label="Fechar janela" type="button"
             onClick={onClose} 
             className="p-1 text-stone-400 hover:text-stone-700 rounded-lg transition-colors"
           >
@@ -86,7 +87,7 @@ export const ExampleSelectorModal: React.FC<ExampleSelectorModalProps> = ({
         </div>
 
         {/* Content list */}
-        <div className="p-6 overflow-y-auto space-y-4">
+        <div className="liare-modal-body p-6 overflow-y-auto space-y-4">
           <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3.5 flex items-start gap-3 text-xs text-amber-950">
             <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
             <div>
@@ -185,6 +186,6 @@ export const ExampleSelectorModal: React.FC<ExampleSelectorModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </ModalFrame>
   );
 };

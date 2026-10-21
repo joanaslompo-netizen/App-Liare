@@ -1,3 +1,4 @@
+import { ModalFrame } from './ModalFrame';
 import { localDateString } from '../utils/localDate';
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
@@ -887,10 +888,10 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
   };
 
   return (
-    <div className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <ModalFrame onClose={onClose} className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-3xl my-6 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50 shrink-0">
+        <div className="liare-modal-header flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center">
               <Hammer className="w-5 h-5" />
@@ -906,7 +907,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
               </p>
             </div>
           </div>
-          <button
+          <button aria-label="Fechar janela" type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200 transition-colors"
           >
@@ -915,7 +916,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <form onSubmit={handleSubmit} className="overflow-y-auto p-6 space-y-5 flex-1">
+        <form onSubmit={handleSubmit} className="liare-modal-body overflow-y-auto p-6 space-y-5 flex-1">
           {/* 1. Recipe Selection & Date */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="sm:col-span-2">
@@ -1258,7 +1259,7 @@ export const NewProductionModal: React.FC<NewProductionModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </ModalFrame>
   );
 };
 
@@ -1616,19 +1617,19 @@ const StageProgressModal: React.FC<StageProgressModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <ModalFrame onClose={onClose} className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-2xl my-6 overflow-hidden flex flex-col max-h-[92vh]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-stone-200 bg-stone-50 shrink-0">
+        <div className="liare-modal-header flex items-center justify-between px-5 py-4 border-b border-stone-200 bg-stone-50 shrink-0">
           <div>
             <h3 className="font-bold text-stone-900 text-base">Continuar produção</h3>
             <p className="text-xs text-stone-500">{production.productName} · {formatNumber(targetQuantity)} un planejadas</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200">
+          <button aria-label="Fechar janela" type="button" onClick={onClose} className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-5 overflow-y-auto space-y-4">
+        <div className="liare-modal-body p-5 overflow-y-auto space-y-4">
           <div className="space-y-2">
             {sortedStages.map((stage, index) => {
               const complete = stage.completedQuantity >= stage.plannedQuantity - 0.0001;
@@ -1756,7 +1757,7 @@ const StageProgressModal: React.FC<StageProgressModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </ModalFrame>
   );
 };
 
@@ -1776,10 +1777,10 @@ const ViewProductionModal: React.FC<ViewProductionModalProps> = ({
   onClose,
 }) => {
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <ModalFrame onClose={onClose} className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-2xl my-6 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50 shrink-0">
+        <div className="liare-modal-header flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center">
               <Eye className="w-5 h-5" />
@@ -1793,7 +1794,7 @@ const ViewProductionModal: React.FC<ViewProductionModalProps> = ({
               </p>
             </div>
           </div>
-          <button
+          <button aria-label="Fechar janela" type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200 transition-colors"
           >
@@ -1802,7 +1803,7 @@ const ViewProductionModal: React.FC<ViewProductionModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="p-6 overflow-y-auto space-y-5 flex-1">
+        <div className="liare-modal-body p-6 overflow-y-auto space-y-5 flex-1">
           {/* Main Info */}
           <div className="flex items-start gap-4 p-4 bg-stone-50 rounded-xl border border-stone-200">
             <div className="w-16 h-16 rounded-lg bg-white border border-stone-200 shrink-0 overflow-hidden flex items-center justify-center">
@@ -1917,6 +1918,6 @@ const ViewProductionModal: React.FC<ViewProductionModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </ModalFrame>
   );
 };

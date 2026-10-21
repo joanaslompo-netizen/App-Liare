@@ -1,3 +1,4 @@
+import { ModalFrame } from './ModalFrame';
 import { inspectDataIntegrity, type IntegrityIssue } from '../utils/dataIntegrity';
 import { localDateString } from '../utils/localDate';
 import React, { useState, useRef, useEffect } from 'react';
@@ -235,23 +236,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
+    <ModalFrame onClose={onClose} className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-lg my-4 max-h-[calc(100dvh-2rem)] overflow-y-auto">
         {/* Header */}
-        <div className="px-6 py-4 bg-stone-50 border-b border-stone-200 flex items-center justify-between">
+        <div className="liare-modal-header px-6 py-4 bg-stone-50 border-b border-stone-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Settings className="w-5 h-5 text-amber-600" />
             <h3 className="font-bold text-stone-900 text-base">
               Configurações do Ateliê & Custos Padrão
             </h3>
           </div>
-          <button onClick={onClose} className="p-1 text-stone-400 hover:text-stone-700">
+          <button aria-label="Fechar janela" type="button" onClick={onClose} className="p-1 text-stone-400 hover:text-stone-700">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSave} className="p-6 space-y-5 text-xs">
+        <form onSubmit={handleSave} className="liare-modal-body p-6 space-y-5 text-xs">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block font-bold text-stone-700 uppercase tracking-wider mb-1">
@@ -575,7 +576,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </ModalFrame>
   );
 };
 

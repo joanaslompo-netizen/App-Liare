@@ -1,3 +1,4 @@
+import { ModalFrame } from './ModalFrame';
 import type { FinanceData } from "../types";
 import { creditBalance, money, emptyFinance } from "../utils/financeLedger";
 import React, { useState, useMemo } from 'react';
@@ -662,9 +663,9 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+    <ModalFrame onClose={onClose} className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between px-6 py-4.5 border-b border-stone-200 bg-stone-50">
+        <div className="liare-modal-header flex items-center justify-between px-6 py-4.5 border-b border-stone-200 bg-stone-50">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center">
               <Users className="w-5 h-5" />
@@ -678,7 +679,7 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
               </p>
             </div>
           </div>
-          <button
+          <button aria-label="Fechar janela" type="button"
             onClick={onClose}
             className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 rounded-lg cursor-pointer transition-colors"
           >
@@ -686,7 +687,7 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="liare-modal-body p-6 space-y-4">
           {/* Nome */}
           <div>
             <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
@@ -832,7 +833,7 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </ModalFrame>
   );
 };
 
@@ -863,10 +864,10 @@ export const CustomerPurchaseHistoryModal: React.FC<CustomerPurchaseHistoryModal
   const totalItemsCount = sales.reduce((acc, s) => acc + (s.quantity || 0), 0);
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+    <ModalFrame onClose={onClose} className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="p-6 border-b border-stone-200 bg-stone-50 flex items-start justify-between gap-4">
+        <div className="liare-modal-header p-6 border-b border-stone-200 bg-stone-50 flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-stone-900 text-amber-400 font-bold text-lg flex items-center justify-center shrink-0">
               {customer.name.substring(0, 2).toUpperCase()}
@@ -892,7 +893,7 @@ export const CustomerPurchaseHistoryModal: React.FC<CustomerPurchaseHistoryModal
             </div>
           </div>
 
-          <button
+          <button aria-label="Fechar janela" type="button"
             onClick={onClose}
             className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 rounded-lg cursor-pointer transition-colors"
           >
@@ -931,7 +932,7 @@ export const CustomerPurchaseHistoryModal: React.FC<CustomerPurchaseHistoryModal
         </div>
 
         {/* Scrollable Purchases List */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="liare-modal-body flex-1 overflow-y-auto p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-bold text-stone-800 uppercase tracking-wider flex items-center gap-1.5">
               <ShoppingBag className="w-4 h-4 text-amber-600" />
@@ -1105,6 +1106,6 @@ export const CustomerPurchaseHistoryModal: React.FC<CustomerPurchaseHistoryModal
           </button>
         </div>
       </div>
-    </div>
+    </ModalFrame>
   );
 };

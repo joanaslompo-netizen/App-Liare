@@ -1,3 +1,4 @@
+import { ModalFrame } from './ModalFrame';
 import { CustomerSearch } from './CustomerSearch';
 import { isActiveOrder } from "../utils/financeLedger";
 import { localDateString } from '../utils/localDate';
@@ -1647,9 +1648,9 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   };
 
   return (
-    <div className={existingSale ? 'liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto' : 'liare-new-order space-y-6 text-[#352f2b]'}>
+    <ModalFrame onClose={onClose} embedded={!existingSale} className={existingSale ? 'liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto' : 'liare-new-order space-y-6 text-[#352f2b]'}>
       <div className={existingSale ? 'bg-[#f6f0e9] rounded-2xl border border-[#e5dad1] shadow-2xl w-full max-w-5xl my-8 p-6' : 'w-full'}>
-        <header className="flex items-start justify-between gap-4 mb-6">
+        <header className="liare-modal-header flex items-start justify-between gap-4 mb-6">
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-[#947c6c] mb-2">Liare · Pedidos</p>
             <h2 ref={orderHeading} className="scroll-mt-28 text-3xl font-semibold tracking-tight">{existingSale ? `Editar Pedido #${formatOrderNumber(existingSale.orderNumber)}` : 'Novo pedido'}</h2>
@@ -1662,7 +1663,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
             <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm ${step === index ? 'bg-[#a86149] text-white' : 'bg-[#f6f0e9]'}`}>{index + 1}</span><span className="text-sm font-semibold">{label}</span>
           </button>)}
         </nav>}
-        <form onSubmit={handleSubmit} noValidate className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <form onSubmit={handleSubmit} noValidate className="liare-modal-body grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
           <div className="min-w-0 space-y-5">
             {formError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{formError}</p>}
 <section hidden={!existingSale && step !== 0} aria-label="Cliente e entrega" className="rounded-2xl border border-[#e5dad1] bg-white p-5 sm:p-6 space-y-6">
@@ -2727,9 +2728,9 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
         {/* Quick Customer Registration Modal Overlay */}
         {isQuickCustomerOpen && (
-          <div className="liare-quick-dialog fixed inset-0 z-60 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <ModalFrame onClose={() => setIsQuickCustomerOpen(false)} className="liare-quick-dialog fixed inset-0 z-60 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
             <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-              <div className="px-5 py-4 border-b border-stone-200 bg-stone-50 flex items-center justify-between">
+              <div className="liare-modal-header px-5 py-4 border-b border-stone-200 bg-stone-50 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center">
                     <UserPlus className="w-4 h-4" />
@@ -2739,7 +2740,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                     <p className="text-xs text-stone-500">Adicione os dados e vincule ao pedido instantaneamente</p>
                   </div>
                 </div>
-                <button
+                <button aria-label="Fechar janela"
                   type="button"
                   onClick={() => setIsQuickCustomerOpen(false)}
                   className="p-1 text-stone-400 hover:text-stone-700 rounded-lg cursor-pointer"
@@ -2748,7 +2749,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                 </button>
               </div>
 
-              <div className="p-5 space-y-3 text-xs">
+              <div className="liare-modal-body p-5 space-y-3 text-xs">
                 <div>
                   <label className="block font-bold text-stone-700 mb-1">
                     Nome Completo do Cliente *
@@ -2825,9 +2826,9 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                 </button>
               </div>
             </div>
-          </div>
+          </ModalFrame>
         )}
       </div>
-    </div>
+    </ModalFrame>
   );
 };

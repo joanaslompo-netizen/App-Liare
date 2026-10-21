@@ -1,3 +1,4 @@
+import { ModalFrame } from './ModalFrame';
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, Wallet, Plus, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { CustomerSearch } from './CustomerSearch';
@@ -17,7 +18,6 @@ const Metric = ({ label, value }: { label: string; value: number }) => <div clas
 export type OrderActionMode = 'payment'|'delivery'|'return'|'refund'|'cancel'|'history';
 
 export function OrderWorkflowModal({ sale, finance, onAction, onClose, embedded = false, initialMode = 'payment', onCompleted }: { key?: string | null; sale: Sale; finance: FinanceData; onAction: FinanceAction; onClose: () => void; embedded?: boolean; initialMode?: OrderActionMode; onCompleted?: () => void }) {
-  useEffect(() => { if (embedded) return; const old=document.body.style.overflow; document.body.style.overflow='hidden'; const close=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose();};window.addEventListener('keydown',close);return()=>{document.body.style.overflow=old;window.removeEventListener('keydown',close);}; },[onClose,embedded]);
   const [mode, setMode] = useState<OrderActionMode>(initialMode);
   const [amount, setAmount] = useState(String(money(orderBalance(sale, finance))));
   const [date, setDate] = useState(localDateString());
@@ -45,9 +45,10 @@ export function OrderWorkflowModal({ sale, finance, onAction, onClose, embedded 
     if (mode === 'refund') await run({type:'refund_order',saleId:sale.id,id:newId(),amountCents:cents(Number(amount)),destination,date,account});
     if (mode === 'cancel' && window.confirm('Cancelar este pedido e registrar o destino do valor pago?')) await run({ type: 'cancel_order', id: newId(), saleId: sale.id, date, destination });
   };
-  return <div className={embedded ? "order-inline-action" : "liare-form-dialog fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 p-3 sm:p-6"} role={embedded ? "region" : "dialog"} aria-modal={embedded ? undefined : true} aria-label={embedded ? "Ação do pedido" : undefined} aria-labelledby={embedded ? undefined : "order-flow-title"}><div className={embedded ? "" : "mx-auto max-w-3xl rounded-2xl bg-[#fbf7f2] p-4 sm:p-6"}>
+  return <ModalFrame onClose={onClose} embedded={embedded} className={embedded ? "order-inline-action" : "liare-form-dialog fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 p-3 sm:p-6"} role={embedded ? "region" : "dialog"} aria-modal={embedded ? undefined : true} aria-label={embedded ? "Ação do pedido" : undefined} aria-labelledby={embedded ? undefined : "order-flow-title"}><div className={embedded ? "" : "mx-auto max-w-3xl rounded-2xl bg-[#fbf7f2] p-4 sm:p-6"}>
+    {!embedded && <div className="liare-modal-header flex items-start justify-between gap-3"><div><h2 id="order-flow-title" className="text-xl font-bold">Pedido #{sale.orderNumber} · {sale.customerName || 'Cliente avulso'}</h2><p className="text-sm text-stone-500">{projected.paymentLabel} · {isCancelled ? 'Cancelado' : sale.deliveryStatus === 'entregue' ? 'Entregue' : sale.deliveryStatus === 'parcial' ? 'Entrega parcial' : 'A entregar'}</p></div><button type="button" aria-label="Fechar" onClick={onClose} className="p-2"><X /></button></div>}
+    <div className={embedded ? "" : "liare-modal-body"}>
     {!embedded && <>
-    <div className="flex items-start justify-between gap-3"><div><h2 id="order-flow-title" className="text-xl font-bold">Pedido #{sale.orderNumber} · {sale.customerName || 'Cliente avulso'}</h2><p className="text-sm text-stone-500">{projected.paymentLabel} · {isCancelled ? 'Cancelado' : sale.deliveryStatus === 'entregue' ? 'Entregue' : sale.deliveryStatus === 'parcial' ? 'Entrega parcial' : 'A entregar'}</p></div><button aria-label="Fechar" onClick={onClose} className="p-2"><X /></button></div>
     <div className="my-4 grid grid-cols-2 sm:grid-cols-4 gap-2"><Metric label="Total combinado" value={orderTotal(sale)} /><Metric label="Quitado" value={orderPaid(sale, finance)} /><Metric label="Falta pagar" value={isCancelled ? 0 : orderBalance(sale, finance)} /><Metric label="Crédito do cliente" value={available} /></div>
     {sale.commercialStatus === 'draft' && <button className={button} disabled={busy} onClick={() => run({ type: 'confirm_order', saleId: sale.id })}>Confirmar pedido</button>}
     <div className="mb-4 flex flex-wrap gap-2">{([['payment','Receber / usar crédito'],['delivery','Entregar'],['return','Devolução'],['refund','Devolver valor'],['history','Histórico'],['cancel','Cancelar']] as const).map(([key,label]) => <button key={key} onClick={() => { setMode(key); setMessage(''); }} className={`rounded-xl px-3 py-2 text-sm ${mode === key ? 'bg-stone-900 text-white' : 'bg-white border border-stone-200'}`}>{label}</button>)}</div>
@@ -62,7 +63,7 @@ export function OrderWorkflowModal({ sale, finance, onAction, onClose, embedded 
       <Field label="Observação (opcional)"><input className={input} value={note} onChange={e => setNote(e.target.value)} /></Field><button disabled={busy} className={button}>{busy ? 'Salvando…' : mode === 'payment' ? credit ? 'Usar crédito' : 'Registrar recebimento' : mode === 'delivery' ? 'Registrar entrega' : mode === 'return' ? 'Registrar devolução' : mode==='refund'?'Devolver valor':'Cancelar pedido'}</button>
     </form>}
     {(mode === 'history' || isCancelled) && <div className="space-y-3">{!sale.financialTracking && <p className="rounded-xl bg-amber-50 p-3 text-sm">Pagamento anterior: {formatCurrency(money(orderPaid(sale,finance)))}. Datas das parcelas antigas não foram presumidas.</p>}{history.map(e => <div className="rounded-xl border bg-white p-3" key={e.id}><div className="flex justify-between gap-2 text-sm"><strong>{ENTRY_LABEL[e.kind]}</strong><strong>{formatCurrency(money(e.amountCents))}</strong></div><p className="text-xs text-stone-500">{formatDate(e.date)} · {e.method || 'Crédito'} · {[e.origin,e.note].filter(Boolean).join(' · ')}</p></div>)}{(sale.deliveryHistory || []).map(e => <p key={e.id} className="rounded-xl border bg-white p-3 text-sm">{formatDate(e.date)} · {e.kind === 'delivery' ? 'Entrega' : 'Devolução'} · {e.quantity} un · {orderItems(sale).find(it => it.id === e.itemId)?.productName}</p>)}{!history.length && !sale.deliveryHistory?.length && <p className="text-sm text-stone-500">Sem novos movimentos registrados.</p>}</div>}
-  </div></div>;
+  </div></div></ModalFrame>;
 }
 
 export function FinanceView({ sales, customers, finance, onAction, onOpenOrder, creditOrigins = DEFAULT_CREDIT_ORIGINS, onSaveCreditOrigins, onSaveCustomer }: { onSaveCustomer: (customer: Customer) => void; creditOrigins?: CreditOrigin[]; onSaveCreditOrigins: (origins: CreditOrigin[]) => void; sales: Sale[]; customers: Customer[]; finance: FinanceData; onAction: FinanceAction; onOpenOrder: (id: string) => void }) {

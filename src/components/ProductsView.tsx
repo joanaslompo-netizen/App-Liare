@@ -1,3 +1,4 @@
+import { ModalFrame } from './ModalFrame';
 import { getEmbeddedRecipeLaborCost } from "../utils/storage";
 import { localDateString } from '../utils/localDate';
 import { MoreOptions } from './MoreOptions';
@@ -113,20 +114,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   // Stock changes stay in the dialog draft until Save.
   const [adjustingId, setAdjustingId] = useState<string | null>(null);
   const [adjustStockValue, setAdjustStockValue] = useState<string>('');
-  const stockDialogRef = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    const dialog = stockDialogRef.current;
-    if (!adjustingId || !dialog) return;
-    dialog.showModal();
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      dialog.close();
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [adjustingId]);
-
   const closeStockAdjustment = () => {
     setAdjustingId(null);
     setAdjustStockValue('');
@@ -973,18 +960,17 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       )}
 
       {adjustingId && (
-        <dialog
-          ref={stockDialogRef}
-          aria-labelledby="stock-adjust-title"
-          aria-describedby="stock-adjust-help"
-          onCancel={closeStockAdjustment}
-          className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white p-6 text-stone-900 shadow-xl backdrop:bg-black/40"
-        >
-          <form onSubmit={(event) => {
+        <ModalFrame onClose={closeStockAdjustment} aria-labelledby="stock-adjust-title" aria-describedby="stock-adjust-help" className="bg-stone-900/60">
+          <div className="w-full max-w-sm rounded-2xl bg-white text-stone-900 shadow-xl">
+            <header className="liare-modal-header flex items-center justify-between border-b border-stone-200 p-4">
+              <h3 id="stock-adjust-title" className="text-lg font-bold">Ajustar estoque</h3>
+              <button type="button" aria-label="Fechar ajuste de estoque" onClick={closeStockAdjustment}><X /></button>
+            </header>
+
+          <form className="liare-modal-body p-6" onSubmit={(event) => {
             event.preventDefault();
             handleConfirmAdjust(adjustingId);
           }}>
-            <h3 id="stock-adjust-title" className="text-lg font-bold text-center mb-5">Ajustar estoque</h3>
             <label htmlFor="stock-adjust-value" className="block text-sm text-center mb-3">Novo estoque total</label>
             <div className="flex items-center gap-3">
               <button
@@ -1019,7 +1005,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
               <button type="submit" className="min-h-11 rounded-lg bg-[#B77052] text-white text-sm font-semibold hover:bg-[#A46348]">Salvar</button>
             </div>
           </form>
-        </dialog>
+          </div>
+        </ModalFrame>
       )}
 
       {/* Add / Edit Product Modal */}
@@ -1664,10 +1651,10 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
   };
 
   return (
-    <div className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <ModalFrame onClose={onClose} className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-4xl my-6 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50 shrink-0">
+        <div className="liare-modal-header flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center">
               <Tag className="w-5 h-5" />
@@ -1681,7 +1668,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
               </p>
             </div>
           </div>
-          <button
+          <button aria-label="Fechar janela" type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200 transition-colors"
           >
@@ -1690,7 +1677,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
         </div>
 
         {/* Modal Scrollable Body */}
-        <form onSubmit={handleSubmit} className="overflow-y-auto p-6 space-y-6 flex-1">
+        <form onSubmit={handleSubmit} className="liare-modal-body overflow-y-auto p-6 space-y-6 flex-1">
           {/* 1. Identification & Photo */}
           <div className="flex flex-col sm:flex-row gap-5 items-start">
             {/* Photo Box */}
@@ -2617,7 +2604,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </ModalFrame>
   );
 };
 
@@ -2638,10 +2625,10 @@ const FichaTecnicaModal: React.FC<FichaTecnicaModalProps> = ({
 }) => {
   const pricing = getRecipePricing(product);
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+    <ModalFrame onClose={onClose} className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-2xl my-8 overflow-hidden">
         {/* Header */}
-        <div className="px-6 py-4 bg-stone-900 text-white flex items-center justify-between">
+        <div className="liare-modal-header px-6 py-4 bg-stone-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-amber-400" />
             <div>
@@ -2649,13 +2636,13 @@ const FichaTecnicaModal: React.FC<FichaTecnicaModalProps> = ({
               <p className="text-xs text-stone-400">{product.name}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-stone-400 hover:text-white p-1">
+          <button aria-label="Fechar janela" type="button" onClick={onClose} className="text-stone-400 hover:text-white p-1">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Printable content */}
-        <div className="p-6 space-y-5 text-stone-800 text-xs">
+        <div className="liare-modal-body p-6 space-y-5 text-stone-800 text-xs">
           {/* Top Banner */}
           <div className="flex gap-4 items-start pb-4 border-b border-stone-200">
             {product.imageUrl && (
@@ -2769,6 +2756,6 @@ const FichaTecnicaModal: React.FC<FichaTecnicaModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </ModalFrame>
   );
 };

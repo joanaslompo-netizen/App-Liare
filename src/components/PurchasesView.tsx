@@ -1,3 +1,4 @@
+import { ModalFrame } from './ModalFrame';
 import { localDateString } from '../utils/localDate';
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
@@ -416,10 +417,10 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
   };
 
   return (
-    <div className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
+    <ModalFrame onClose={onClose} className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-xl w-full max-w-2xl my-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50">
+        <div className="liare-modal-header flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-700 flex items-center justify-center">
               <ShoppingCart className="w-4 h-4" />
@@ -428,13 +429,13 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
               Registrar Compra de Materiais
             </h3>
           </div>
-          <button onClick={onClose} className="p-1 text-stone-400 hover:text-stone-700">
+          <button aria-label="Fechar janela" type="button" onClick={onClose} className="p-1 text-stone-400 hover:text-stone-700">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Modal Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 text-stone-900">
+        <form onSubmit={handleSubmit} className="liare-modal-body p-6 space-y-5 text-stone-900">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
@@ -715,7 +716,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </ModalFrame>
   );
 };
 
@@ -725,19 +726,19 @@ const PurchaseDetailsModal: React.FC<{ purchase: Purchase; onClose: () => void }
   onClose,
 }) => {
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <ModalFrame onClose={onClose} className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-xl w-full max-w-lg overflow-hidden">
-        <div className="px-6 py-4 bg-stone-900 text-white flex items-center justify-between">
+        <div className="liare-modal-header px-6 py-4 bg-stone-900 text-white flex items-center justify-between">
           <h3 className="font-bold text-base flex items-center gap-2">
             <Receipt className="w-5 h-5 text-amber-400" />
             Detalhes da Compra
           </h3>
-          <button onClick={onClose} className="text-stone-400 hover:text-white p-1">
+          <button aria-label="Fechar janela" type="button" onClick={onClose} className="text-stone-400 hover:text-white p-1">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-4 text-xs">
+        <div className="liare-modal-body p-6 space-y-4 text-xs">
           <div className="grid grid-cols-2 gap-3 pb-3 border-b border-stone-200">
             <div>
               <span className="text-stone-500 block">Data:</span>
@@ -805,6 +806,6 @@ const PurchaseDetailsModal: React.FC<{ purchase: Purchase; onClose: () => void }
           </button>
         </div>
       </div>
-    </div>
+    </ModalFrame>
   );
 };
