@@ -82,12 +82,16 @@ await act(async () => ficha.click());
 const fichaTitle = [...document.querySelectorAll('h3')].find(el => el.textContent === 'Ficha Técnica & Precificação')!;
 const fichaModal = fichaTitle.closest('.fixed')!;
 check(section(fichaModal));
+assert(fichaModal.textContent?.includes('Materiais e componentes (sem mão de obra) · lote:'));
+assert(fichaModal.textContent?.includes(formatCurrency(32)), 'Ficha separa R$8 de mão de obra do componente de R$40');
 const closeFicha = [...fichaModal.querySelectorAll('button')].find(el => el.textContent?.trim() === 'Fechar')!;
 await act(async () => closeFicha.click());
 const edit = card.querySelector('[title="Editar produto e receita"]') as HTMLButtonElement;
 await act(async () => edit.click());
 const form = document.querySelector('.liare-form-dialog')!;
 check(section(form));
+assert(form.textContent?.includes('Materiais e componentes (sem mão de obra) · lote:'));
+assert(form.textContent?.includes(formatCurrency(32)), 'Edição separa R$8 de mão de obra do componente de R$40');
 const price = form.querySelector('#input-product-actual-price') as HTMLInputElement;
 assert(!price.closest('details'), 'Preço de venda acessível sem expandir opções');
 await act(async () => {
