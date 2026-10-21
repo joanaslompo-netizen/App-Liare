@@ -36,7 +36,7 @@ import {
   matchesSearchText
 } from '../utils/formatters';
 import { processImageFile } from '../utils/imageHelper';
-import { estimateMaterialUnitCost } from '../utils/storage';
+import { estimateMaterialUnitCost, getEmbeddedRecipeLaborCost, getRecipeItemEmbeddedLaborCost } from '../utils/storage';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
 
 interface MaterialsViewProps {
@@ -799,10 +799,14 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
   const parsedLaborHourlyRate = Math.max(0, Number(laborHourlyRate) || 0);
   const recipeLaborCost = parsedProductionMinutes / 60 * parsedLaborHourlyRate;
   const recipeMaterialsCost = normalizedRecipeItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
+  const embeddedComponentLaborCost = getEmbeddedRecipeLaborCost(normalizedRecipeItems, materials, []);
+  const recipeFinancialMaterialsCost = recipeMaterialsCost - embeddedComponentLaborCost;
+  const recipeTotalLaborCost = recipeLaborCost + embeddedComponentLaborCost;
   const parsedRecipeFixedPercent = Math.max(0, Number(recipeFixedPercent) || 0);
   const parsedRecipeOtherCosts = Math.max(0, Number(recipeOtherCosts) || 0);
   const recipeFixedCost = (recipeMaterialsCost + recipeLaborCost) * parsedRecipeFixedPercent / 100;
   const recipeTotalCost = recipeMaterialsCost + recipeLaborCost + recipeFixedCost + parsedRecipeOtherCosts;
+  const recipeFinancialCost = recipeFinancialMaterialsCost + recipeFixedCost + parsedRecipeOtherCosts;
   const recipeUnitCost = recipeTotalCost / Math.max(0.0001, parsedRecipeYield || 0);
 
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1346,12 +1350,12 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                         )}
                       </div>
                       <div className="text-[11px] text-stone-500">
-                        {formatNumber(item.quantity)} {item.unit} × {formatCurrency(item.unitCost)}
+                        {formatNumber(item.quantity)} {item.unit} × {formatCurrency(((item.totalCost || 0) - getRecipeItemEmbeddedLaborCost(item, materials, [])) / Math.max(0.0001, item.quantity))}
                         {item.selectionMode === 'category' ? ' (custo médio estimado)' : ''}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs font-bold text-stone-900">{formatCurrency(item.totalCost)}</span>
+                      <span className="text-xs font-bold text-stone-900">{formatCurrency((item.totalCost || 0) - getRecipeItemEmbeddedLaborCost(item, materials, []))}</span>
                       <button type="button" onClick={() => setRecipeItems(prev => prev.filter(i => i.id !== item.id))} className="p-1 text-stone-400 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
@@ -1374,8 +1378,8 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                   </div>
                 </div>
                 <div className="bg-white border border-purple-200 rounded-lg p-3 flex items-center justify-between">
-                  <span className="text-[11px] text-stone-600">{recipeItems.some(i => i.selectionMode === 'category') ? 'Custo estimado por unidade' : 'Custo por unidade'}</span>
-                  <span className="font-extrabold text-stone-900">{formatCurrency(recipeUnitCost)} / {UNIT_SHORT[inferredRecipeUnit]}</span>
+                  <span className="text-[11px] text-stone-600">{recipeItems.some(i => i.selectionMode === 'category') ? 'Gasto financeiro estimado/unidade' : 'Gasto financeiro por unidade'}</span>
+                  <span className="font-extrabold text-stone-900">{formatCurrency(recipeFinancialCost / Math.max(0.0001, parsedRecipeYield))} / {UNIT_SHORT[inferredRecipeUnit]}</span>
                 </div>
               </div>
 
@@ -1397,11 +1401,15 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
                 </div>
               </details>
               <div className="bg-white border border-purple-200 rounded-lg p-3 space-y-1 text-sm text-stone-800">
-                <div className="flex justify-between"><span>Insumos por lote</span><strong>{formatCurrency(recipeMaterialsCost)}</strong></div>
-                <div className="flex justify-between"><span>Mão de obra por lote</span><strong>{formatCurrency(recipeLaborCost)}</strong></div>
-                {recipeFixedCost > 0 && <div className="flex justify-between"><span>Custos fixos por lote</span><strong>{formatCurrency(recipeFixedCost)}</strong></div>}
-                {parsedRecipeOtherCosts > 0 && <div className="flex justify-between"><span>Outros custos por lote</span><strong>{formatCurrency(parsedRecipeOtherCosts)}</strong></div>}
-                <div className="flex justify-between"><span>Custo total do lote</span><strong>{formatCurrency(recipeTotalCost)}</strong></div>
+                <div className="flex justify-between gap-3"><span>Materiais e componentes (sem mão de obra)</span><strong>{formatCurrency(recipeFinancialMaterialsCost)}</strong></div>
+                <div className="flex justify-between gap-3"><span>Custos fixos por lote</span><strong>{formatCurrency(recipeFixedCost)}</strong></div>
+                <div className="flex justify-between gap-3"><span>Outros custos por lote</span><strong>{formatCurrency(parsedRecipeOtherCosts)}</strong></div>
+                <div className="flex justify-between gap-3 border-t border-stone-200 pt-2 font-semibold"><span>Custos financeiros por lote</span><strong>{formatCurrency(recipeFinancialCost)}</strong></div>
+                <div className="flex justify-between gap-3"><span>Mão de obra dos componentes</span><strong>{formatCurrency(embeddedComponentLaborCost)}</strong></div>
+                <div className="flex justify-between gap-3"><span>Mão de obra deste material</span><strong>{formatCurrency(recipeLaborCost)}</strong></div>
+                <div className="flex justify-between gap-3 font-semibold"><span>Mão de obra total</span><strong>{formatCurrency(recipeTotalLaborCost)}</strong></div>
+                <div className="flex justify-between gap-3 border-t border-stone-200 pt-2"><span>Custos + mão de obra (referência)</span><strong>{formatCurrency(recipeTotalCost)}</strong></div>
+                <p className="text-[11px] text-stone-500">Sua mão de obra fica separada dos gastos financeiros e integra o lucro quando este componente entra em uma vela.</p>
               </div>
 
               {recipeYieldMode === 'auto' && hasMixedRecipeUnits && (

@@ -1,5 +1,5 @@
 import { ModalFrame } from './ModalFrame';
-import { getEmbeddedRecipeLaborCost } from "../utils/storage";
+import { getEmbeddedRecipeLaborCost, getRecipeItemEmbeddedLaborCost } from "../utils/storage";
 import { localDateString } from '../utils/localDate';
 import { MoreOptions } from './MoreOptions';
 import { RecipeCostSummary } from './RecipeCostSummary';
@@ -59,6 +59,14 @@ const sortRecipeItemsByStage = (
     const bOrder = stageOrder.get(b.productionStageId || '') ?? Number.MAX_SAFE_INTEGER;
     return aOrder - bOrder || a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' });
   });
+};
+
+/** Cost of a recipe line excluding labor already assigned to making its components.
+ * Persisted item values remain intact for existing inventory and production records.
+ */
+const recipeItemFinancialCost = (item: RecipeItem, materials: Material[], products: Product[]): number => {
+  if (item.type === 'material' && materials.find((m) => m.id === item.targetId)?.usageType === 'durable') return 0;
+  return (item.totalCost || 0) - getRecipeItemEmbeddedLaborCost(item, materials, products);
 };
 
 const buildAutomaticProductName = (productFamily?: string, fragrance?: string): string => {
@@ -1032,6 +1040,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       {viewingFichaProduct && (
         <FichaTecnicaModal
           product={viewingFichaProduct}
+          allMaterials={materials}
+          allProducts={products}
           onClose={() => setViewingFichaProduct(null)}
           onEdit={() => {
             setEditingProduct(viewingFichaProduct);
@@ -1353,6 +1363,7 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     return acc + (it.totalCost || 0);
   }, 0);
   const embeddedLaborCost = getEmbeddedRecipeLaborCost(items, allMaterials, allProducts);
+  const financialMaterialsCost = materialsCost - embeddedLaborCost;
   const laborCost = (parsedMinutes / 60) * parsedHourlyRate;
   const { fixedCost, totalCost, unitCostFromBatch, suggestedPrice, currentActualPrice,
     businessUnitCost, laborUnitCost, commercialProfit, netProfit, calculatedMarginPercent
@@ -2126,8 +2137,9 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
               <div className="text-right">
                 <span className="text-xs text-stone-500 block">Insumos e componentes · lote:</span>
                 <span className="text-base font-bold text-stone-900">
-                  {formatCurrency(materialsCost)}
+                  {formatCurrency(financialMaterialsCost)}
                 </span>
+                <span className="text-[10px] text-stone-500 block">Sem mão de obra dos componentes</span>
               </div>
             </div>
 
@@ -2326,8 +2338,8 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                       <th className="py-2.5 px-3">Item / Descrição</th>
                       {useProductionStages && <th className="py-2.5 px-3">Etapa</th>}
                       <th className="py-2.5 px-3 text-right">Quantidade / Uso</th>
-                      <th className="py-2.5 px-3 text-right">Custo na Receita</th>
-                      <th className="py-2.5 px-3 text-right">Subtotal</th>
+                      <th className="py-2.5 px-3 text-right">Custo sem mão de obra</th>
+                      <th className="py-2.5 px-3 text-right">Subtotal materiais</th>
                       <th className="py-2.5 px-3 text-center">Ação</th>
                     </tr>
                   </thead>
@@ -2379,12 +2391,10 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                         <td className="py-2.5 px-3 text-right text-stone-500">
                           {it.type === 'material' && allMaterials.find((m) => m.id === it.targetId)?.usageType === 'durable'
                             ? <span className="text-purple-700 font-semibold">Não consumido</span>
-                            : formatCurrency(it.unitCost)}
+                            : formatCurrency(recipeItemFinancialCost(it, allMaterials, allProducts) / Math.max(0.0001, it.quantity))}
                         </td>
                         <td className="py-2.5 px-3 text-right font-bold text-stone-900">
-                          {it.type === 'material' && allMaterials.find((m) => m.id === it.targetId)?.usageType === 'durable'
-                            ? <span className="text-purple-700">R$ 0,00</span>
-                            : formatCurrency(it.totalCost)}
+                          {formatCurrency(recipeItemFinancialCost(it, allMaterials, allProducts))}
                         </td>
                         <td className="py-2.5 px-3 text-center">
                           <button
@@ -2402,10 +2412,10 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                   <tfoot className="bg-stone-50 border-t border-stone-200 font-bold">
                     <tr>
                       <td colSpan={useProductionStages ? 4 : 3} className="py-2.5 px-3 text-stone-700 text-right">
-                        Total dos insumos e componentes · lote:
+                        Materiais e componentes (sem mão de obra) · lote:
                       </td>
                       <td className="py-2.5 px-3 text-right text-stone-900 text-sm">
-                        {formatCurrency(materialsCost)}
+                        {formatCurrency(financialMaterialsCost)}
                       </td>
                       <td></td>
                     </tr>
@@ -2620,12 +2630,16 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
 
 interface FichaTecnicaModalProps {
   product: Product;
+  allMaterials: Material[];
+  allProducts: Product[];
   onClose: () => void;
   onEdit: () => void;
 }
 
 const FichaTecnicaModal: React.FC<FichaTecnicaModalProps> = ({
   product,
+  allMaterials,
+  allProducts,
   onClose,
   onEdit,
 }) => {
@@ -2699,18 +2713,18 @@ const FichaTecnicaModal: React.FC<FichaTecnicaModalProps> = ({
                         {formatNumber(it.quantity)} {it.unit}
                       </td>
                       <td className="py-2 px-3 text-right text-stone-500">
-                        {formatCurrency(it.unitCost)}
+                        {formatCurrency(recipeItemFinancialCost(it, allMaterials, allProducts) / Math.max(0.0001, it.quantity))}
                       </td>
                       <td className="py-2 px-3 text-right font-semibold text-stone-900">
-                        {formatCurrency(it.totalCost)}
+                        {formatCurrency(recipeItemFinancialCost(it, allMaterials, allProducts))}
                       </td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot className="bg-stone-50 font-bold border-t border-stone-200">
                   <tr>
-                    <td colSpan={3} className="py-2 px-3 text-right">Insumos e componentes · lote:</td>
-                    <td className="py-2 px-3 text-right">{formatCurrency(product.materialsCost)}</td>
+                    <td colSpan={3} className="py-2 px-3 text-right">Materiais e componentes (sem mão de obra) · lote:</td>
+                    <td className="py-2 px-3 text-right">{formatCurrency((product.materialsCost || 0) - (product.embeddedLaborCost || 0))}</td>
                   </tr>
                 </tfoot>
               </table>

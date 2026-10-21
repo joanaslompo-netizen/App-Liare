@@ -1,24 +1,32 @@
 import { Product, Sale, SaleItem } from '../types';
 
-/** Display split only: embedded work is already included in materialsCost. */
+/**
+ * The recipe's stored item prices include the work used to make components.
+ * Split that embedded remuneration from real spending without rewriting recipe
+ * costs or historical production: the artisan's time stays inside gross profit.
+ * Values displayed here are per finished unit.
+ */
 export const getRecipeCostSummary = (recipe: {
   materialsCost: number; embeddedLaborCost?: number; laborCost: number;
   fixedCost: number; otherCosts: number; batchYield: number; salePrice: number;
 }) => {
   const units = Math.max(1, recipe.batchYield || 1);
-  const embedded = recipe.embeddedLaborCost || 0;
-  const materials = (recipe.materialsCost - embedded) / units;
-  const labor = (recipe.laborCost + embedded) / units;
+  const componentLabor = (recipe.embeddedLaborCost || 0) / units;
+  const ownLabor = recipe.laborCost / units;
+  const materials = recipe.materialsCost / units - componentLabor;
+  const labor = ownLabor + componentLabor;
   const fixed = recipe.fixedCost / units;
   const materialsWithFixed = materials + fixed;
   const subtotalWithLabor = materialsWithFixed + labor;
   const other = recipe.otherCosts / units;
-  const total = subtotalWithLabor + other;
   const costs = materialsWithFixed + other;
-  // Owner remuneration is included in profit for this pricing summary.
+  const total = costs + labor;
+  // The entire remainder after financial costs is the owner's gross earning;
+  // it includes payment for producing components and the final recipe.
   const profit = recipe.salePrice - costs;
   const marginPercent = recipe.salePrice > 0 ? profit / recipe.salePrice * 100 : null;
-  return { materials, fixed, materialsWithFixed, labor, subtotalWithLabor, other, costs, total, profit, marginPercent };
+  return { materials, fixed, materialsWithFixed, componentLabor, ownLabor, labor,
+    subtotalWithLabor, other, costs, total, profit, marginPercent };
 };
 
 export interface ProductFinancialSplit {
@@ -38,7 +46,8 @@ export const getProductFinancialSplit = (product: Product): ProductFinancialSpli
   const yieldQty = Math.max(0.0001, product.batchYield || 1);
   const businessCostPerUnit =
     ((product.materialsCost || 0) - (product.embeddedLaborCost || 0) + (product.fixedCost || 0) + (product.otherCosts || 0)) / yieldQty;
-  const laborRemunerationPerUnit = (product.laborCost || 0) / yieldQty;
+  const laborRemunerationPerUnit =
+    ((product.laborCost || 0) + (product.embeddedLaborCost || 0)) / yieldQty;
 
   return {
     businessCostPerUnit,
