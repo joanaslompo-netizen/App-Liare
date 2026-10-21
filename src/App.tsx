@@ -1832,6 +1832,11 @@ export default function App() {
             products={products}
             materials={materials}
             onSaveProduction={handleSaveProduction}
+            onSaveProductions={batch => {
+              batch.forEach(production => handleSaveProduction(
+                production, production.stockTrackingEnabled !== false && production.status !== 'in_progress'
+              ));
+            }}
             onAdvanceProductionStage={handleAdvanceProductionStage}
             onDeleteProduction={handleDeleteProduction}
             onNavigateToProducts={() => setActiveTab('products')}

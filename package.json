@@ -12,6 +12,7 @@
     "test:group1": "node --import tsx scripts/test-group1-forms.tsx && node --import tsx src/utils/dataIntegrity.test.ts && node --import tsx src/utils/materialProductionCost.test.ts && node --import tsx src/utils/recipeFamilies.test.ts && node --import tsx scripts/test-recipe-family-price.tsx && node --import tsx src/utils/invoice.test.ts",
     "test:finance": "node --import tsx src/utils/financeLedger.test.ts && node --import tsx src/services/cloudSync.test.ts && node --import tsx scripts/test-finance-app.tsx",
     "test:orders": "node --import tsx scripts/test-order-details.tsx && node --import tsx scripts/test-new-order.tsx",
+    "test:production": "node --import tsx src/utils/productionPlanning.test.ts && node --import tsx scripts/test-product-model-picker.tsx && node --import tsx scripts/test-production-workflow.tsx",
     "test:connection": "node --import tsx src/utils/workspaceStorage.test.ts && node --import tsx src/utils/workspaceStorageIndexedDb.test.ts && node --import tsx scripts/test-startup-storage.tsx",
     "test:storage": "node --import tsx src/services/workspaceRecordStore.test.ts && node --import tsx src/services/cloudSync.test.ts",
     "test:modals": "node --import tsx scripts/test-modal-frame.tsx"

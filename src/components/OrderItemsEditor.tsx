@@ -4,7 +4,7 @@ import type { Product, Sale, SaleItem } from '../types';
 import { migrateFinanceOrder, newId, money } from '../utils/financeLedger';
 import { getProductFinancialSplit, getSaleItemFinancialSplit } from '../utils/financials';
 import { formatCurrency } from '../utils/formatters';
-import { SearchableProductCombobox } from './SearchableProductCombobox';
+import { ProductModelPicker } from './ProductModelPicker';
 
 const field = 'w-full min-w-0 rounded-xl border border-[#e5dad1] bg-white px-3 py-2.5 text-base text-[#352f2b] focus:border-[#a86149]';
 const secondary = 'rounded-xl border border-[#e5dad1] bg-white px-3 py-2 text-sm font-semibold text-[#57493f] hover:bg-[#f6f1ec] disabled:opacity-40';
@@ -101,7 +101,7 @@ export function OrderItemsEditor({ sale, products, paid, onSave, onCancel }: {
     <div className="space-y-3 rounded-xl bg-[#f6f1ec] p-4">
       <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-sm font-semibold">{replacementId ? 'Escolha o produto substituto' : 'Adicionar outro item'}</h4><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={custom} onChange={e => { setCustom(e.target.checked); setSelected(null); }} />Personalizado</label></div>
       {custom ? <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs text-[#75665c]">Nome<input className={`${field} mt-1`} value={customName} onChange={e => setCustomName(e.target.value)} /></label><label className="text-xs text-[#75665c]">Preço unitário (R$)<input type="number" min="0" step="0.01" className={`${field} mt-1`} value={customPrice} onChange={e => setCustomPrice(e.target.value)} /></label></div>
-        : <SearchableProductCombobox id="detail-product-search" products={products} selectedProductId={selected?.id || ''} onSelectProduct={setSelected} placeholder="Buscar produto para incluir ou substituir..." />}
+        : <ProductModelPicker id="detail-product-search" products={products} selectedProductId={selected?.id || ''} onSelectProduct={setSelected} />}
       <div className="flex gap-3"><button type="button" onClick={add} disabled={busy || (custom ? !customName.trim() || customPrice === '' : !selected)} className={secondary}><Plus className="mr-1 inline h-4 w-4" />{replacementId ? 'Substituir item' : 'Adicionar item'}</button>{replacementId && <button type="button" className="text-sm text-[#75665c] underline" onClick={() => setReplacementId(null)}>Cancelar troca</button>}</div>
     </div>
     <details className="rounded-xl border border-[#e5dad1] p-4"><summary className="cursor-pointer text-sm font-semibold">Desconto e frete</summary><div className="mt-3 grid gap-3 sm:grid-cols-3"><label className="text-xs text-[#75665c]">Desconto<select disabled={hasDeliveries} className={`${field} mt-1`} value={discountType} onChange={e => setDiscountType(e.target.value as typeof discountType)}><option value="none">Sem desconto</option><option value="percentage">Percentual (%)</option><option value="fixed">Valor (R$)</option></select></label><label className="text-xs text-[#75665c]">Valor do desconto<input disabled={hasDeliveries || discountType === 'none'} type="number" min="0" max={discountType === 'percentage' ? 100 : undefined} step="0.01" className={`${field} mt-1`} value={discountValue} onChange={e => setDiscountValue(e.target.value)} /></label><label className="text-xs text-[#75665c]">Frete cobrado (R$)<input type="number" min="0" step="0.01" className={`${field} mt-1`} value={shipping} onChange={e => setShipping(e.target.value)} /></label></div></details>

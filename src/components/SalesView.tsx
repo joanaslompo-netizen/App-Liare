@@ -47,7 +47,7 @@ import {
   isBirthdayInMonth,
   matchesSearchText
 } from '../utils/formatters';
-import { SearchableProductCombobox } from './SearchableProductCombobox';
+import { ProductModelPicker } from './ProductModelPicker';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
 import { getProductFinancialSplit, getSaleFinancials, getSaleItemFinancialSplit } from '../utils/financials';
 
@@ -1932,7 +1932,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
               {!isCustomItemMode ? (
                 <div className="sm:col-span-12">
                   <label className="block text-xs font-bold text-stone-500 mb-0.5">
-                    Produto (Digite o nome para buscar)
+                    Produto
                   </label>
 
                   <div className={`space-y-2.5 ${
@@ -1940,14 +1940,11 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                       ? 'rounded-xl border border-amber-300 bg-amber-50/70 p-2.5'
                       : ''
                   }`}>
-                    <SearchableProductCombobox
+                    <ProductModelPicker
                       products={products}
                       selectedProductId={selectedProductIdToAdd}
                       onSelectProduct={handleSelectProductToAdd}
-                      placeholder="Digite para buscar produto final..."
                       id="order-product-search-combobox"
-                      filterOnlyFinalForSale={true}
-                      embeddedSelectedCard={true}
                     />
 
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">

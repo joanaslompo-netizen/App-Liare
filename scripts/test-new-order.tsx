@@ -21,7 +21,7 @@ async function labelCheck(text:string){const label=[...page().querySelectorAll('
 async function search(selector:string,text:string){await input(selector,text);const option=[...page().querySelectorAll('li')].find(el=>el.textContent?.includes(text));assert(option,text);await act(async()=>option.click());}
 assert(page());assert(!document.querySelector('.liare-form-dialog'));
 await fill('Nome avulso','Cliente do teste');await fill('Telefone / WhatsApp','Contato teste');await fill('Data do pedido','2026-10-15');await fill('Canal de venda','WhatsApp');await click('Encomenda / PedidoProduzir para entregar depois');await fill('Data programada para entrega','2026-10-20');
-await click('Continuar para produtos');await search('#order-product-search-combobox','Vela teste');await fill('Quantidade do produto','2');await fill('Preço do produto','60');
+await click('Continuar para produtos');await act(async()=>{ const model=page().querySelector('#order-product-search-combobox-model') as HTMLSelectElement; model.value='product:p'; model.dispatchEvent(new dom.window.Event('change',{bubbles:true})); });await fill('Quantidade do produto','2');await fill('Preço do produto','60');
 await click('Conferir pedido');assert(page().querySelector('[role="alert"]')?.textContent?.includes('em preenchimento'));assert(!saved);
 await click('Adicionar');await labelCheck('Personalizado');await fill('Nome do item personalizado','Peça exclusiva');await fill('Quantidade personalizada','3');await fill('Preço personalizado','20');
 const materialSearch=page().querySelector('input[placeholder*="material" i]') as HTMLInputElement;assert(materialSearch);

@@ -29,7 +29,7 @@ const originalReceipt=JSON.stringify(fixture.finance.entries[0]);
 const detail=()=>document.querySelector('[data-testid=order-detail]')!;
 async function editField(label:string,value:string){const el=detail().querySelector(`[aria-label="${label}"]`) as HTMLInputElement;assert(el,label);await act(async()=>{Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value')!.set!.call(el,value);el.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});}
 async function openHomeOrder(){const el=[...document.querySelectorAll('button')].find(el=>el.textContent?.includes('Cliente teste')&&el.textContent?.includes('un a entregar'));assert(el);await act(async()=>el.click());assert(detail());}
-async function chooseProduct(){const search=document.querySelector('#detail-product-search') as HTMLInputElement;assert(search);await act(async()=>{search.focus();Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value')!.set!.call(search,'Produto adicional');search.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});const option=[...document.querySelectorAll('li')].find(el=>el.textContent?.includes('Produto adicional'));assert(option);await act(async()=>option.click());}
+async function chooseProduct(){const model=document.querySelector('#detail-product-search-model') as HTMLSelectElement;assert(model);await act(async()=>{model.value='product:p2';model.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});}
 await mount();await openHomeOrder();
 assert.equal(detail().querySelectorAll('form').length,0,'A ficha abre para consulta, sem formulário');
 assert.equal(document.querySelectorAll('.liare-form-dialog').length,0,'Sem pop-up ao abrir pedido');

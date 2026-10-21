@@ -1,49 +1,32 @@
-import { ModalFrame } from './ModalFrame';
-import { localDateString } from '../utils/localDate';
-import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  Plus, 
-  Search, 
-  Hammer, 
-  Calendar, 
-  Layers, 
-  Package, 
-  Trash2, 
-  Eye, 
-  X, 
-  Check, 
-  DollarSign, 
-  AlertTriangle,
-  ArrowRight,
-  Sparkles,
-  Tag,
-  ChevronDown,
-  ChevronUp,
-  Image as ImageIcon,
-  Clock,
-  RotateCcw
-} from 'lucide-react';
-import { Production, Product, Material, ProductionIngredientDeduction, RecipeItem } from '../types';
-import { 
-  formatCurrency, 
-  formatDate, 
-  formatNumber, 
-  UNIT_SHORT,
-  matchesSearchText
-} from '../utils/formatters';
-import { SearchableProductCombobox } from './SearchableProductCombobox';
-import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
-import { getVirtualRecipeLaborCost } from '../utils/storage';
+import React, { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, ArrowRight, Plus, Search } from "lucide-react";
+import type {
+  Material,
+  Product,
+  Production,
+  ProductionIngredientDeduction,
+} from "../types";
+import {
+  formatCurrency,
+  formatDate,
+  formatNumber,
+  matchesSearchText,
+} from "../utils/formatters";
+import { NewProductionPage } from "./NewProductionPage";
+import { StageProgressModal, ViewProductionModal } from "./ProductionDetails";
+export { NewProductionPage as NewProductionModal } from "./NewProductionPage";
+export type { NewProductionPageProps as NewProductionModalProps } from "./NewProductionPage";
 
 interface ProductionsViewProps {
   productions: Production[];
   products: Product[];
   materials: Material[];
-  onSaveProduction: (production: Production, updateStock: boolean) => void;
+  onSaveProduction?: (production: Production, updateStock: boolean) => void;
+  onSaveProductions?: (productions: Production[]) => void;
   onAdvanceProductionStage: (
     production: Production,
     deductions: ProductionIngredientDeduction[],
-    finishedQuantityDelta: number
+    finishedQuantityDelta: number,
   ) => void;
   onDeleteProduction: (id: string, revertStock: boolean) => void;
   onNavigateToProducts?: () => void;
@@ -53,1871 +36,406 @@ interface ProductionsViewProps {
   openNewProductionSignal?: number;
 }
 
-export const ProductionsView: React.FC<ProductionsViewProps> = ({
+export function ProductionsView({
   productions,
   products,
   materials,
   onSaveProduction,
+  onSaveProductions,
   onAdvanceProductionStage,
   onDeleteProduction,
-  onNavigateToProducts,
   initialProductToProduce = null,
   initialSelectedProduct = null,
   onClearInitialProduct,
   openNewProductionSignal = 0,
-}) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'final' | 'intermediate'>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'in_progress' | 'completed'>('all');
-  const [isModalOpen, setIsModalOpen] = useState(!!(initialProductToProduce || initialSelectedProduct));
-  const [selectedProductForProduction, setSelectedProductForProduction] = useState<Product | null>(
-    initialProductToProduce || initialSelectedProduct || null
+}: ProductionsViewProps) {
+  const [creating, setCreating] = useState(
+    !!(initialProductToProduce || initialSelectedProduct),
   );
-  const [viewingProduction, setViewingProduction] = useState<Production | null>(null);
-  const [advancingProduction, setAdvancingProduction] = useState<Production | null>(null);
-  const [expandedProductionIds, setExpandedProductionIds] = useState<Set<string>>(new Set());
-
-  // Listen to incoming initial product to produce
+  const [preset, setPreset] = useState(
+    initialProductToProduce || initialSelectedProduct,
+  );
+  const [status, setStatus] = useState<"in_progress" | "completed">(
+    "in_progress",
+  );
+  const [query, setQuery] = useState("");
+  const [type, setType] = useState("all");
+  const [advancingId, setAdvancingId] = useState<string | null>(null);
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState("");
   useEffect(() => {
-    const target = initialProductToProduce || initialSelectedProduct;
-    if (target) {
-      setSelectedProductForProduction(target);
-      setIsModalOpen(true);
+    const product = initialProductToProduce || initialSelectedProduct;
+    if (product) {
+      setPreset(product);
+      setCreating(true);
     }
   }, [initialProductToProduce, initialSelectedProduct]);
-
   useEffect(() => {
     if (openNewProductionSignal > 0) {
-      setSelectedProductForProduction(null);
-      setIsModalOpen(true);
+      setPreset(null);
+      setCreating(true);
     }
   }, [openNewProductionSignal]);
-
-  // Filter productions
-  const filteredProductions = useMemo(() => {
-    return productions
-      .filter((p) => {
-        const matchesSearch =
-          matchesSearchText(p.productName, searchTerm) ||
-          (p.productCategory && matchesSearchText(p.productCategory, searchTerm)) ||
-          (p.notes && matchesSearchText(p.notes, searchTerm)) ||
-          p.deductedItems.some((it) => matchesSearchText(it.name, searchTerm));
-
-        const matchesType =
-          typeFilter === 'all' ||
-          (typeFilter === 'intermediate' && p.isIntermediate) ||
-          (typeFilter === 'final' && !p.isIntermediate);
-
-        const normalizedStatus = p.status || 'completed';
-        const matchesStatus = statusFilter === 'all' || normalizedStatus === statusFilter;
-
-        return matchesSearch && matchesType && matchesStatus;
-      })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [productions, searchTerm, typeFilter, statusFilter]);
-
-  // Totals calculations
-  const totalUnitsProduced = useMemo(() => {
-    return filteredProductions.reduce((acc, p) => acc + p.quantityProduced, 0);
-  }, [filteredProductions]);
-
-  const totalProductionCost = useMemo(() => {
-    return filteredProductions.reduce((acc, p) => acc + p.totalCost, 0);
-  }, [filteredProductions]);
-
-  const totalDeductedCount = useMemo(() => {
-    return filteredProductions.reduce((acc, p) => acc + p.deductedItems.length, 0);
-  }, [filteredProductions]);
-
-  const toggleExpand = (id: string) => {
-    setExpandedProductionIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+  const closeNew = () => {
+    setCreating(false);
+    setPreset(null);
+    onClearInitialProduct?.();
   };
-
-  const handleOpenAdd = (presetProduct?: Product) => {
-    setSelectedProductForProduction(presetProduct || null);
-    setIsModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setSelectedProductForProduction(null);
-    if (onClearInitialProduct) onClearInitialProduct();
-  };
-
-  const handleDelete = (prod: Production) => {
-    const confirmRevert = window.confirm(
-      `Excluir o registro de produção de "${prod.productName}"?\n\n` +
-      `Clique em "OK" para excluir e REVERTER o estoque (estornar os insumos e retirar os produtos prontos).\n` +
-      `Clique em "Cancelar" para não excluir nada.`
+  const inProgress = productions.filter(
+    (p) => p.status === "in_progress",
+  ).length;
+  const completed = productions.length - inProgress;
+  const filtered = useMemo(
+    () =>
+      productions
+        .filter(
+          (p) =>
+            (p.status || "completed") === status &&
+            (type === "all" ||
+              (type === "intermediate"
+                ? !!p.isIntermediate
+                : !p.isIntermediate)) &&
+            (!query ||
+              [
+                p.productName,
+                p.productCategory || "",
+                p.notes || "",
+                p.id,
+                ...(p.deductedItems || []).map((d) => d.name),
+              ].some((v) => matchesSearchText(v, query))),
+        )
+        .sort((a, b) => b.date.localeCompare(a.date)),
+    [productions, status, type, query],
+  );
+  const advance = productions.find((p) => p.id === advancingId);
+  const viewing = productions.find((p) => p.id === viewingId);
+  if (creating)
+    return (
+      <NewProductionPage
+        products={products}
+        materials={materials}
+        presetProduct={preset}
+        onClose={closeNew}
+        onSave={onSaveProduction}
+        onSaveBatch={(batch) => {
+          if (onSaveProductions) onSaveProductions(batch);
+          else
+            batch.forEach((p) =>
+              onSaveProduction?.(
+                p,
+                p.stockTrackingEnabled !== false && p.status !== "in_progress",
+              ),
+            );
+          setStatus(
+            batch.some((p) => p.status === "in_progress")
+              ? "in_progress"
+              : "completed",
+          );
+          setQuery("");
+          setType("all");
+          setNotice(
+            `${batch.length} ${batch.length === 1 ? "produção registrada" : "produções registradas"}.`,
+          );
+        }}
+      />
     );
-
-    if (confirmRevert) {
-      onDeleteProduction(prod.id, true);
-    }
+  const back = () => {
+    setAdvancingId(null);
+    setViewingId(null);
   };
-
+  if (advance || viewing)
+    return (
+      <section className="liare-production-detail space-y-5">
+        <button
+          type="button"
+          onClick={back}
+          className="inline-flex items-center gap-2 text-sm text-[#75665c]"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Voltar para produção
+        </button>
+        {advance ? (
+          <StageProgressModal
+            production={advance}
+            product={products.find((p) => p.id === advance.productId) || null}
+            products={products}
+            materials={materials}
+            onClose={back}
+            onAdvance={(updated, deductions, delta) => {
+              onAdvanceProductionStage(updated, deductions, delta);
+              if (updated.status === "completed") setStatus("completed");
+              setNotice("Etapa registrada.");
+              back();
+            }}
+          />
+        ) : (
+          viewing && (
+            <ViewProductionModal
+              production={viewing}
+              imageUrl={
+                viewing.productImageUrl ||
+                products.find((p) => p.id === viewing.productId)?.imageUrl
+              }
+              onClose={back}
+            />
+          )
+        )}
+      </section>
+    );
   return (
-    <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <section className="space-y-5 text-[#352f2b]" aria-label="Produção">
+      <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-2xl font-bold text-stone-900 tracking-tight">
-              Histórico & Lançamento de Produção
-            </h2>
-            <span className="text-xs bg-amber-100 text-amber-900 font-semibold px-2.5 py-0.5 rounded-full">
-              Baixa Automática de Insumos
-            </span>
-          </div>
+          <h2 className="text-2xl font-semibold tracking-tight">Produção</h2>
+          <p className="mt-1 text-sm text-[#75665c]">
+            Acompanhe o que está na bancada.
+          </p>
         </div>
-
         <button
           id="btn-add-production"
-          onClick={() => handleOpenAdd()}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-sm font-medium rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap"
-        >
-          <Plus className="w-4 h-4 text-amber-400" />
-          <span>Lançar Produção de Receita</span>
-        </button>
-      </div>
-
-      {/* Summary Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
-        <div className="bg-white p-3 sm:p-4 rounded-xl border border-stone-200 shadow-2xs min-w-0">
-          <span className="text-xs text-stone-500 block uppercase font-medium">
-            Lotes Produzidos
-          </span>
-          <span className="text-2xl font-extrabold text-stone-900 mt-0.5 block">
-            {filteredProductions.length}
-          </span>
-        </div>
-
-        <div className="bg-white p-3 sm:p-4 rounded-xl border border-stone-200 shadow-2xs min-w-0">
-          <span className="text-xs text-stone-500 block uppercase font-medium">
-            Peças / Unidades Prontas
-          </span>
-          <span className="text-2xl font-extrabold text-amber-600 mt-0.5 block">
-            {totalUnitsProduced} un
-          </span>
-        </div>
-
-        <div className="bg-white p-3 sm:p-4 rounded-xl border border-stone-200 shadow-2xs min-w-0">
-          <span className="text-xs text-stone-500 block uppercase font-medium">
-            Custo Total de Produção
-          </span>
-          <span className="text-2xl font-extrabold text-stone-900 mt-0.5 block">
-            {formatCurrency(totalProductionCost)}
-          </span>
-        </div>
-
-        <div className="bg-white p-3 sm:p-4 rounded-xl border border-stone-200 shadow-2xs min-w-0">
-          <span className="text-xs text-stone-500 block uppercase font-medium">
-            Movimentações de Insumos
-          </span>
-          <span className="text-2xl font-extrabold text-emerald-700 mt-0.5 block">
-            {totalDeductedCount}
-          </span>
-        </div>
-      </div>
-
-      {/* Search & Filters */}
-      <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs flex flex-col md:flex-row gap-3 items-center justify-between">
-        <div className="relative w-full md:w-96">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
-          <input
-            type="text"
-            placeholder="Buscar por produto, insumo, lote ou notas..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-stone-50 border border-stone-200 rounded-lg text-sm text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
-          />
-        </div>
-
-        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-          <div className="flex bg-amber-50 p-1 rounded-lg border border-amber-200/80 text-xs shrink-0">
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1.5 rounded-md font-medium transition-all ${
-                statusFilter === 'all'
-                  ? 'bg-white text-stone-900 shadow-2xs font-semibold'
-                  : 'text-stone-600 hover:text-stone-900'
-              }`}
-            >
-              Todas
-            </button>
-            <button
-              onClick={() => setStatusFilter('in_progress')}
-              className={`px-3 py-1.5 rounded-md font-medium transition-all ${
-                statusFilter === 'in_progress'
-                  ? 'bg-white text-amber-900 shadow-2xs font-semibold'
-                  : 'text-stone-600 hover:text-stone-900'
-              }`}
-            >
-              Em andamento ({productions.filter((p) => p.status === 'in_progress').length})
-            </button>
-            <button
-              onClick={() => setStatusFilter('completed')}
-              className={`px-3 py-1.5 rounded-md font-medium transition-all ${
-                statusFilter === 'completed'
-                  ? 'bg-white text-emerald-800 shadow-2xs font-semibold'
-                  : 'text-stone-600 hover:text-stone-900'
-              }`}
-            >
-              Concluídas
-            </button>
-          </div>
-
-          <div className="flex bg-stone-100 p-1 rounded-lg border border-stone-200/80 text-xs shrink-0">
-            <button
-              onClick={() => setTypeFilter('all')}
-              className={`px-3 py-1.5 rounded-md font-medium transition-all ${
-                typeFilter === 'all'
-                  ? 'bg-white text-stone-900 shadow-2xs font-semibold'
-                  : 'text-stone-600 hover:text-stone-900'
-              }`}
-            >
-              Todas ({productions.length})
-            </button>
-            <button
-              onClick={() => setTypeFilter('final')}
-              className={`px-3 py-1.5 rounded-md font-medium transition-all ${
-                typeFilter === 'final'
-                  ? 'bg-white text-stone-900 shadow-2xs font-semibold'
-                  : 'text-stone-600 hover:text-stone-900'
-              }`}
-            >
-              Produtos Finais
-            </button>
-            <button
-              onClick={() => setTypeFilter('intermediate')}
-              className={`px-3 py-1.5 rounded-md font-medium transition-all ${
-                typeFilter === 'intermediate'
-                  ? 'bg-white text-stone-900 shadow-2xs font-semibold'
-                  : 'text-stone-600 hover:text-stone-900'
-              }`}
-            >
-              Componentes & Rótulos
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Production List */}
-      {filteredProductions.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-stone-200 p-12 text-center shadow-2xs">
-          <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-100">
-            <Hammer className="w-8 h-8" />
-          </div>
-          <h3 className="text-lg font-bold text-stone-800 mb-1">
-            Nenhum lote de produção encontrado
-          </h3>
-          <p className="text-stone-500 text-sm max-w-md mx-auto mb-6">
-            Quando você produzir receitas (como velas, saboaria, caixas ou rótulos), registre aqui para abater automaticamente os insumos do estoque e aumentar o saldo do produto pronto.
-          </p>
-          <button
-            onClick={() => handleOpenAdd()}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-stone-900 text-white text-sm font-medium rounded-xl hover:bg-stone-800 transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4 text-amber-400" />
-            <span>Lançar Primeira Produção</span>
-          </button>
-        </div>
-      ) : (
-        <section className="bg-white rounded-3xl border border-[#eadfd6] p-5 shadow-xs">
-          <h3 className="text-xs font-bold text-[#352f2b] uppercase tracking-wider mb-3 pb-2 border-b border-[#f0e7e0] flex items-center gap-1.5">
-            <Package className="w-3.5 h-3.5 text-[#766b64]" />
-            Histórico de produção
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {filteredProductions.map((prod) => {
-            const isExpanded = expandedProductionIds.has(prod.id);
-            const matchingProduct = products.find((p) => p.id === prod.productId);
-
-            return (
-              <div
-                key={prod.id}
-                id={`production-item-${prod.id}`}
-                className="min-w-0 bg-[#fbf8f5] rounded-xl border border-[#f0e7e0] hover:border-[#ddc9b9] transition-colors overflow-hidden"
-              >
-                {/* Main Row */}
-                <button
-                  type="button"
-                  onClick={() => toggleExpand(prod.id)}
-                  aria-expanded={isExpanded}
-                  className="w-full flex items-center justify-between gap-3 p-3 text-left cursor-pointer"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="font-semibold text-[#352f2b] text-xs block truncate">{prod.productName}</span>
-                    <span className="text-[11px] text-[#9d9189] block truncate">
-                      {prod.status === 'in_progress'
-                        ? `${prod.quantityProduced} prontas de ${prod.targetQuantity || prod.batchCount * prod.batchYield} · em andamento`
-                        : `${prod.quantityProduced} ${prod.quantityProduced === 1 ? 'unidade' : 'unidades'} · ${formatDate(prod.date)}`}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-right">
-                    <span className="font-bold text-[#352f2b] text-xs block">{formatCurrency(prod.totalCost)}</span>
-                    <span className="text-[10px] font-semibold text-[#a86149] flex items-center justify-end gap-1">
-                      Detalhes {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                    </span>
-                  </span>
-                </button>
-
-                {isExpanded && (
-                  <div id={`production-details-${prod.id}`} className="px-3 pb-3 border-t border-[#f0e7e0] text-xs text-[#5e5149]">
-                    <div className="flex items-start gap-3 pt-3">
-                      {(prod.productImageUrl || matchingProduct?.imageUrl) && (
-                        <img
-                          src={prod.productImageUrl || matchingProduct?.imageUrl}
-                          alt=""
-                          className="w-10 h-10 rounded-lg object-cover shrink-0"
-                          referrerPolicy="no-referrer"
-                        />
-                      )}
-                      <div className="min-w-0 space-y-1 flex-1">
-                        <p>{prod.productCategory ? `${prod.productCategory} · ` : ''}{prod.isIntermediate ? 'Componente / Sub-produto' : 'Produto Final'}</p>
-                        <p>{prod.batchCount} {prod.batchCount === 1 ? 'batelada' : 'bateladas'}{prod.batchYield > 1 ? ` · ${prod.batchYield} un/batelada` : ''} · {formatCurrency(prod.costPerUnit)} / un</p>
-                        <p>{prod.deductedItems.length} insumos baixados</p>
-                        {prod.stageProgress && prod.stageProgress.length > 0 && (
-                          <div className="pt-1 space-y-1.5">
-                            {prod.stageProgress.map((stage) => {
-                              const planned = Math.max(1, stage.plannedQuantity);
-                              const pct = Math.min(100, (stage.completedQuantity / planned) * 100);
-                              return (
-                                <div key={stage.stageId}>
-                                  <div className="flex items-center justify-between text-[10px]">
-                                    <span>{stage.order + 1}. {stage.stageName}</span>
-                                    <strong>{formatNumber(stage.completedQuantity)}/{formatNumber(stage.plannedQuantity)}</strong>
-                                  </div>
-                                  <div className="h-1.5 rounded-full bg-stone-200 overflow-hidden">
-                                    <div className="h-full bg-amber-500 transition-all" style={{ width: `${pct}%` }} />
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {prod.notes && <p className="italic break-words">{prod.notes}</p>}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {prod.status === 'in_progress' && prod.stageProgress && prod.stageProgress.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setAdvancingProduction(prod)}
-                          className="px-3 py-2 rounded-lg bg-stone-900 text-white font-semibold cursor-pointer"
-                        >
-                          Continuar produção
-                        </button>
-                      )}
-                      <button type="button" onClick={() => setViewingProduction(prod)} className="px-3 py-2 rounded-lg bg-white border border-[#eadfd6] text-[#352f2b] font-medium cursor-pointer">Ver ordem completa</button>
-                      <button type="button" onClick={() => handleDelete(prod)} className="px-3 py-2 rounded-lg bg-white border border-rose-200 text-rose-700 font-medium cursor-pointer">Excluir</button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Expanded Deducted Items Drawer */}
-                {isExpanded && (
-                  <div className="px-5 py-4 bg-stone-50/80 border-t border-stone-200 text-xs animate-in slide-in-from-top-1 duration-150">
-                    <h5 className="font-bold text-stone-800 uppercase tracking-wider text-[10px] mb-2.5 flex items-center gap-1.5">
-                      <Layers className="w-3.5 h-3.5 text-amber-600" />
-                      Insumos Baixados do Estoque nesta Produção:
-                    </h5>
-
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="border-b border-stone-200 text-stone-500 text-[10px] uppercase font-semibold">
-                            <th className="pb-1.5">Insumo / Matéria-Prima</th>
-                            <th className="pb-1.5 text-right">Qtd por Batelada</th>
-                            <th className="pb-1.5 text-right">Total Deduzido</th>
-                            <th className="pb-1.5 text-right">Custo Unitário</th>
-                            <th className="pb-1.5 text-right">Custo Insumo</th>
-                            <th className="pb-1.5 text-right">Estoque Antes → Depois</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-stone-200/60 text-stone-700">
-                          {prod.deductedItems.map((item, idx) => (
-                            <tr key={idx} className="hover:bg-stone-100/50">
-                              <td className="py-2 font-medium flex items-center gap-1.5">
-                                <span className={`w-1.5 h-1.5 rounded-full ${item.type === 'product' ? 'bg-amber-500' : 'bg-stone-500'}`} />
-                                <span>{item.name}</span>
-                                {item.type === 'product' && (
-                                  <span className="text-[9px] bg-amber-100 text-amber-800 px-1 rounded">sub-produto</span>
-                                )}
-                              </td>
-                              <td className="py-2 text-right text-stone-500 font-mono">
-                                {formatNumber(item.quantityPerBatch)} {item.unit}
-                              </td>
-                              <td className="py-2 text-right font-bold text-rose-700 font-mono">
-                                -{formatNumber(item.quantityTotal)} {item.unit}
-                              </td>
-                              <td className="py-2 text-right text-stone-500 font-mono">
-                                {formatCurrency(item.unitCost)}
-                              </td>
-                              <td className="py-2 text-right font-semibold text-stone-900 font-mono">
-                                {formatCurrency(item.totalCost)}
-                              </td>
-                              <td className="py-2 text-right text-stone-500 font-mono">
-                                {item.stockBefore !== undefined && item.stockAfter !== undefined ? (
-                                  <span>
-                                    {formatNumber(item.stockBefore)} → <strong className="text-stone-800">{formatNumber(item.stockAfter)} {item.unit}</strong>
-                                  </span>
-                                ) : (
-                                  <span>-</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          </div>
-        </section>
-      )}
-
-      {/* Production Modal */}
-      {isModalOpen && (
-        <NewProductionModal
-          isOpen={isModalOpen}
-          products={products}
-          materials={materials}
-          presetProduct={selectedProductForProduction}
-          onClose={handleCloseModal}
-          onSave={onSaveProduction}
-        />
-      )}
-
-      {/* Stage Progress Modal */}
-      {advancingProduction && (
-        <StageProgressModal
-          production={advancingProduction}
-          product={products.find((p) => p.id === advancingProduction.productId) || null}
-          products={products}
-          materials={materials}
-          onClose={() => setAdvancingProduction(null)}
-          onAdvance={(updated, deductions, finishedQuantityDelta) => {
-            onAdvanceProductionStage(updated, deductions, finishedQuantityDelta);
-            setAdvancingProduction(null);
+          type="button"
+          onClick={() => {
+            setPreset(null);
+            setCreating(true);
           }}
-        />
+          className="inline-flex items-center gap-2 rounded-xl bg-[#352f2b] px-4 py-3 text-sm font-semibold text-white hover:bg-[#57493f]"
+        >
+          <Plus className="h-4 w-4" />
+          Nova produção
+        </button>
+      </header>
+      {notice && (
+        <p role="status" className="text-sm text-emerald-800">
+          {notice}
+        </p>
       )}
-
-      {/* View Production Details Modal */}
-      {viewingProduction && (
-        <ViewProductionModal
-          production={viewingProduction}
-          imageUrl={
-            viewingProduction.productImageUrl ||
-            products.find((product) => product.id === viewingProduction.productId)?.imageUrl
-          }
-          onClose={() => setViewingProduction(null)}
-        />
-      )}
-    </div>
-  );
-};
-
-// ==========================================
-// New Production Modal
-// ==========================================
-
-export interface NewProductionModalProps {
-  isOpen: boolean;
-  products: Product[];
-  materials: Material[];
-  presetProduct: Product | null;
-  onClose: () => void;
-  onSave: (prod: Production, updateStock: boolean) => void;
-}
-
-export const NewProductionModal: React.FC<NewProductionModalProps> = ({
-  isOpen,
-  products,
-  materials,
-  presetProduct,
-  onClose,
-  onSave,
-}) => {
-  const [selectedProductId, setSelectedProductId] = useState<string>(presetProduct?.id || '');
-  const [date, setDate] = useState<string>(localDateString());
-  const [batchCount, setBatchCount] = useState<string>('1');
-  const [notes, setNotes] = useState<string>('');
-  const [updateStock, setUpdateStock] = useState<boolean>(true);
-  const [variableSelections, setVariableSelections] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (presetProduct) {
-      setSelectedProductId(presetProduct.id);
-    }
-  }, [presetProduct]);
-
-  useEffect(() => {
-    setVariableSelections({});
-  }, [selectedProductId]);
-
-  const selectedProduct = useMemo(() => {
-    return products.find((p) => p.id === selectedProductId) || null;
-  }, [products, selectedProductId]);
-
-  const parsedBatchCount = Math.max(1, parseFloat(batchCount) || 1);
-  const batchYield = selectedProduct?.batchYield && selectedProduct.batchYield > 0 ? selectedProduct.batchYield : 1;
-  const quantityProduced = parsedBatchCount * batchYield;
-  const isStagedProduction = !!(
-    selectedProduct?.useProductionStages &&
-    selectedProduct.productionStages &&
-    selectedProduct.productionStages.length > 0
-  );
-
-  const makeVariableKey = (productItemId: string, virtualMaterialId: string, recipeItemId: string) =>
-    `${productItemId}::${virtualMaterialId}::${recipeItemId}`;
-
-  // Finds every "choose from category" ingredient hidden inside a virtual material
-  // used by the selected product. Example: Cera Aromatizada -> Categoria Essências.
-  const variableRequirements = useMemo(() => {
-    if (!selectedProduct) return [];
-
-    return selectedProduct.items.flatMap((productItem) => {
-      if (productItem.type !== 'material') return [];
-      const virtualMaterial = materials.find((m) => m.id === productItem.targetId);
-      if (!virtualMaterial?.isVirtualRecipe || !virtualMaterial.recipeItems?.length) return [];
-
-      const virtualYield = Math.max(0.0001, virtualMaterial.batchYield || 1);
-      const scalePerProductBatch = productItem.quantity / virtualYield;
-
-      return virtualMaterial.recipeItems
-        .filter(
-          (recipeItem) =>
-            recipeItem.type === 'material' &&
-            recipeItem.selectionMode === 'category' &&
-            recipeItem.targetCategory &&
-            !productItem.categorySelections?.[recipeItem.id]
-        )
-        .map((recipeItem) => ({
-          key: makeVariableKey(productItem.id, virtualMaterial.id, recipeItem.id),
-          virtualMaterialId: virtualMaterial.id,
-          virtualMaterialName: virtualMaterial.name,
-          category: recipeItem.targetCategory as string,
-          quantityPerBatch: recipeItem.quantity * scalePerProductBatch,
-          unit: recipeItem.unit,
-        }));
-    });
-  }, [selectedProduct, materials]);
-
-  // Expand virtual materials proportionally and calculate the real stock deductions.
-  const { deductions, hasStockShortage, hasMissingVariableSelection } = useMemo(() => {
-    if (!selectedProduct) {
-      return { deductions: [], hasStockShortage: false, hasMissingVariableSelection: false };
-    }
-
-    let shortage = false;
-    let missingVariable = false;
-
-    type PendingDeduction = Omit<ProductionIngredientDeduction, 'quantityTotal' | 'totalCost' | 'stockBefore' | 'stockAfter'>;
-    const aggregated = new Map<string, PendingDeduction>();
-
-    const addIngredient = (
-      id: string,
-      targetId: string,
-      type: 'material' | 'product',
-      name: string,
-      unit: string,
-      quantityPerBatch: number,
-      unitCost: number
-    ) => {
-      const key = `${type}:${targetId}`;
-      const existing = aggregated.get(key);
-      if (existing) {
-        existing.quantityPerBatch += quantityPerBatch;
-        return;
-      }
-      aggregated.set(key, {
-        id,
-        targetId,
-        type,
-        name,
-        unit,
-        quantityPerBatch,
-        unitCost,
-      });
-    };
-
-    selectedProduct.items.forEach((item) => {
-      if (item.type === 'material') {
-        const mat = materials.find((m) => m.id === item.targetId);
-
-        // Moldes/ferramentas ficam vinculados à receita, mas não são consumidos.
-        if (mat?.usageType === 'durable') return;
-
-        if (mat?.isVirtualRecipe && mat.recipeItems?.length) {
-          const virtualYield = Math.max(0.0001, mat.batchYield || 1);
-          const scalePerProductBatch = item.quantity / virtualYield;
-
-          mat.recipeItems.forEach((recipeItem) => {
-            const expandedQuantityPerBatch = recipeItem.quantity * scalePerProductBatch;
-
-            if (recipeItem.type === 'material' && recipeItem.selectionMode === 'category' && recipeItem.targetCategory) {
-              const selectionKey = makeVariableKey(item.id, mat.id, recipeItem.id);
-              const chosenId = item.categorySelections?.[recipeItem.id] || variableSelections[selectionKey];
-              const chosen = materials.find(
-                (m) => m.id === chosenId && !m.isVirtualRecipe && m.category === recipeItem.targetCategory
-              );
-
-              if (!chosen) {
-                missingVariable = true;
-                return;
-              }
-
-              if (chosen.usageType !== 'durable') {
-                addIngredient(
-                  `${item.id}_${recipeItem.id}`,
-                  chosen.id,
-                  'material',
-                  chosen.name,
-                  UNIT_SHORT[chosen.unit] || recipeItem.unit,
-                  expandedQuantityPerBatch,
-                  (chosen.inventoryUnitCost ?? chosen.unitCost)
-                );
-              }
-              return;
-            }
-
-            if (recipeItem.type === 'material') {
-              const childMat = materials.find((m) => m.id === recipeItem.targetId);
-              if (childMat) {
-                if (childMat.usageType !== 'durable') {
-                  addIngredient(
-                    `${item.id}_${recipeItem.id}`,
-                    childMat.id,
-                    'material',
-                    childMat.name,
-                    UNIT_SHORT[childMat.unit] || recipeItem.unit,
-                    expandedQuantityPerBatch,
-                    (childMat.inventoryUnitCost ?? childMat.unitCost)
-                  );
-                }
-              } else {
-                addIngredient(
-                  `${item.id}_${recipeItem.id}`,
-                  recipeItem.targetId,
-                  'material',
-                  recipeItem.name,
-                  recipeItem.unit,
-                  expandedQuantityPerBatch,
-                  recipeItem.unitCost
-                );
-              }
-              return;
-            }
-
-            const childProduct = products.find((p) => p.id === recipeItem.targetId);
-            const childUnitCost = childProduct
-              ? (childProduct.unitCostFromBatch > 0 ? childProduct.unitCostFromBatch : childProduct.totalCost)
-              : recipeItem.unitCost;
-            addIngredient(
-              `${item.id}_${recipeItem.id}`,
-              recipeItem.targetId,
-              'product',
-              childProduct?.name || recipeItem.name,
-              recipeItem.unit,
-              expandedQuantityPerBatch,
-              childUnitCost
-            );
-          });
-
-          return;
-        }
-
-        addIngredient(
-          item.id,
-          item.targetId,
-          'material',
-          mat?.name || item.name,
-          mat ? (UNIT_SHORT[mat.unit] || item.unit) : item.unit,
-          item.quantity,
-          mat?.inventoryUnitCost ?? mat?.unitCost ?? item.unitCost
-        );
-        return;
-      }
-
-      const subProd = products.find((p) => p.id === item.targetId);
-      const subUnitCost = subProd
-        ? (subProd.unitCostFromBatch > 0 ? subProd.unitCostFromBatch : subProd.totalCost)
-        : item.unitCost;
-      addIngredient(
-        item.id,
-        item.targetId,
-        'product',
-        subProd?.name || item.name,
-        item.unit,
-        item.quantity,
-        subUnitCost
-      );
-    });
-
-    const list: ProductionIngredientDeduction[] = Array.from(aggregated.values()).map((item) => {
-      const quantityTotal = item.quantityPerBatch * parsedBatchCount;
-      let stockBefore = 0;
-
-      if (item.type === 'material') {
-        stockBefore = materials.find((m) => m.id === item.targetId)?.currentStock ?? 0;
-      } else {
-        stockBefore = products.find((p) => p.id === item.targetId)?.currentStock ?? 0;
-      }
-
-      const stockAfter = stockBefore - quantityTotal;
-      if (stockAfter < 0) shortage = true;
-
-      return {
-        ...item,
-        quantityTotal,
-        totalCost: item.unitCost * quantityTotal,
-        stockBefore,
-        stockAfter,
-      };
-    });
-
-    return {
-      deductions: list,
-      hasStockShortage: shortage,
-      hasMissingVariableSelection: missingVariable,
-    };
-  }, [selectedProduct, parsedBatchCount, materials, products, variableSelections]);
-
-  // Product overhead (labor/fixed/other costs) stays the same, while ingredient
-  // cost is recalculated from the actual essence/material selected for this production.
-  const ingredientCost = deductions.reduce((sum, item) => sum + item.totalCost, 0);
-  const nonIngredientCostPerBatch = selectedProduct
-    ? Math.max(0, selectedProduct.totalCost - selectedProduct.materialsCost)
-    : 0;
-  const totalCost = selectedProduct
-    ? ingredientCost + (nonIngredientCostPerBatch + getVirtualRecipeLaborCost(selectedProduct.items, materials)) * parsedBatchCount
-    : 0;
-  const unitCost = quantityProduced > 0 ? totalCost / quantityProduced : 0;
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedProduct) {
-      alert('Selecione um produto ou receita para produzir.');
-      return;
-    }
-
-    if (parsedBatchCount <= 0) {
-      alert('Informe uma quantidade de bateladas válida maior que zero.');
-      return;
-    }
-
-    if (hasMissingVariableSelection) {
-      alert('Escolha o material de cada categoria variável antes de lançar a produção.');
-      return;
-    }
-
-    if (hasStockShortage && updateStock && !isStagedProduction) {
-      const proceed = window.confirm(
-        'Atenção: Alguns insumos da receita não possuem saldo suficiente no estoque atual.\n\n' +
-        'Ao prosseguir, o estoque desses itens será ajustado automaticamente para zero.\n\n' +
-        'Deseja lançar a produção mesmo assim?'
-      );
-      if (!proceed) return;
-    }
-
-    const recordedDeductions = isStagedProduction
-      ? []
-      : (updateStock
-          ? deductions.map((deduction) => ({
-              ...deduction,
-              stockAfter: Math.max(0, Number(deduction.stockAfter.toFixed(4))),
-            }))
-          : deductions);
-
-    const sortedStages = isStagedProduction
-      ? [...(selectedProduct.productionStages || [])].sort((a, b) => a.order - b.order)
-      : [];
-
-    const newProduction: Production = {
-      id: `prod_exec_${Date.now()}`,
-      date,
-      productId: selectedProduct.id,
-      productName: selectedProduct.name,
-      productCategory: selectedProduct.category,
-      productImageUrl: selectedProduct.imageUrl?.startsWith('data:image/') ? undefined : selectedProduct.imageUrl,
-      isIntermediate: selectedProduct.isIntermediate,
-      batchYield,
-      batchCount: parsedBatchCount,
-      quantityProduced: isStagedProduction ? 0 : quantityProduced,
-      targetQuantity: isStagedProduction ? quantityProduced : undefined,
-      status: isStagedProduction ? 'in_progress' : 'completed',
-      costPerUnit: unitCost,
-      totalCost: isStagedProduction ? 0 : totalCost,
-      plannedTotalCost: isStagedProduction ? totalCost : undefined,
-      deductedItems: recordedDeductions,
-      stageProgress: isStagedProduction
-        ? sortedStages.map((stage, index) => ({
-            stageId: stage.id,
-            stageName: stage.name,
-            order: index,
-            plannedQuantity: quantityProduced,
-            completedQuantity: 0,
-            laborMinutes: stage.laborMinutes || 0,
-            deductedItems: [],
-          }))
-        : undefined,
-      productionStagesSnapshot: isStagedProduction ? sortedStages : undefined,
-      recipeItemsSnapshot: isStagedProduction ? selectedProduct.items.map((item) => ({ ...item })) : undefined,
-      variableSelections: isStagedProduction ? { ...variableSelections } : undefined,
-      stockTrackingEnabled: updateStock,
-      notes: notes.trim() || undefined,
-      createdAt: localDateString(),
-      completedAt: isStagedProduction ? undefined : localDateString(),
-    };
-
-    onSave(newProduction, isStagedProduction ? false : updateStock);
-    onClose();
-  };
-
-  return (
-    <ModalFrame onClose={onClose} className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-3xl my-6 overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Modal Header */}
-        <div className="liare-modal-header flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center">
-              <Hammer className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-stone-900 text-lg">
-                Lançar Produção de Receita
-              </h3>
-              <p className="text-xs text-stone-500">
-                {isStagedProduction
-                  ? 'Crie a ordem e avance cada fase conforme o trabalho for acontecendo.'
-                  : 'Baixa automática de insumos e entrada das peças finalizadas no estoque.'}
-              </p>
-            </div>
-          </div>
-          <button aria-label="Fechar janela" type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200 transition-colors"
+      <div
+        className="flex flex-wrap gap-6 border-b border-[#e5dad1]"
+        role="tablist"
+        aria-label="Situação das produções"
+      >
+        {(
+          [
+            { id: "in_progress", label: "Em andamento", count: inProgress },
+            { id: "completed", label: "Concluídas", count: completed },
+          ] as const
+        ).map((t) => (
+          <button
+            key={t.id}
+            id={`production-tab-${t.id}`}
+            role="tab"
+            aria-controls="production-list"
+            aria-selected={status === t.id}
+            type="button"
+            onClick={() => {
+              setStatus(t.id);
+              setNotice("");
+            }}
+            className={`border-b-2 pb-3 text-sm ${status === t.id ? "border-[#a86149] font-semibold text-[#352f2b]" : "border-transparent text-[#75665c]"}`}
           >
-            <X className="w-5 h-5" />
+            {t.label}
+            <span className="ml-2 rounded bg-[#f1e9e2] px-1.5 py-0.5 text-xs">
+              {t.count}
+            </span>
           </button>
-        </div>
-
-        {/* Modal Body */}
-        <form onSubmit={handleSubmit} className="liare-modal-body overflow-y-auto p-6 space-y-5 flex-1">
-          {/* 1. Recipe Selection & Date */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                Receita / Peça a Produzir *
-              </label>
-              <SearchableProductCombobox
-                id="combobox-recipe-to-produce"
-                products={products}
-                selectedProductId={selectedProductId}
-                onSelectProduct={(prod) => setSelectedProductId(prod ? prod.id : '')}
-                mode="production"
-                filterOnlyFinalForSale={false}
-                placeholder="Digite palavras-chave da receita (ex: vela lavanda, difusor, aroma)..."
-                autoFocus={!presetProduct}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                Data da Produção *
-              </label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                required
-                className="w-full px-3.5 py-2.5 bg-white border border-stone-300 rounded-xl text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-              />
-            </div>
-          </div>
-
-          {/* Quando nenhuma receita selecionada ainda */}
-          {!selectedProduct && (
-            <div className="p-8 text-center border-2 border-dashed border-amber-200 rounded-2xl bg-amber-50/40 my-2">
-              <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mx-auto mb-3">
-                <Search className="w-6 h-6" />
-              </div>
-              <h4 className="text-sm font-bold text-stone-800">
-                Digite palavras-chave no campo acima
-              </h4>
-              <p className="text-xs text-stone-500 mt-1 max-w-md mx-auto leading-relaxed">
-                Você pode buscar digitando palavras-chave do nome da receita (ex: <strong className="text-stone-700">"Lavanda"</strong> ou <strong className="text-stone-700">"Vela Pote"</strong>), categoria ou até o nome de insumos usados.
-              </p>
-            </div>
-          )}
-
-          {/* 2. Batch and Yield Calculator */}
-          {selectedProduct && (
-            <div className="p-4 bg-amber-50/70 rounded-xl border border-amber-200/80 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3 w-full sm:w-auto">
-                <div className="w-12 h-12 rounded-lg bg-white border border-amber-200 shrink-0 overflow-hidden flex items-center justify-center">
-                  {selectedProduct.imageUrl ? (
-                    <img
-                      src={selectedProduct.imageUrl}
-                      alt={selectedProduct.name}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <ImageIcon className="w-5 h-5 text-amber-700" />
-                  )}
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-stone-900 leading-tight">
-                    {selectedProduct.name}
-                  </h4>
-                  <p className="text-xs text-stone-600 mt-0.5">
-                    Estoque Atual: <strong className="text-stone-900 font-semibold">{selectedProduct.currentStock} un</strong> • Custo Unitário: {formatCurrency(unitCost)}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-                <div>
-                  <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-0.5">
-                    Nº de Bateladas
-                  </label>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setBatchCount(String(Math.max(1, parsedBatchCount - 1)))}
-                      disabled={parsedBatchCount <= 1}
-                      aria-label="Diminuir número de bateladas"
-                      className="w-8 h-8 inline-flex items-center justify-center bg-white border border-amber-300 rounded-lg text-base font-bold text-amber-900 hover:bg-amber-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    >
-                      −
-                    </button>
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={batchCount}
-                      onChange={(e) => setBatchCount(e.target.value)}
-                      required
-                      className="w-16 px-2 py-1.5 bg-white border border-amber-300 rounded-lg text-sm font-bold text-center text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setBatchCount(String(parsedBatchCount + 1))}
-                      aria-label="Aumentar número de bateladas"
-                      className="w-8 h-8 inline-flex items-center justify-center bg-white border border-amber-300 rounded-lg text-base font-bold text-amber-900 hover:bg-amber-50 transition-colors"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-
-                <div className="text-right">
-                  <span className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-0.5">
-                    Total a Produzir
-                  </span>
-                  <span className="text-base font-extrabold text-amber-900 block bg-white px-3 py-1 rounded-lg border border-amber-200">
-                    +{quantityProduced} un
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Escolhas dos ingredientes variáveis das receitas virtuais */}
-          {selectedProduct && variableRequirements.length > 0 && (
-            <div className="rounded-xl border border-purple-200 bg-purple-50/70 p-4 space-y-3">
-              <div>
-                <h4 className="text-xs font-bold text-purple-950 uppercase tracking-wider flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-purple-700" />
-                  Escolhas desta produção
-                </h4>
-                <p className="text-[11px] text-purple-700 mt-1">
-                  Esta receita usa um material virtual. Escolha agora qual ingrediente real será usado em cada categoria.
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                {variableRequirements.map((requirement, index) => {
-                  const categoryMaterials = materials.filter(
-                    (m) => !m.isVirtualRecipe && m.category === requirement.category
-                  );
-                  return (
-                    <div key={requirement.key} className="bg-white border border-purple-200 rounded-lg p-3">
-                      <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-                        <div className="flex-1 min-w-0">
-                          <label className="block text-[11px] font-bold text-stone-800 mb-1">
-                            {requirement.category} para {requirement.virtualMaterialName} *
-                          </label>
-                          <SearchableMaterialCombobox
-                            materials={categoryMaterials}
-                            selectedMaterialId={variableSelections[requirement.key] || ''}
-                            onSelectMaterial={(mat) => {
-                              setVariableSelections((prev) => ({
-                                ...prev,
-                                [requirement.key]: mat?.id || '',
-                              }));
-                            }}
-                            placeholder={`Escolha um material da categoria ${requirement.category}...`}
-                            id={`select-variable-ingredient-${index}`}
-                          />
-                        </div>
-                        <div className="text-left sm:text-right shrink-0">
-                          <span className="block text-[10px] uppercase font-bold tracking-wider text-stone-500">
-                            Proporção por batelada
-                          </span>
-                          <span className="text-sm font-extrabold text-purple-800">
-                            {formatNumber(requirement.quantityPerBatch)} {requirement.unit}
-                          </span>
-                        </div>
-                      </div>
-                      {categoryMaterials.length === 0 && (
-                        <p className="text-[10px] text-rose-700 mt-2">
-                          Nenhum material cadastrado na categoria {requirement.category}.
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {hasMissingVariableSelection && (
-                <div className="text-[11px] font-semibold text-purple-800 flex items-center gap-1.5">
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  Escolha todas as opções acima para o app calcular a baixa e o custo real.
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 3. Insumos Breakdown & Stock Availability Table */}
-          {selectedProduct && (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <Layers className="w-4 h-4 text-amber-600" />
-                  {isStagedProduction
-                    ? `Insumos previstos para todas as etapas (${deductions.length})`
-                    : `Insumos & Ingredientes que serão deduzidos do estoque (${deductions.length})`}
-                </label>
-                {hasStockShortage && (
-                  <span className="text-xs font-semibold text-rose-600 flex items-center gap-1">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    Atenção: Insumos com estoque insuficiente
-                  </span>
-                )}
-              </div>
-
-              <div className="border border-stone-200 rounded-xl overflow-hidden bg-white shadow-2xs">
-                <div className="max-h-60 overflow-y-auto">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead className="bg-stone-50 sticky top-0 border-b border-stone-200 text-stone-500 text-[10px] uppercase font-semibold">
-                      <tr>
-                        <th className="py-2.5 px-3">Insumo</th>
-                        <th className="py-2.5 px-3 text-right">Por Batelada</th>
-                        <th className="py-2.5 px-3 text-right">Qtd a Baixar</th>
-                        <th className="py-2.5 px-3 text-right">Estoque Atual</th>
-                        <th className="py-2.5 px-3 text-right">Saldo Restante</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-stone-100 text-stone-700">
-                      {deductions.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="py-4 text-center text-stone-400 italic">
-                            Esta receita não possui insumos cadastrados na ficha técnica.
-                          </td>
-                        </tr>
-                      ) : (
-                        deductions.map((d, i) => {
-                          const isNegative = (d.stockAfter || 0) < 0;
-                          return (
-                            <tr key={i} className={isNegative ? 'bg-rose-50/60' : 'hover:bg-stone-50'}>
-                              <td className="py-2.5 px-3 font-medium text-stone-900 flex items-center gap-1.5">
-                                <span className={`w-1.5 h-1.5 rounded-full ${d.type === 'product' ? 'bg-amber-500' : 'bg-stone-500'}`} />
-                                <span>{d.name}</span>
-                                {d.type === 'product' && (
-                                  <span className="text-[9px] bg-amber-100 text-amber-800 px-1 rounded font-normal">sub-produto</span>
-                                )}
-                              </td>
-                              <td className="py-2.5 px-3 text-right text-stone-500 font-mono">
-                                {formatNumber(d.quantityPerBatch)} {d.unit}
-                              </td>
-                              <td className="py-2.5 px-3 text-right font-bold text-rose-600 font-mono">
-                                -{formatNumber(d.quantityTotal)} {d.unit}
-                              </td>
-                              <td className="py-2.5 px-3 text-right text-stone-600 font-mono">
-                                {formatNumber(d.stockBefore || 0)} {d.unit}
-                              </td>
-                              <td className="py-2.5 px-3 text-right font-mono font-semibold">
-                                {isNegative ? (
-                                  <span className="text-rose-700 font-bold bg-rose-100 px-1.5 py-0.5 rounded">
-                                    {formatNumber(d.stockAfter || 0)} {d.unit} (Falta {formatNumber(Math.abs(d.stockAfter || 0))})
-                                  </span>
-                                ) : (
-                                  <span className="text-emerald-700">
-                                    {formatNumber(d.stockAfter || 0)} {d.unit}
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 4. Notes and Options */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                Observações do Lote (Opcional)
-              </label>
-              <input
-                type="text"
-                placeholder="Ex: Lote 04/2026, produção para pronta-entrega da feira de sábado..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-3.5 py-2 bg-white border border-stone-300 rounded-xl text-sm text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-              />
-            </div>
-
-            <div className="pt-2 sm:pt-6">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={updateStock}
-                  onChange={(e) => setUpdateStock(e.target.checked)}
-                  className="w-4 h-4 text-amber-600 rounded border-stone-300 focus:ring-amber-500"
-                />
-                <span className="text-xs font-medium text-stone-800">
-                  Atualizar estoque automaticamente
-                </span>
-              </label>
-              <span className="text-[10px] text-stone-500 block mt-0.5 ml-6">
-                {isStagedProduction
-                  ? 'Cada etapa baixará seus insumos; o produto pronto entra no estoque somente ao concluir a última etapa.'
-                  : 'Baixa os insumos e aumenta o produto pronto'}
-              </span>
-            </div>
-          </div>
-
-          {/* 5. Cost Summary Footer Card */}
-          <div className="p-4 bg-stone-100 rounded-xl border border-stone-200 flex items-center justify-between">
-            <div>
-              <span className="text-xs text-stone-500 block">{isStagedProduction ? 'Investimento Planejado:' : 'Investimento no Lote:'}</span>
-              <span className="text-xl font-extrabold text-stone-900">
-                {formatCurrency(totalCost)}
-              </span>
-            </div>
-
-            <div className="text-right">
-              <span className="text-xs text-stone-500 block">Novo Saldo Previsto do Produto:</span>
-              <span className="text-base font-bold text-emerald-700">
-                {(selectedProduct?.currentStock || 0) + (updateStock && !isStagedProduction ? quantityProduced : 0)} unidades
-              </span>
-            </div>
-          </div>
-
-          {/* Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 text-sm font-medium text-stone-600 hover:text-stone-800 hover:bg-stone-100 rounded-xl transition-colors cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={!selectedProduct}
-              className={`px-5 py-2.5 rounded-xl shadow-xs transition-all flex items-center gap-2 font-semibold text-sm ${
-                selectedProduct
-                  ? 'bg-stone-900 hover:bg-stone-800 text-white cursor-pointer active:scale-98'
-                  : 'bg-stone-300 text-stone-500 cursor-not-allowed'
-              }`}
-            >
-              <Check className="w-4 h-4 text-amber-400" />
-              <span>{isStagedProduction ? 'Criar Produção em Etapas' : 'Confirmar & Dar Baixa no Estoque'}</span>
-            </button>
-          </div>
-        </form>
+        ))}
       </div>
-    </ModalFrame>
-  );
-};
-
-// ==========================================
-// Stage Progress Modal
-// ==========================================
-
-interface StageProgressModalProps {
-  production: Production;
-  product: Product | null;
-  products: Product[];
-  materials: Material[];
-  onClose: () => void;
-  onAdvance: (
-    production: Production,
-    deductions: ProductionIngredientDeduction[],
-    finishedQuantityDelta: number
-  ) => void;
-}
-
-const mergeDeductionLists = (
-  current: ProductionIngredientDeduction[],
-  additions: ProductionIngredientDeduction[]
-): ProductionIngredientDeduction[] => {
-  const merged = current.map((item) => ({ ...item }));
-
-  additions.forEach((addition) => {
-    const existing = merged.find(
-      (item) => item.type === addition.type && item.targetId === addition.targetId
-    );
-
-    if (!existing) {
-      merged.push({ ...addition });
-      return;
-    }
-
-    existing.quantityTotal = Number((existing.quantityTotal + addition.quantityTotal).toFixed(4));
-    existing.totalCost = Number((existing.totalCost + addition.totalCost).toFixed(4));
-    existing.stockAfter = addition.stockAfter;
-    existing.unitCost = addition.unitCost;
-    existing.quantityPerBatch = Math.max(existing.quantityPerBatch, addition.quantityPerBatch);
-  });
-
-  return merged;
-};
-
-const StageProgressModal: React.FC<StageProgressModalProps> = ({
-  production,
-  product,
-  products,
-  materials,
-  onClose,
-  onAdvance,
-}) => {
-  const sortedStages = useMemo(
-    () => [...(production.stageProgress || [])].sort((a, b) => a.order - b.order),
-    [production.stageProgress]
-  );
-
-  const firstPendingStage = sortedStages.find(
-    (stage) => stage.completedQuantity < stage.plannedQuantity
-  );
-  const [selectedStageId, setSelectedStageId] = useState<string>(
-    firstPendingStage?.stageId || sortedStages[0]?.stageId || ''
-  );
-  const [quantity, setQuantity] = useState<string>('0');
-
-  const selectedStageIndex = sortedStages.findIndex((stage) => stage.stageId === selectedStageId);
-  const selectedStage = selectedStageIndex >= 0 ? sortedStages[selectedStageIndex] : null;
-  const targetQuantity = production.targetQuantity || production.batchCount * production.batchYield;
-  const previousCompleted = selectedStageIndex <= 0
-    ? targetQuantity
-    : sortedStages[selectedStageIndex - 1]?.completedQuantity || 0;
-  const availableToAdvance = selectedStage
-    ? Math.max(0, previousCompleted - selectedStage.completedQuantity)
-    : 0;
-  const isFinalStage = selectedStageIndex === sortedStages.length - 1;
-  const batchYield = Math.max(0.0001, production.batchYield || 1);
-  const recipeItems: RecipeItem[] = production.recipeItemsSnapshot || product?.items || [];
-  const stageRecipeItems = selectedStage
-    ? recipeItems.filter((item) => item.productionStageId === selectedStage.stageId)
-    : [];
-
-  useEffect(() => {
-    setQuantity(availableToAdvance > 0 ? String(availableToAdvance) : '0');
-  }, [selectedStageId, availableToAdvance]);
-
-  const makeVariableKey = (productItemId: string, virtualMaterialId: string, recipeItemId: string) =>
-    `${productItemId}::${virtualMaterialId}::${recipeItemId}`;
-
-  const buildStageDeductions = (quantityToAdvance: number) => {
-    let shortage = false;
-    let missingVariable = false;
-    type PendingDeduction = Omit<ProductionIngredientDeduction, 'quantityTotal' | 'totalCost' | 'stockBefore' | 'stockAfter'>;
-    const aggregated = new Map<string, PendingDeduction>();
-    const batchFactor = quantityToAdvance / batchYield;
-
-    const addIngredient = (
-      id: string,
-      targetId: string,
-      type: 'material' | 'product',
-      name: string,
-      unit: string,
-      quantityPerBatch: number,
-      unitCost: number
-    ) => {
-      const key = `${type}:${targetId}`;
-      const existing = aggregated.get(key);
-      if (existing) {
-        existing.quantityPerBatch += quantityPerBatch;
-        return;
-      }
-      aggregated.set(key, {
-        id,
-        targetId,
-        type,
-        name,
-        unit,
-        quantityPerBatch,
-        unitCost,
-      });
-    };
-
-    stageRecipeItems.forEach((item) => {
-      if (item.type === 'material') {
-        const mat = materials.find((material) => material.id === item.targetId);
-        if (mat?.usageType === 'durable') return;
-
-        if (mat?.isVirtualRecipe && mat.recipeItems?.length) {
-          const virtualYield = Math.max(0.0001, mat.batchYield || 1);
-          const scalePerProductBatch = item.quantity / virtualYield;
-
-          mat.recipeItems.forEach((recipeItem) => {
-            const expandedQuantityPerBatch = recipeItem.quantity * scalePerProductBatch;
-
-            if (
-              recipeItem.type === 'material' &&
-              recipeItem.selectionMode === 'category' &&
-              recipeItem.targetCategory
-            ) {
-              const selectionKey = makeVariableKey(item.id, mat.id, recipeItem.id);
-              const chosenId =
-                item.categorySelections?.[recipeItem.id] ||
-                production.variableSelections?.[selectionKey];
-              const chosen = materials.find(
-                (material) =>
-                  material.id === chosenId &&
-                  !material.isVirtualRecipe &&
-                  material.category === recipeItem.targetCategory
-              );
-
-              if (!chosen) {
-                missingVariable = true;
-                return;
-              }
-
-              if (chosen.usageType !== 'durable') {
-                addIngredient(
-                  `${item.id}_${recipeItem.id}`,
-                  chosen.id,
-                  'material',
-                  chosen.name,
-                  UNIT_SHORT[chosen.unit] || recipeItem.unit,
-                  expandedQuantityPerBatch,
-                  (chosen.inventoryUnitCost ?? chosen.unitCost)
-                );
-              }
-              return;
-            }
-
-            if (recipeItem.type === 'material') {
-              const childMaterial = materials.find(
-                (material) => material.id === recipeItem.targetId
-              );
-              if (childMaterial) {
-                if (childMaterial.usageType !== 'durable') {
-                  addIngredient(
-                    `${item.id}_${recipeItem.id}`,
-                    childMaterial.id,
-                    'material',
-                    childMaterial.name,
-                    UNIT_SHORT[childMaterial.unit] || recipeItem.unit,
-                    expandedQuantityPerBatch,
-                    childMaterial.unitCost
-                  );
-                }
-              } else {
-                addIngredient(
-                  `${item.id}_${recipeItem.id}`,
-                  recipeItem.targetId,
-                  'material',
-                  recipeItem.name,
-                  recipeItem.unit,
-                  expandedQuantityPerBatch,
-                  recipeItem.unitCost
-                );
-              }
-              return;
-            }
-
-            const childProduct = products.find((candidate) => candidate.id === recipeItem.targetId);
-            const childUnitCost = childProduct
-              ? (childProduct.unitCostFromBatch > 0 ? childProduct.unitCostFromBatch : childProduct.totalCost)
-              : recipeItem.unitCost;
-            addIngredient(
-              `${item.id}_${recipeItem.id}`,
-              recipeItem.targetId,
-              'product',
-              childProduct?.name || recipeItem.name,
-              recipeItem.unit,
-              expandedQuantityPerBatch,
-              childUnitCost
-            );
-          });
-          return;
-        }
-
-        addIngredient(
-          item.id,
-          item.targetId,
-          'material',
-          mat?.name || item.name,
-          mat ? (UNIT_SHORT[mat.unit] || item.unit) : item.unit,
-          item.quantity,
-          mat?.inventoryUnitCost ?? mat?.unitCost ?? item.unitCost
-        );
-        return;
-      }
-
-      const subProduct = products.find((candidate) => candidate.id === item.targetId);
-      const subUnitCost = subProduct
-        ? (subProduct.unitCostFromBatch > 0 ? subProduct.unitCostFromBatch : subProduct.totalCost)
-        : item.unitCost;
-      addIngredient(
-        item.id,
-        item.targetId,
-        'product',
-        subProduct?.name || item.name,
-        item.unit,
-        item.quantity,
-        subUnitCost
-      );
-    });
-
-    const deductions = Array.from(aggregated.values()).map((item) => {
-      const quantityTotal = item.quantityPerBatch * batchFactor;
-      const stockBefore = item.type === 'material'
-        ? (materials.find((material) => material.id === item.targetId)?.currentStock ?? 0)
-        : (products.find((candidate) => candidate.id === item.targetId)?.currentStock ?? 0);
-      const stockAfter = stockBefore - quantityTotal;
-      if (stockAfter < 0) shortage = true;
-
-      return {
-        ...item,
-        quantityTotal,
-        totalCost: item.unitCost * quantityTotal,
-        stockBefore,
-        stockAfter,
-      };
-    });
-
-    return { deductions, shortage, missingVariable, batchFactor };
-  };
-
-  const parsedQuantity = Math.max(0, Number(quantity) || 0);
-  const preview = buildStageDeductions(Math.min(parsedQuantity, availableToAdvance));
-
-  const handleAdvance = () => {
-    if (!selectedStage || !product) {
-      alert('Não foi possível localizar a receita desta produção.');
-      return;
-    }
-
-    if (parsedQuantity <= 0) {
-      alert('Informe uma quantidade maior que zero.');
-      return;
-    }
-
-    if (parsedQuantity > availableToAdvance + 0.0001) {
-      alert(
-        selectedStageIndex === 0
-          ? 'A quantidade informada ultrapassa o total planejado desta produção.'
-          : 'Esta quantidade ainda não concluiu a etapa anterior.'
-      );
-      return;
-    }
-
-    const result = buildStageDeductions(parsedQuantity);
-    if (result.missingVariable) {
-      alert('Falta uma escolha de material variável nesta ordem de produção.');
-      return;
-    }
-
-    const tracksStock = production.stockTrackingEnabled !== false;
-    if (result.shortage && tracksStock) {
-      const proceed = window.confirm(
-        'Alguns insumos desta etapa não possuem saldo suficiente. Ao continuar, o estoque desses itens será ajustado para zero. Deseja registrar a etapa mesmo assim?'
-      );
-      if (!proceed) return;
-    }
-
-    const recordedDeductions = tracksStock
-      ? result.deductions.map((deduction) => ({
-          ...deduction,
-          stockAfter: Math.max(0, Number(deduction.stockAfter.toFixed(4))),
-        }))
-      : result.deductions;
-
-    const nextCompletedQuantity = Number(
-      (selectedStage.completedQuantity + parsedQuantity).toFixed(4)
-    );
-
-    const nextStageProgress = sortedStages.map((stage) => {
-      if (stage.stageId !== selectedStage.stageId) return stage;
-      return {
-        ...stage,
-        completedQuantity: nextCompletedQuantity,
-        deductedItems: mergeDeductionLists(stage.deductedItems || [], recordedDeductions),
-      };
-    });
-
-    const ingredientCostDelta = recordedDeductions.reduce(
-      (sum, deduction) => sum + deduction.totalCost,
-      0
-    );
-    const virtualLaborDelta = getVirtualRecipeLaborCost(stageRecipeItems, materials) * result.batchFactor;
-    const laborCostDelta =
-      ((selectedStage.laborMinutes || 0) / 60) *
-      (product.hourlyRate || 0) *
-      result.batchFactor;
-    const finalOverheadDelta = isFinalStage
-      ? ((product.fixedCost || 0) + (product.otherCosts || 0)) * result.batchFactor
-      : 0;
-    const finishedQuantityDelta = isFinalStage ? parsedQuantity : 0;
-    const nextFinishedQuantity = Number(
-      (production.quantityProduced + finishedQuantityDelta).toFixed(4)
-    );
-    const isCompleted =
-      isFinalStage &&
-      nextCompletedQuantity >= targetQuantity - 0.0001;
-
-    const updatedProduction: Production = {
-      ...production,
-      status: isCompleted ? 'completed' : 'in_progress',
-      quantityProduced: nextFinishedQuantity,
-      totalCost: Number(
-        (production.totalCost + ingredientCostDelta + laborCostDelta + virtualLaborDelta + finalOverheadDelta).toFixed(4)
-      ),
-      deductedItems: mergeDeductionLists(production.deductedItems || [], recordedDeductions),
-      stageProgress: nextStageProgress,
-      completedAt: isCompleted ? localDateString() : undefined,
-    };
-
-    onAdvance(updatedProduction, recordedDeductions, finishedQuantityDelta);
-  };
-
-  return (
-    <ModalFrame onClose={onClose} className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-2xl my-6 overflow-hidden flex flex-col max-h-[92vh]">
-        <div className="liare-modal-header flex items-center justify-between px-5 py-4 border-b border-stone-200 bg-stone-50 shrink-0">
-          <div>
-            <h3 className="font-bold text-stone-900 text-base">Continuar produção</h3>
-            <p className="text-xs text-stone-500">{production.productName} · {formatNumber(targetQuantity)} un planejadas</p>
-          </div>
-          <button aria-label="Fechar janela" type="button" onClick={onClose} className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200">
-            <X className="w-5 h-5" />
-          </button>
+      <details className="text-sm text-[#75665c]">
+        <summary>Buscar e filtrar produções</summary>
+        <div className="mt-3 flex flex-wrap gap-3">
+          <label className="relative min-w-0 flex-1">
+            <span className="sr-only">Buscar produção</span>
+            <Search className="absolute left-3 top-3 h-4 w-4" />
+            <input
+              aria-label="Buscar produção"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Produto, material, lote ou observação"
+              className="w-full rounded-xl border border-[#e5dad1] bg-white py-2.5 pl-9 pr-3 text-base"
+            />
+          </label>
+          <label>
+            <span className="sr-only">Tipo de produção</span>
+            <select
+              aria-label="Tipo de produção"
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              className="rounded-xl border border-[#e5dad1] bg-white px-3 py-2.5 text-base"
+            >
+              <option value="all">Todos os tipos</option>
+              <option value="final">Produtos finais</option>
+              <option value="intermediate">Componentes</option>
+            </select>
+          </label>
         </div>
-
-        <div className="liare-modal-body p-5 overflow-y-auto space-y-4">
-          <div className="space-y-2">
-            {sortedStages.map((stage, index) => {
-              const complete = stage.completedQuantity >= stage.plannedQuantity - 0.0001;
-              const unlocked = index === 0 || (sortedStages[index - 1]?.completedQuantity || 0) > stage.completedQuantity;
-              const pct = Math.min(100, (stage.completedQuantity / Math.max(1, stage.plannedQuantity)) * 100);
-              return (
-                <button
-                  key={stage.stageId}
-                  type="button"
-                  onClick={() => setSelectedStageId(stage.stageId)}
-                  className={`w-full p-3 rounded-xl border text-left transition-colors ${
-                    selectedStageId === stage.stageId
-                      ? 'border-amber-400 bg-amber-50/60'
-                      : 'border-stone-200 bg-white hover:border-stone-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-stone-400">Etapa {index + 1}</span>
-                      <p className="text-sm font-semibold text-stone-900">{stage.stageName}</p>
-                    </div>
-                    <div className="text-right">
-                      <span className={`text-xs font-bold ${complete ? 'text-emerald-700' : unlocked ? 'text-amber-800' : 'text-stone-400'}`}>
-                        {formatNumber(stage.completedQuantity)}/{formatNumber(stage.plannedQuantity)}
-                      </span>
-                      <span className="block text-[9px] text-stone-400">{complete ? 'concluída' : unlocked ? 'disponível' : 'aguardando etapa anterior'}</span>
-                    </div>
-                  </div>
-                  <div className="h-1.5 mt-2 rounded-full bg-stone-100 overflow-hidden">
-                    <div className={`h-full ${complete ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${pct}%` }} />
-                  </div>
-                </button>
-              );
-            })}
+      </details>
+      <div
+        id="production-list"
+        role="tabpanel"
+        aria-labelledby={`production-tab-${status}`}
+        className="space-y-4"
+      >
+        {!filtered.length && (
+          <div className="rounded-2xl border border-[#e5dad1] bg-white p-8 text-center">
+            <h3 className="font-semibold">
+              {query || type !== "all"
+                ? "Nenhuma produção neste filtro"
+                : status === "in_progress"
+                  ? "Nenhuma produção em andamento"
+                  : "Nenhuma produção concluída"}
+            </h3>
+            <p className="mt-2 text-sm text-[#75665c]">
+              {status === "in_progress"
+                ? "Inicie uma produção ou consulte as concluídas."
+                : "As produções finalizadas aparecem aqui, com seus registros preservados."}
+            </p>
           </div>
-
-          {selectedStage && (
-            <div className="rounded-xl border border-stone-200 bg-stone-50 p-4 space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h4 className="text-sm font-bold text-stone-900">{selectedStage.stageName}</h4>
-                  <p className="text-[11px] text-stone-500 mt-0.5">
-                    {selectedStageIndex === 0
-                      ? 'Registre quantas unidades tiveram esta etapa concluída agora.'
-                      : `Há ${formatNumber(availableToAdvance)} un liberadas pela etapa anterior.`}
+        )}
+        {filtered.map((p) => {
+          const stages = [...(p.stageProgress || [])].sort(
+            (a, b) => a.order - b.order,
+          );
+          const current = stages.find(
+            (s) => s.completedQuantity < s.plannedQuantity,
+          );
+          const target = p.targetQuantity || p.batchCount * p.batchYield;
+          const active = p.status === "in_progress";
+          return (
+            <article
+              key={p.id}
+              id={`production-item-${p.id}`}
+              className="rounded-2xl border border-[#e5dad1] bg-white p-4 sm:p-5"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="break-words text-base font-semibold">
+                    {p.productName}
+                  </h3>
+                  <p className="mt-1 text-xs text-[#75665c]">
+                    {formatNumber(target)} unidades · {formatDate(p.date)}
+                    {p.stockTrackingEnabled === false
+                      ? " · Sem movimentação de estoque"
+                      : ""}
                   </p>
                 </div>
-                <span className="text-[10px] font-semibold text-stone-500 bg-white border border-stone-200 rounded-md px-2 py-1">
-                  {selectedStage.laborMinutes || 0} min/batelada
+                <span className="rounded-lg bg-[#f7e8df] px-2.5 py-1 text-xs text-[#a86149]">
+                  {active ? current?.stageName || "Em andamento" : "Concluída"}
                 </span>
               </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-stone-600 mb-1">Quantidade concluída agora</label>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setQuantity(String(Math.max(0, parsedQuantity - 1)))}
-                    className="w-9 h-9 rounded-lg bg-white border border-stone-300 font-bold text-stone-700"
-                  >
-                    −
-                  </button>
-                  <input
-                    type="number"
-                    min="0"
-                    max={availableToAdvance}
-                    step="1"
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    className="flex-1 px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-center font-bold text-stone-900 focus:ring-2 focus:ring-amber-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setQuantity(String(Math.min(availableToAdvance, parsedQuantity + 1)))}
-                    className="w-9 h-9 rounded-lg bg-white border border-stone-300 font-bold text-stone-700"
-                  >
-                    +
-                  </button>
-                </div>
-                <p className="text-[10px] text-stone-500 mt-1">
-                  Máximo disponível agora: {formatNumber(availableToAdvance)} un
-                </p>
-              </div>
-
-              <div>
-                <h5 className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-2">
-                  Baixa desta etapa
-                </h5>
-                {preview.deductions.length === 0 ? (
-                  <p className="text-[11px] text-stone-500 bg-white border border-stone-200 rounded-lg p-3">
-                    Esta etapa não possui insumos consumíveis. Apenas o progresso e a mão de obra serão registrados.
-                  </p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {preview.deductions.map((deduction) => (
-                      <div key={`${deduction.type}-${deduction.targetId}`} className="flex items-center justify-between gap-3 bg-white border border-stone-200 rounded-lg px-3 py-2 text-[11px]">
-                        <span className="font-medium text-stone-800 truncate">{deduction.name}</span>
-                        <span className={`font-bold shrink-0 ${deduction.stockAfter < 0 ? 'text-rose-700' : 'text-stone-700'}`}>
-                          -{formatNumber(deduction.quantityTotal)} {deduction.unit}
+              {stages.length > 0 && (
+                <div
+                  className="my-5 grid gap-3 sm:gap-4"
+                  style={{
+                    gridTemplateColumns: `repeat(${Math.min(stages.length, 3)}, minmax(0, 1fr))`,
+                  }}
+                >
+                  {stages.map((s) => (
+                    <div key={s.stageId} className="min-w-0">
+                      <div
+                        className={`mb-1.5 flex flex-wrap justify-between gap-1 text-xs ${s.stageId === current?.stageId ? "font-semibold text-[#a86149]" : "text-[#75665c]"}`}
+                      >
+                        <span className="break-words">{s.stageName}</span>
+                        <span className="tabular-nums">
+                          {formatNumber(s.completedQuantity)}/
+                          {formatNumber(s.plannedQuantity)}
                         </span>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="px-5 py-3 border-t border-stone-200 bg-stone-50 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100 rounded-lg"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={handleAdvance}
-            disabled={!selectedStage || parsedQuantity <= 0 || availableToAdvance <= 0}
-            className="px-4 py-2 text-sm font-semibold text-white bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 disabled:text-stone-500 rounded-lg"
-          >
-            {isFinalStage ? 'Concluir etapa e adicionar ao estoque' : 'Registrar etapa'}
-          </button>
-        </div>
-      </div>
-    </ModalFrame>
-  );
-};
-
-// ==========================================
-// View Production Details Modal
-// ==========================================
-
-interface ViewProductionModalProps {
-  production: Production;
-  imageUrl?: string;
-  onClose: () => void;
-}
-
-const ViewProductionModal: React.FC<ViewProductionModalProps> = ({
-  production,
-  imageUrl,
-  onClose,
-}) => {
-  return (
-    <ModalFrame onClose={onClose} className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl w-full max-w-2xl my-6 overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Header */}
-        <div className="liare-modal-header flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center">
-              <Eye className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-stone-900 text-lg">
-                Detalhes da Ordem de Produção
-              </h3>
-              <p className="text-xs text-stone-500">
-                Registrada em {formatDate(production.date)}
-              </p>
-            </div>
-          </div>
-          <button aria-label="Fechar janela" type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="liare-modal-body p-6 overflow-y-auto space-y-5 flex-1">
-          {/* Main Info */}
-          <div className="flex items-start gap-4 p-4 bg-stone-50 rounded-xl border border-stone-200">
-            <div className="w-16 h-16 rounded-lg bg-white border border-stone-200 shrink-0 overflow-hidden flex items-center justify-center">
-              {imageUrl ? (
-                <img
-                  src={imageUrl}
-                  alt={production.productName}
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <ImageIcon className="w-6 h-6 text-stone-400" />
-              )}
-            </div>
-
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-[11px] font-semibold text-stone-600 bg-stone-200/70 px-2 py-0.5 rounded">
-                  {production.productCategory}
-                </span>
-                {production.isIntermediate && (
-                  <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
-                    Sub-produto
-                  </span>
-                )}
-              </div>
-              <h4 className="text-base font-bold text-stone-900">
-                {production.productName}
-              </h4>
-              <p className="text-xs text-stone-500 mt-1">
-                Produzidas <strong className="text-stone-800 font-semibold">{production.quantityProduced} unidades</strong> em {production.batchCount} {production.batchCount === 1 ? 'batelada' : 'bateladas'}.
-              </p>
-            </div>
-          </div>
-
-          {/* Financial summary */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200">
-              <span className="text-[11px] text-stone-500 block uppercase font-medium">
-                Custo por Peça
-              </span>
-              <span className="text-lg font-bold text-stone-900">
-                {formatCurrency(production.costPerUnit)}
-              </span>
-            </div>
-            <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200">
-              <span className="text-[11px] text-stone-500 block uppercase font-medium">
-                Custo Total da Batelada
-              </span>
-              <span className="text-lg font-bold text-stone-900">
-                {formatCurrency(production.totalCost)}
-              </span>
-            </div>
-          </div>
-
-          {/* Deducted items */}
-          <div>
-            <h5 className="font-bold text-stone-800 text-xs uppercase tracking-wider mb-2">
-              Insumos Baixados ({production.deductedItems.length}):
-            </h5>
-            <div className="border border-stone-200 rounded-xl overflow-hidden bg-white">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-stone-50 text-[10px] uppercase font-semibold text-stone-500 border-b border-stone-200">
-                  <tr>
-                    <th className="py-2 px-3">Insumo</th>
-                    <th className="py-2 px-3 text-right">Qtd Total</th>
-                    <th className="py-2 px-3 text-right">Custo Insumo</th>
-                    <th className="py-2 px-3 text-right">Estoque Antes → Depois</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100 text-stone-700">
-                  {production.deductedItems.map((item, idx) => (
-                    <tr key={idx}>
-                      <td className="py-2 px-3 font-medium">
-                        {item.name}
-                      </td>
-                      <td className="py-2 px-3 text-right font-bold text-rose-600 font-mono">
-                        -{formatNumber(item.quantityTotal)} {item.unit}
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono">
-                        {formatCurrency(item.totalCost)}
-                      </td>
-                      <td className="py-2 px-3 text-right text-stone-500 font-mono">
-                        {item.stockBefore !== undefined && item.stockAfter !== undefined ? (
-                          `${formatNumber(item.stockBefore)} → ${formatNumber(item.stockAfter)}`
-                        ) : (
-                          '-'
-                        )}
-                      </td>
-                    </tr>
+                      <div
+                        role="progressbar"
+                        aria-label={s.stageName}
+                        aria-valuemin={0}
+                        aria-valuemax={s.plannedQuantity}
+                        aria-valuenow={s.completedQuantity}
+                        className="h-1 overflow-hidden rounded-full bg-[#f1e9e2]"
+                      >
+                        <div
+                          className={`h-full rounded-full ${s.completedQuantity >= s.plannedQuantity ? "bg-[#587961]" : "bg-[#a86149]"}`}
+                          style={{
+                            width: `${Math.min(100, (s.completedQuantity / Math.max(0.0001, s.plannedQuantity)) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {production.notes && (
-            <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 text-xs text-stone-600">
-              <strong className="block text-[10px] text-stone-500 uppercase font-semibold mb-0.5">Observações:</strong>
-              {production.notes}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-3 border-t border-stone-200 bg-stone-50 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-lg transition-colors"
-          >
-            Fechar
-          </button>
-        </div>
+                </div>
+              )}
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <span className="text-xs text-[#75665c]">
+                  {active
+                    ? `${formatNumber(p.quantityProduced)} de ${formatNumber(target)} unidades prontas`
+                    : `${formatNumber(p.quantityProduced)} unidades finalizadas`}
+                </span>
+                {active && current ? (
+                  <button
+                    type="button"
+                    data-advance-production={p.id}
+                    onClick={() => setAdvancingId(p.id)}
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#352f2b] px-4 py-2.5 text-sm font-semibold text-white"
+                  >
+                    Registrar {current.stageName.toLocaleLowerCase("pt-BR")}
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setViewingId(p.id)}
+                    className="rounded-xl border border-[#e5dad1] px-4 py-2.5 text-sm"
+                  >
+                    Ver detalhes
+                  </button>
+                )}
+              </div>
+              <details className="mt-4 border-t border-[#eee6de] pt-3">
+                <summary className="text-xs text-[#75665c]">
+                  Materiais, custos e observações
+                </summary>
+                <div className="mt-3 space-y-2 text-sm text-[#75665c]">
+                  <p>
+                    Custo registrado: {formatCurrency(p.totalCost)}
+                    {p.plannedTotalCost != null
+                      ? ` · Previsto: ${formatCurrency(p.plannedTotalCost)}`
+                      : ""}
+                  </p>
+                  {p.notes && (
+                    <p className="whitespace-pre-wrap break-words">{p.notes}</p>
+                  )}
+                  <p>
+                    {p.deductedItems.length} materiais e componentes
+                    registrados.
+                  </p>
+                  <div className="flex flex-wrap gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setViewingId(p.id)}
+                      className="text-[#a86149] underline"
+                    >
+                      Ver registro completo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Excluir a produção de "${p.productName}" e reverter as movimentações de estoque registradas?`,
+                          )
+                        )
+                          onDeleteProduction(p.id, true);
+                      }}
+                      className="text-rose-700 underline"
+                    >
+                      Excluir e estornar
+                    </button>
+                  </div>
+                </div>
+              </details>
+            </article>
+          );
+        })}
       </div>
-    </ModalFrame>
+      <p className="text-xs text-[#75665c]">
+        Os materiais são baixados por etapa. As unidades prontas entram no
+        estoque ao concluir a última etapa.
+      </p>
+    </section>
   );
-};
+}
