@@ -17,7 +17,8 @@ import {
   Sparkles,
   AlertTriangle,
   Hammer,
-  ClipboardList
+  ClipboardList,
+  X
 } from 'lucide-react';
 import { NavTab } from '../types';
 import { User } from '../lib/firebase';
@@ -239,12 +240,12 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
 
       {/* Slide-over Drawer Menu */}
       <div 
-        className={`fixed top-0 left-0 bottom-0 w-80 max-w-[85vw] bg-stone-900 text-white z-50 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 left-0 bottom-0 h-dvh max-h-dvh w-80 max-w-[85vw] bg-stone-900 text-white z-50 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Drawer Header */}
-        <div className="p-5 border-b border-stone-800 flex items-center justify-between">
+        <div className="p-5 pt-[max(1.25rem,env(safe-area-inset-top))] border-b border-stone-800 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
               <Scissors className="w-5 h-5" />
@@ -258,11 +259,11 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
               </p>
             </div>
           </div>
-
+          <button type="button" onClick={onClose} aria-label="Fechar menu" className="h-11 w-11 shrink-0 flex items-center justify-center rounded-lg hover:bg-stone-800"><X /></button>
         </div>
 
         {/* Vertical Navigation Items List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-1.5">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 space-y-1.5">
           <span className="text-[11px] font-bold text-stone-400 uppercase tracking-wider px-3 mb-2 block">
             Navegação do Ateliê
           </span>
@@ -320,7 +321,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
         </div>
 
         {/* Drawer Bottom Actions */}
-        <div className="p-4 border-t border-stone-800 space-y-2 bg-stone-950/40">
+        <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shrink-0 border-t border-stone-800 space-y-2 bg-stone-950/40">
           {/* Cloud Sync Button */}
           <button
             type="button"

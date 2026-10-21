@@ -1,3 +1,4 @@
+import { ModalFrame } from './ModalFrame';
 import { localDateString } from '../utils/localDate';
 import { MoreOptions } from './MoreOptions';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
@@ -901,10 +902,10 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
   };
 
   return (
-    <div className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
+    <ModalFrame onClose={onClose} className="liare-form-dialog fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-xl w-full max-w-2xl my-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50">
+        <div className="liare-modal-header flex items-center justify-between px-6 py-4 border-b border-stone-200 bg-stone-50">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-700 flex items-center justify-center">
               <Package className="w-4 h-4" />
@@ -913,7 +914,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
               {isEditing ? 'Editar Material' : 'Cadastrar Novo Material'}
             </h3>
           </div>
-          <button
+          <button aria-label="Fechar janela" type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200 transition-colors"
           >
@@ -922,7 +923,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
         </div>
 
         {/* Modal Body Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="liare-modal-body p-6 space-y-5">
           {/* Photo & Main identification */}
           <div className="grid grid-cols-1 sm:grid-cols-[9rem_minmax(0,1fr)] gap-4 sm:gap-5 items-start">
             {/* Photo upload container */}
@@ -1628,6 +1629,6 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </ModalFrame>
   );
 };

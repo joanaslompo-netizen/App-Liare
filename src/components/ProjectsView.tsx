@@ -1,3 +1,4 @@
+import { ModalFrame } from './ModalFrame';
 import React, { useMemo, useState } from 'react';
 import {
   Plus,
@@ -839,19 +840,19 @@ const ProjectModal = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-950/65 backdrop-blur-xs flex items-start justify-center p-3 sm:p-5 overflow-y-auto">
+    <ModalFrame onClose={onClose} className="fixed inset-0 z-50 bg-stone-950/65 backdrop-blur-xs flex items-start justify-center p-3 sm:p-5 overflow-y-auto">
       <div className="bg-[#fbf8f4] w-full max-w-5xl rounded-2xl shadow-2xl border border-stone-200 my-3 overflow-hidden">
-        <div className="bg-stone-900 text-white p-5 flex items-center justify-between">
+        <div className="liare-modal-header bg-stone-900 text-white p-5 flex items-center justify-between">
           <div>
             <h3 className="text-base font-bold">{project.name ? 'Editar Projeto' : 'Novo Projeto'}</h3>
             <p className="text-xs text-stone-400 mt-0.5">Planejamento não movimenta estoque.</p>
           </div>
-          <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-800 text-stone-300">
+          <button aria-label="Fechar janela" type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-800 text-stone-300">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-5 sm:p-6 space-y-6">
+        <div className="liare-modal-body p-5 sm:p-6 space-y-6">
           <div className="grid md:grid-cols-[1fr_190px_190px] gap-3">
             <label className="text-xs font-semibold text-stone-700">
               Nome do projeto
@@ -1407,6 +1408,6 @@ const ProjectModal = ({
           </button>
         </div>
       </div>
-    </div>
+    </ModalFrame>
   );
 };

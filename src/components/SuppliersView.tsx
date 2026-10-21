@@ -1,3 +1,4 @@
+import { ModalFrame } from './ModalFrame';
 import React, { useState, useMemo } from 'react';
 import { 
   Plus, 
@@ -323,18 +324,18 @@ const SupplierModal: React.FC<SupplierModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <ModalFrame onClose={onClose} className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl border border-stone-200 shadow-xl w-full max-w-md overflow-hidden">
-        <div className="px-6 py-4 bg-stone-50 border-b border-stone-200 flex items-center justify-between">
+        <div className="liare-modal-header px-6 py-4 bg-stone-50 border-b border-stone-200 flex items-center justify-between">
           <h3 className="font-bold text-stone-900 text-base">
             {isEditing ? 'Editar Fornecedor' : 'Cadastrar Fornecedor'}
           </h3>
-          <button onClick={onClose} className="p-1 text-stone-400 hover:text-stone-700">
+          <button aria-label="Fechar janela" type="button" onClick={onClose} className="p-1 text-stone-400 hover:text-stone-700">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="liare-modal-body p-6 space-y-4 text-xs">
           <div>
             <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
               Nome da Loja / Fornecedor *
@@ -418,6 +419,6 @@ const SupplierModal: React.FC<SupplierModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </ModalFrame>
   );
 };

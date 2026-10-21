@@ -1,3 +1,4 @@
+import { ModalFrame } from './ModalFrame';
 import React from 'react';
 import { 
   X, 
@@ -54,14 +55,12 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+    <ModalFrame onClose={onClose} className="fixed inset-0 z-50 bg-stone-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
       <div 
         className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-stone-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
-        role="dialog"
-        aria-modal="true"
       >
         {/* Modal Header */}
-        <div className="bg-stone-900 text-white p-5 flex items-center justify-between border-b border-stone-800">
+        <div className="liare-modal-header bg-stone-900 text-white p-5 flex items-center justify-between border-b border-stone-800">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
               <Cloud className="w-5 h-5" />
@@ -71,7 +70,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
               <p className="text-xs text-stone-400">Notebook, Celular & Tablet sincronizados</p>
             </div>
           </div>
-          <button
+          <button aria-label="Fechar janela"
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-stone-400 hover:text-white hover:bg-stone-800 transition-colors"
@@ -80,7 +79,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="liare-modal-body p-6 space-y-6">
           {user ? (
             /* Logged in state */
             <div className="space-y-5">
@@ -342,6 +341,6 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </ModalFrame>
   );
 };

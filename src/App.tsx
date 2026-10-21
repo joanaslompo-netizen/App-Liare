@@ -1,4 +1,5 @@
 import {syncFailureKind,retryDelay} from './services/syncRetryPolicy';
+import { ModalFrame } from './components/ModalFrame';
 import {canonicalJSON} from './services/workspaceRecordStore';
 import { workspaceStorage as localStorage } from './utils/workspaceStorage';
 import { getProductFinancialSplit } from "./utils/financials";
@@ -1910,17 +1911,20 @@ export default function App() {
 
       {/* Central quick action menu */}
       {isQuickMoreOpen && (
-        <div
-          className="fixed inset-0 z-40"
+        <ModalFrame
+          onClose={() => setIsQuickMoreOpen(false)}
+          className="liare-quick-menu bg-stone-900/20 backdrop-blur-[1px]"
           onClick={() => setIsQuickMoreOpen(false)}
         >
-          <div className="absolute inset-0 bg-stone-900/20 backdrop-blur-[1px]" />
           <div
-            className="absolute left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-sm rounded-3xl border border-[#eadfd6] bg-white shadow-2xl p-3"
-            style={{ bottom: 'calc(6.6rem + env(safe-area-inset-bottom))' }}
+            className="w-full max-w-sm rounded-3xl border border-[#eadfd6] bg-white shadow-2xl p-3"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="grid grid-cols-2 gap-2">
+            <header className="liare-modal-header flex items-center justify-between px-1 pb-2">
+              <h3 className="text-sm font-semibold">Ações rápidas</h3>
+              <button type="button" aria-label="Fechar ações rápidas" onClick={() => setIsQuickMoreOpen(false)}><X className="h-5 w-5" /></button>
+            </header>
+            <div className="liare-modal-body grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -1984,7 +1988,7 @@ export default function App() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalFrame>
       )}
 
       {/* Above quick actions (40), below modal overlays (50). */}
