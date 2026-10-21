@@ -1040,6 +1040,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       {viewingFichaProduct && (
         <FichaTecnicaModal
           product={viewingFichaProduct}
+          allMaterials={materials}
+          allProducts={products}
           onClose={() => setViewingFichaProduct(null)}
           onEdit={() => {
             setEditingProduct(viewingFichaProduct);
@@ -2628,12 +2630,16 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
 
 interface FichaTecnicaModalProps {
   product: Product;
+  allMaterials: Material[];
+  allProducts: Product[];
   onClose: () => void;
   onEdit: () => void;
 }
 
 const FichaTecnicaModal: React.FC<FichaTecnicaModalProps> = ({
   product,
+  allMaterials,
+  allProducts,
   onClose,
   onEdit,
 }) => {
