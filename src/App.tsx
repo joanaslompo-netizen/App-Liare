@@ -226,6 +226,50 @@ export default function App() {
   }, []);
 
   const handleFinanceAction = useCallback(async (command: FinanceCommand): Promise<boolean> => {
+    // New orders (including retries/edits before their first upload) save locally
+    // first. Existing cloud orders retain transactional history/credit checks.
+    const isLocalOrder = command.type === 'save_order' && (
+      !workspaceRef.current.sales.some(sale => sale.id === command.sale.id) ||
+      (cloudBaseRef.current && !cloudBaseRef.current.entities.sales[command.sale.id] &&
+        !cloudWorkspaceRef.current?.sales.some(sale => sale.id === command.sale.id))
+    );
+    if (command.type === 'save_order' && isLocalOrder) {
+      if (financeLock.current) { alert('Aguarde a operação em andamento.'); return false; }
+      financeLock.current = true;
+      setFinanceBusy(true);
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+      try {
+        const previous = workspaceRef.current;
+        const updated = applyFinanceCommand(previous, command);
+        if (!localStorage.getItem('atelie_finance_initial_backup_v1')) {
+          localStorage.setItem('atelie_finance_initial_backup_v1', JSON.stringify(previous));
+        }
+        // Mark dirty before any await so an in-flight upload or late download
+        // cannot acknowledge/replace this newer order with its older snapshot.
+        localChangeVersionRef.current += 1;
+        hasLocalChangesRef.current = true;
+        storePendingSync(true);
+        applyWorkspaceData(updated);
+        setSyncStatus(user ? 'pending' : 'offline');
+        const saved = await localStorage.setItemDurably('atelie_workspace_finance_v1', JSON.stringify(updated));
+        const queued = await localStorage.setItemDurably(CLOUD_SYNC_PENDING_KEY, 'true');
+        if (!saved || !queued) {
+          alert('Não foi possível confirmar a cópia do pedido neste aparelho. Seus dados continuam nesta página; mantenha-a aberta e tente novamente ou exporte um backup nas Configurações.');
+          return false;
+        }
+        setSyncNotification({ message: user
+          ? 'Pedido salvo neste aparelho. Envio para a nuvem pendente.'
+          : 'Pedido salvo neste aparelho.', type: 'success' });
+        if (user && hasLoadedCloudRef.current && !syncBlockedRef.current) {
+          if (syncInFlightRef.current) syncAgainRef.current = true;
+          else syncTimeoutRef.current = setTimeout(() => { void performCloudSyncRef.current(false); }, AUTO_SYNC_DELAY_MS);
+        }
+        return true;
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'Não foi possível salvar o pedido.');
+        return false;
+      } finally { financeLock.current = false; setFinanceBusy(false); }
+    }
     if (financeLock.current || syncInFlightRef.current) { alert('Aguarde a operação em andamento.'); return false; }
     financeLock.current = true; setFinanceBusy(true); syncInFlightRef.current = true;
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);

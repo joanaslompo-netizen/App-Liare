@@ -904,6 +904,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   onSave,
 }) => {
   const orderSteps = ['Cliente e entrega', 'Produtos', 'Conferir e salvar'];
+  const [draftSaleId] = useState(() => existingSale?.id || `sale_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2)}`}`);
   const [step, setStep] = useState(0);
   const orderHeading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -1526,7 +1527,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
     const updatedSale: Sale = {
       ...existingSale,
-      id: existingSale?.id || `sale_${Date.now()}`,
+      id: draftSaleId,
       orderNumber: existingSale?.orderNumber,
       date,
       productId: firstItem.productId,

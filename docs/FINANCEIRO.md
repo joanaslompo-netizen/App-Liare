@@ -7,7 +7,7 @@
 - Crédito por cliente, saldo inicial, adiantamento, cortesia, uso no pedido e devolução.
 - Cortesia não vira dinheiro; uso de crédito quita o pedido sem nova entrada de caixa.
 - Movimentos imutáveis e estornos com referência; pagamentos antigos permanecem como legado, sem datas inventadas.
-- Pedidos: rascunho/confirmado/cancelado, reserva automática ao salvar e numeração alocada na transação para contas conectadas.
+- Pedidos: rascunho/confirmado/cancelado, reserva automática ao salvar e numeração sequencial. Novos pedidos são salvos primeiro no aparelho e ficam pendentes de envio; edições de pedidos já na nuvem mantêm as verificações transacionais.
 - Movimentos por pedido: pagamentos, crédito, entregas parciais, devoluções físicas, compensação de devolução parcial e cancelamento.
 - Edições preservam pagamentos. Aumento de total cria saldo; redução gera crédito do excedente para cliente identificado.
 - Cancelamento preserva histórico. Pagamento misto devolve crédito original e reembolsa somente a parte recebida em dinheiro.
@@ -29,7 +29,7 @@
 7. Em devolução, primeiro registre as peças e sua condição. Depois use **Devolver valor**, escolhendo crédito ou dinheiro.
 8. Na compra real, marque se já foi paga; se não, informe vencimento. Confira **A pagar** e custo atualizado do material.
 9. Abra relatórios: **Peças entregues** para realizado e **Pedidos confirmados** para estimativa. Pedidos mistos devem mostrar seus produtos separados.
-10. Confira a edição em outro aparelho conectado à mesma conta. Créditos e operações de pedidos conectados são gravados imediatamente por transação, sem esperar a fila de dez minutos.
+10. Confira a edição em outro aparelho conectado à mesma conta. Novos pedidos entram na fila de envio após a cópia local ser confirmada. Créditos e demais operações de pedidos conectados continuam usando transações.
 
 Não faça pagamentos fictícios na conta real para testar. Se houver divergência, registre pedido, ação e valores esperados/observados.
 
@@ -40,7 +40,16 @@ Não faça pagamentos fictícios na conta real para testar. Se houver divergênc
 - Custos antigos sem remuneração separada são identificados como legado; não são recompostos com a receita atual.
 - Despesas cadastradas no resultado devem ser gastos adicionais, não valores já incluídos no rateio das receitas.
 - Compra anterior à reforma sem evidência da movimentação de estoque não tem reversão física automática; ajuste precisa de conferência.
-- Conta conectada exige conexão para operações financeiras; modo local permanece disponível para uso em um aparelho, e conflitos de crédito impedem gravação na nuvem.
+- Conta conectada exige conexão para movimentações financeiras e alterações de pedidos já sincronizados. Novos pedidos, inclusive rascunhos e suas novas tentativas antes do primeiro envio, podem ser salvos durante falha/cota da nuvem, espera da carga inicial ou falta de conexão. Pagamento inicial, reservas e fila acompanham o snapshot local. Conflitos de crédito impedem gravação na nuvem.
+
+## Correção de novos pedidos — 22/10/2026
+
+- Causa confirmada: `save_order` passava pela transação remota antes de persistir localmente; a falha de cota interrompia a conclusão do formulário.
+- Confirmação de salvamento aguarda o commit do IndexedDB (ou a gravação síncrona do fallback), incluindo a marca de envio pendente. Falha real do aparelho mantém o formulário aberto.
+- Identificador estável durante o preenchimento e novas tentativas evita duplicar pedido e pagamento inicial após falha de persistência.
+- Edição local é marcada antes da espera; resposta de envio iniciada anteriormente não limpa nem substitui o pedido mais novo.
+- `npm run test:order-local-save`: interface real com nuvem simulada; cota bloqueada, reabertura, envio após recuperação sem duplicar, abertura offline, envio antigo em andamento e falha de armazenamento com nova tentativa.
+- Testes de armazenamento, pedidos, financeiro e abertura da nuvem, tipagem e build executados. Não foram criados pedidos nem pagamentos fictícios na conta real. O consumo que esgotou a cota precisa ser apurado separadamente no painel do banco.
 
 ## Validação
 

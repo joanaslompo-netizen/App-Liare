@@ -40,24 +40,31 @@ export async function initializeWorkspaceStorage(): Promise<void> {
   } catch { database = null; durableValues.clear(); }
 }
 
-function persistFallback(key: string, value: string | null) {
-  if (!database) return;
+function persistFallback(key: string, value: string | null): Promise<boolean> {
+  if (!database) return Promise.resolve(false);
   const version = (versions.get(key) || 0) + 1;
   versions.set(key, version);
-  try {
-    const transaction = database.transaction('values', 'readwrite');
-    const store = transaction.objectStore('values');
-    if (value === null) store.delete(key); else store.put(value, key);
-    transaction.oncomplete = () => {
-      if (versions.get(key) !== version) return;
-      if (value === null) durableValues.delete(key); else durableValues.set(key, value);
-      // Only discard the old, smaller-cache copy after the replacement commits.
-      try { globalThis.localStorage.removeItem(key); } catch { /* retained safely */ }
-      pendingValues.delete(key);
-      changed(key, false);
-    };
-    transaction.onabort = transaction.onerror = () => { if (versions.get(key) === version) changed(key, true); };
-  } catch { changed(key, true); }
+  return new Promise(resolve => {
+    try {
+      const transaction = database.transaction('values', 'readwrite');
+      const store = transaction.objectStore('values');
+      if (value === null) store.delete(key); else store.put(value, key);
+      transaction.oncomplete = () => {
+        if (versions.get(key) === version) {
+          if (value === null) durableValues.delete(key); else durableValues.set(key, value);
+          // Only discard the old, smaller-cache copy after the replacement commits.
+          try { globalThis.localStorage.removeItem(key); } catch { /* retained safely */ }
+          pendingValues.delete(key);
+          changed(key, false);
+        }
+        resolve(true);
+      };
+      transaction.onabort = transaction.onerror = () => {
+        if (versions.get(key) === version) changed(key, true);
+        resolve(false);
+      };
+    } catch { changed(key, true); resolve(false); }
+  });
 }
 
 export const workspaceStorage = {
@@ -85,6 +92,12 @@ export const workspaceStorage = {
       changed(scoped, true);
       return false;
     }
+  },
+  async setItemDurably(key: string, value: string): Promise<boolean> {
+    if (!database) return workspaceStorage.setItem(key, value);
+    const scoped = scopedKey(key);
+    pendingValues.set(scoped, value);
+    return persistFallback(scoped, value);
   },
   removeItem(key: string): boolean {
     const scoped = scopedKey(key);
