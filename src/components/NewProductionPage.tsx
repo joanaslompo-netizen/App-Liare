@@ -1,6 +1,6 @@
 import { getCategoryMaterialOptions } from '../utils/virtualMaterials';
 import React, { useMemo, useRef, useState } from "react";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Minus, Plus, Trash2 } from "lucide-react";
 import type { Material, Product, Production } from "../types";
 import { ProductModelPicker } from "./ProductModelPicker";
 import {
@@ -57,6 +57,16 @@ export function NewProductionPage({
       prev.map((row) => (row.id === id ? { ...row, ...patch } : row)),
     );
     setError("");
+  };
+  const stepQuantity = (id: string, step: number) => {
+    setRows(previous => previous.map(row => {
+      if (row.id !== id) return row;
+      const current = Number(row.quantity);
+      const next = Number.isSafeInteger(current) && current >= 1
+        ? Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, current + step)) : 1;
+      return { ...row, quantity: String(next) };
+    }));
+    setError('');
   };
   const plans = useMemo(() => {
     const merged = new Map<
@@ -164,7 +174,7 @@ export function NewProductionPage({
       </header>
       <form onSubmit={submit} className="space-y-5" aria-label="Nova produção">
         <section
-          className="overflow-hidden rounded-2xl border border-[#e5dad1] bg-white"
+          className="rounded-2xl border border-[#e5dad1] bg-white"
           aria-label="Itens da produção"
         >
           <div className="border-b border-[#eee6de] p-5">
@@ -184,7 +194,7 @@ export function NewProductionPage({
                 data-production-row={row.id}
                 className="border-b border-[#eee6de] p-4 sm:p-5"
               >
-                <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_100px_40px]">
+                <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_180px_40px]">
                   <ProductModelPicker
                     id={`production-item-${row.id}`}
                     products={products}
@@ -194,11 +204,19 @@ export function NewProductionPage({
                       change(row.id, { productId: p?.id || "", variables: {} })
                     }
                   />
-                  <label className="text-xs font-semibold text-[#75665c]">
-                    Unidades
-                    <input
+                  <div className="text-xs font-semibold text-[#75665c]">
+                    <label htmlFor={`production-quantity-${row.id}`}>Unidades</label>
+                    <div className="mt-1 flex min-h-11 items-stretch overflow-hidden rounded-xl border border-[#e5dad1] bg-white focus-within:border-[#a86149]">
+                    <button type="button" aria-label={`Diminuir unidades do item ${index + 1}`}
+                      disabled={!Number.isSafeInteger(Number(row.quantity)) || Number(row.quantity) <= 1}
+                      onClick={() => stepQuantity(row.id, -1)}
+                      className="flex min-h-11 w-11 shrink-0 items-center justify-center text-[#75665c] hover:bg-[#f6f1ec] disabled:opacity-30">
+                      <Minus aria-hidden="true" className="h-4 w-4" />
+                    </button>
+                    <input id={`production-quantity-${row.id}`}
                       aria-label={`Unidades do item ${index + 1}`}
                       type="number"
+                      inputMode="numeric"
                       min="1"
                       step="1"
                       required
@@ -206,9 +224,16 @@ export function NewProductionPage({
                       onChange={(e) =>
                         change(row.id, { quantity: e.target.value })
                       }
-                      className={`${field} mt-1`}
+                      className="w-full min-w-0 border-x border-[#e5dad1] bg-white px-1 py-2.5 text-center text-base font-normal text-[#352f2b] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
-                  </label>
+                    <button type="button" aria-label={`Aumentar unidades do item ${index + 1}`}
+                      disabled={Number(row.quantity) >= Number.MAX_SAFE_INTEGER}
+                      onClick={() => stepQuantity(row.id, 1)}
+                      className="flex min-h-11 w-11 shrink-0 items-center justify-center text-[#75665c] hover:bg-[#f6f1ec] disabled:opacity-30">
+                      <Plus aria-hidden="true" className="h-4 w-4" />
+                    </button>
+                    </div>
+                  </div>
                   <button
                     type="button"
                     aria-label={`Remover item ${index + 1}`}

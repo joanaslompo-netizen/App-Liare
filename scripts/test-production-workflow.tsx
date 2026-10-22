@@ -80,7 +80,11 @@ const choose = async (
   quantity = "1",
 ) => {
   const row = () => document.querySelectorAll("[data-production-row]")[index];
-  await fill(row().querySelector('select[id$="-model"]')!, model);
+  const search = row().querySelector<HTMLInputElement>('input[id$="-model"]')!;
+  await act(async () => { search.focus(); search.click(); });
+  const option = [...row().querySelectorAll<HTMLButtonElement>('[role="option"]')].find(option => option.dataset.modelId === model);
+  assert(option, `Modelo ${model}`);
+  await act(async () => option.click());
   if (product)
     await fill(row().querySelector('select[id$="-aroma"]')!, product);
   await fill(row().querySelector('input[type="number"]')!, quantity);
@@ -103,16 +107,36 @@ assert.equal(
   "Nova produção is a page, not a popup",
 );
 const model = document.querySelector(
-  'select[id$="-model"]',
-) as HTMLSelectElement;
+  'input[id$="-model"]',
+) as HTMLInputElement;
+await act(async () => model.focus());
 assert.equal(
-  model.options.length,
-  3,
-  "One option for the family, one independent product, and placeholder",
+  document.querySelectorAll('[role="option"]').length,
+  2,
+  "Uma opção por modelo, sem repetir os aromas da família",
 );
+await fill(model, 'modelo que não existe');
+assert(document.body.textContent?.includes('Nenhum modelo encontrado'));
+await fill(model, 'LATINHA');
+assert.equal(document.querySelectorAll('[role="option"]').length, 1);
+await act(async () => model.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+assert.equal((document.querySelector('select[id$="-aroma"]') as HTMLSelectElement).value, '', 'Buscar um modelo não escolhe seu aroma automaticamente.');
+const counter = document.querySelector<HTMLInputElement>('[aria-label="Unidades do item 1"]')!;
+const minus = '[aria-label="Diminuir unidades do item 1"]';
+const plus = '[aria-label="Aumentar unidades do item 1"]';
+assert((document.querySelector(minus) as HTMLButtonElement).disabled);
+await click(plus);
+assert.equal(counter.value, '2');
+await fill(counter, '27');
+await click(minus);
+assert.equal(counter.value, '26', 'O contador continua a partir da quantidade digitada.');
+assert.equal(saved().productions.length, 0, 'Buscar e ajustar unidades não inicia a produção.');
 await choose(0, "mother:mother", "mother", "4");
 await click("#btn-add-production-item");
 await choose(1, "mother:mother", "child", "3");
+await click('[aria-label="Aumentar unidades do item 2"]');
+assert.equal((document.querySelector('[aria-label="Unidades do item 1"]') as HTMLInputElement).value, '4');
+await click('[aria-label="Diminuir unidades do item 2"]');
 await fill(
   document.querySelector('[aria-label="Observação da produção"]')!,
   "Produção conjunta",

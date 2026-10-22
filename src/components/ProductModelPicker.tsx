@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import type { Product } from "../types";
 import { getProductModels, getVariantLabel } from "../utils/productModels";
 import { formatCurrency } from "../utils/formatters";
+import { ModelSearch } from './ModelSearch';
 
 export function ProductModelPicker({
   products,
@@ -30,12 +31,13 @@ export function ProductModelPicker({
   return (
     <div id={id} className="min-w-0 space-y-2">
       <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-        <label
-          className="block min-w-0 text-xs font-semibold text-[#75665c]"
-          htmlFor={`${id}-model`}
-        >
-          Modelo
-          <select
+        <div className="min-w-0 text-xs font-semibold text-[#75665c]">
+          <label htmlFor={`${id}-model`}>Modelo</label>
+          {mode === 'production' ? <ModelSearch id={`${id}-model`} models={models}
+            value={model?.id || ''} className={field} onSelect={next => {
+              setModelId(next?.id || '');
+              onSelectProduct(next?.products.length === 1 ? next.products[0] : null);
+            }} /> : <select
             id={`${id}-model`}
             className={`${field} mt-1`}
             value={model?.id || ""}
@@ -53,8 +55,8 @@ export function ProductModelPicker({
                 {m.name}
               </option>
             ))}
-          </select>
-        </label>
+          </select>}
+        </div>
         {model && model.products.length === 1 ? (
           <div className="min-w-0 text-xs font-semibold text-[#75665c]">
             <span>Aroma</span>

@@ -72,7 +72,12 @@ const mount = async (staged: boolean) => {
   root = createRoot(document.querySelector('#root')!);
   await act(async () => root.render(<App />));
   await click('[aria-label="Abrir atalhos rápidos"]'); await button('Produções'); await click('#btn-add-production');
-  await fill('select[id$="-model"]', getProductModels(fixture.products, 'production')[0].id);
+  const search = document.querySelector<HTMLInputElement>('input[id$="-model"]')!;
+  await act(async () => { search.focus(); search.click(); });
+  const modelId = getProductModels(fixture.products, 'production')[0].id;
+  const option = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')].find(node => node.dataset.modelId === modelId)!;
+  assert(option);
+  await act(async () => option.click());
   await fill('[data-production-row] input[type="number"]', '4');
   await click('#btn-start-productions');
 };
