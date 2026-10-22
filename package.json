@@ -17,7 +17,8 @@
     "test:storage": "node --import tsx src/services/workspaceRecordStore.test.ts && node --import tsx src/services/cloudSync.test.ts",
     "test:modals": "node --import tsx scripts/test-modal-frame.tsx",
     "test:cloud-startup": "node --import tsx src/services/firestoreRecordAdapter.test.ts && node --import tsx scripts/test-cloud-startup.tsx",
-    "test:virtual-fragrance": "node --import tsx src/utils/virtualMaterials.test.ts && node --import tsx scripts/test-virtual-fragrance.tsx"
+    "test:virtual-fragrance": "node --import tsx src/utils/virtualMaterials.test.ts && node --import tsx scripts/test-virtual-fragrance.tsx",
+    "test:production-planning": "node --import tsx scripts/test-production-planning-view.tsx"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

@@ -159,6 +159,16 @@ const motherProduction = saved().productions.find(
 const childProduction = saved().productions.find(
   (p: any) => p.productId === "child",
 ).id;
+const beforePlanning = JSON.stringify(saved());
+const card = document.querySelector(`#production-item-${motherProduction}`)!;
+await act(async () => { card.querySelector('details')!.open = true; });
+const fullRecord = [...card.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Ver registro completo')!;
+await act(async () => fullRecord.click());
+assert(document.querySelector('[aria-label="Planejamento dos insumos"]'), 'O panorama está no registro completo da produção em andamento.');
+await fill(document.querySelector('[aria-label="Planejamento dos insumos"] input[type="number"]')!, '3');
+assert(document.querySelector('[aria-label="Planejamento: Fabricação"]')?.textContent?.includes('30 g'));
+assert.equal(JSON.stringify(saved()), beforePlanning, 'Consultar o registro e simular unidades não salva alterações na base.');
+await button('Voltar para produção');
 const openMother = () =>
   click(`[data-advance-production="${motherProduction}"]`);
 await openMother();
@@ -186,14 +196,7 @@ const labelStage = [
   ),
 ].find((b) => b.textContent?.includes("Rotulagem"))!;
 await act(async () => labelStage.click());
-assert.equal(
-  (
-    document.querySelector(
-      '.liare-production-detail input[type="number"]',
-    ) as HTMLInputElement
-  ).max,
-  "2",
-);
+assert(document.body.textContent?.includes('Liberadas para registrar agora: 2 un'));
 await fill(
   document.querySelector('.liare-production-detail input[type="number"]')!,
   "1",
@@ -212,8 +215,10 @@ await fill(
   document.querySelector('.liare-production-detail input[type="number"]')!,
   "4",
 );
-await button("Concluir etapa e adicionar ao estoque");
-assert.equal(alerts.length, 1, "An excessive partial quantity is rejected");
+const excessive = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === 'Concluir etapa e adicionar ao estoque')!;
+assert(excessive.disabled, 'A quantidade pode ser simulada, mas uma baixa acima do disponível fica bloqueada.');
+await act(async () => excessive.click());
+assert.equal(alerts.length, 0);
 assert.equal(
   saved().products.find((p: any) => p.id === "mother").currentStock,
   1,

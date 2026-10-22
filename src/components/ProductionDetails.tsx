@@ -15,6 +15,7 @@ import {
   formatNumber,
 } from "../utils/formatters";
 import { getProductionPlan } from "../utils/productionPlanning";
+import { ProductionMaterialPlan } from './ProductionMaterialPlan';
 
 interface StageProgressModalProps {
   production: Production;
@@ -99,6 +100,8 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
   const availableToAdvance = selectedStage
     ? Math.max(0, previousCompleted - selectedStage.completedQuantity)
     : 0;
+  const remainingInStage = selectedStage
+    ? Math.max(0, selectedStage.plannedQuantity - selectedStage.completedQuantity) : 0;
   const isFinalStage = selectedStageIndex === sortedStages.length - 1;
   const batchYield = Math.max(0.0001, production.batchYield || 1);
   const recipeItems: RecipeItem[] =
@@ -110,8 +113,8 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
     : [];
 
   useEffect(() => {
-    setQuantity(availableToAdvance > 0 ? String(availableToAdvance) : "0");
-  }, [selectedStageId, availableToAdvance]);
+    setQuantity(String(availableToAdvance > 0 ? availableToAdvance : remainingInStage));
+  }, [selectedStageId, availableToAdvance, remainingInStage]);
 
   const buildStageDeductions = (quantityToAdvance: number) => {
     const plan = getProductionPlan({ ...product, items: stageRecipeItems, batchYield } as Product,
@@ -122,9 +125,9 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
   };
 
   const parsedQuantity = Math.max(0, Number(quantity) || 0);
-  const preview = buildStageDeductions(
-    Math.min(parsedQuantity, availableToAdvance),
-  );
+  const preview = buildStageDeductions(Number.isSafeInteger(parsedQuantity) ? parsedQuantity : 0);
+  const canRegister = Number.isSafeInteger(parsedQuantity) && parsedQuantity > 0
+    && parsedQuantity <= availableToAdvance && parsedQuantity <= remainingInStage;
 
   const handleAdvance = () => {
     if (!selectedStage || !product) {
@@ -132,12 +135,12 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
       return;
     }
 
-    if (parsedQuantity <= 0) {
-      alert("Informe uma quantidade maior que zero.");
+    if (!Number.isSafeInteger(parsedQuantity) || parsedQuantity <= 0) {
+      alert("Informe uma quantidade inteira maior que zero.");
       return;
     }
 
-    if (parsedQuantity > availableToAdvance + 0.0001) {
+    if (parsedQuantity > Math.min(availableToAdvance, remainingInStage) + 0.0001) {
       alert(
         selectedStageIndex === 0
           ? "A quantidade informada ultrapassa o total planejado desta produção."
@@ -336,7 +339,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
                   htmlFor="production-stage-quantity"
                   className="block text-sm font-semibold text-stone-600 mb-1"
                 >
-                  Quantidade concluída agora
+                  Unidades para conferir nesta etapa
                 </label>
                 <div className="flex items-center gap-2">
                   <button
@@ -352,7 +355,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
                     id="production-stage-quantity"
                     type="number"
                     min="0"
-                    max={availableToAdvance}
+                    inputMode="numeric"
                     step="1"
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
@@ -363,7 +366,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
                     onClick={() =>
                       setQuantity(
                         String(
-                          Math.min(availableToAdvance, parsedQuantity + 1),
+                          Math.min(Number.MAX_SAFE_INTEGER, parsedQuantity + 1),
                         ),
                       )
                     }
@@ -373,13 +376,17 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
                   </button>
                 </div>
                 <p className="text-[10px] text-stone-500 mt-1">
-                  Máximo disponível agora: {formatNumber(availableToAdvance)} un
+                  Liberadas para registrar agora: {formatNumber(availableToAdvance)} un.
+                  {' '}Você pode simular outras quantidades para organizar a bancada.
                 </p>
+                {parsedQuantity > availableToAdvance && <p role="status" className="mt-2 text-xs text-amber-800">
+                  Apenas planejamento: esta quantidade ainda não está liberada para registro.
+                </p>}
               </div>
 
               <div>
                 <h5 className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-2">
-                  Baixa desta etapa
+                  Previsão de insumos desta etapa
                 </h5>
                 {preview.deductions.length === 0 ? (
                   <p className="text-[11px] text-stone-500 bg-white border border-stone-200 rounded-lg p-3">
@@ -399,7 +406,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
                         <span
                           className={`font-bold shrink-0 ${deduction.stockAfter < 0 ? "text-rose-700" : "text-stone-700"}`}
                         >
-                          -{formatNumber(deduction.quantityTotal)}{" "}
+                          {formatNumber(deduction.quantityTotal)}{" "}
                           {deduction.unit}
                         </span>
                       </div>
@@ -423,7 +430,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
             type="button"
             onClick={handleAdvance}
             disabled={
-              !selectedStage || parsedQuantity <= 0 || availableToAdvance <= 0
+              !selectedStage || !canRegister
             }
             className="px-4 py-2 text-sm font-semibold text-white bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 disabled:text-stone-500 rounded-lg"
           >
@@ -443,12 +450,18 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
 
 interface ViewProductionModalProps {
   production: Production;
+  product: Product | null;
+  materials: Material[];
+  products: Product[];
   imageUrl?: string;
   onClose: () => void;
 }
 
 export const ViewProductionModal: React.FC<ViewProductionModalProps> = ({
   production,
+  product,
+  materials,
+  products,
   imageUrl,
   onClose,
 }) => {
@@ -590,6 +603,8 @@ export const ViewProductionModal: React.FC<ViewProductionModalProps> = ({
               {production.notes}
             </div>
           )}
+          {production.status === 'in_progress' && !!production.stageProgress?.length &&
+            <ProductionMaterialPlan production={production} product={product} materials={materials} products={products} />}
         </div>
 
         {/* Footer */}

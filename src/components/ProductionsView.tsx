@@ -172,6 +172,9 @@ export function ProductionsView({
           viewing && (
             <ViewProductionModal
               production={viewing}
+              product={products.find(p => p.id === viewing.productId) || null}
+              materials={materials}
+              products={products}
               imageUrl={
                 viewing.productImageUrl ||
                 products.find((p) => p.id === viewing.productId)?.imageUrl
