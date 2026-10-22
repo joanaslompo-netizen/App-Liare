@@ -1,3 +1,4 @@
+import { getCategoryMaterialOptions } from '../utils/virtualMaterials';
 import { ModalFrame } from './ModalFrame';
 import { localDateString } from '../utils/localDate';
 import { MoreOptions } from './MoreOptions';
@@ -735,16 +736,16 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
 
   const materialCategoriesForRecipe = useMemo(
     () => existingCategories.filter((cat) =>
-      materials.some((m) => m.id !== material?.id && !m.isVirtualRecipe && m.category === cat)
+      getCategoryMaterialOptions(materials, cat, undefined, material ? [material.id] : []).length > 0
     ),
     [existingCategories, materials, material?.id]
   );
 
   const getRecipeItemCurrentCost = (item: import('../types').RecipeItem) => {
     if (item.selectionMode === 'category' && item.targetCategory) {
-      const options = materials.filter((m) => !m.isVirtualRecipe && m.usageType !== 'durable' && m.category === item.targetCategory);
+      const options = getCategoryMaterialOptions(materials, item.targetCategory, item.unit, material ? [material.id] : []);
       if (options.length === 0) return { unitCost: item.unitCost || 0, unit: item.unit };
-      const avg = options.reduce((sum, m) => sum + m.unitCost, 0) / options.length;
+      const avg = options.reduce((sum, m) => sum + estimateMaterialUnitCost(m, materials), 0) / options.length;
       const units = Array.from(new Set<UnitOfMeasure>(options.map((m) => m.unit)));
       return { unitCost: avg, unit: units.length === 1 ? UNIT_SHORT[units[0]] : item.unit };
     }
@@ -757,7 +758,7 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
 
   const getRecipeItemUnitOfMeasure = (item: import('../types').RecipeItem): UnitOfMeasure | null => {
     if (item.selectionMode === 'category' && item.targetCategory) {
-      const options = materials.filter((m) => !m.isVirtualRecipe && m.usageType !== 'durable' && m.category === item.targetCategory);
+      const options = getCategoryMaterialOptions(materials, item.targetCategory, item.unit, material ? [material.id] : []);
       const units = Array.from(new Set<UnitOfMeasure>(options.map((m) => m.unit)));
       return units.length === 1 ? units[0] : null;
     }
@@ -1296,14 +1297,14 @@ const MaterialModal: React.FC<MaterialModalProps> = ({
 
                 if (recipeInputMode === 'category' && isVirtualRecipe) {
                   if (!recipeCategory) { alert('Selecione uma categoria.'); return; }
-                  const options = materials.filter(m => !m.isVirtualRecipe && m.category === recipeCategory);
+                  const options = getCategoryMaterialOptions(materials, recipeCategory, undefined, material ? [material.id] : []);
                   if (options.length === 0) { alert('Essa categoria ainda não possui materiais cadastrados.'); return; }
                   const categoryUnits = Array.from(new Set<UnitOfMeasure>(options.map(m => m.unit)));
                   if (categoryUnits.length !== 1) {
                     alert('Os materiais dessa categoria usam unidades diferentes. Para usar a categoria na receita, cadastre todos com a mesma unidade de medida.');
                     return;
                   }
-                  const avgUnitCost = options.reduce((sum, m) => sum + m.unitCost, 0) / options.length;
+                  const avgUnitCost = options.reduce((sum, m) => sum + estimateMaterialUnitCost(m, materials), 0) / options.length;
                   setRecipeItems(prev => [...prev, {
                     id: 'mri_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
                     type: 'material',

@@ -1,54 +1,16 @@
 import type {
   Material,
+  RecipeItem,
   Product,
   Production,
   ProductionIngredientDeduction,
 } from "../types";
-import { UNIT_SHORT } from "./formatters";
 import { localDateString } from "./localDate";
-import { getVirtualRecipeLaborCost } from "./storage";
+import { expandVirtualRecipeItems } from './virtualMaterials';
+export { makeVariableKey } from './virtualMaterials';
 
-export const makeVariableKey = (
-  productItemId: string,
-  virtualMaterialId: string,
-  recipeItemId: string,
-) => `${productItemId}::${virtualMaterialId}::${recipeItemId}`;
-
-export function getProductionVariableRequirements(
-  selectedProduct: Product,
-  materials: Material[],
-) {
-  return selectedProduct.items.flatMap((productItem) => {
-    if (productItem.type !== "material") return [];
-    const virtualMaterial = materials.find(
-      (m) => m.id === productItem.targetId,
-    );
-    if (
-      !virtualMaterial?.isVirtualRecipe ||
-      !virtualMaterial.recipeItems?.length
-    )
-      return [];
-
-    const virtualYield = Math.max(0.0001, virtualMaterial.batchYield || 1);
-    const scalePerProductBatch = productItem.quantity / virtualYield;
-
-    return virtualMaterial.recipeItems
-      .filter(
-        (recipeItem) =>
-          recipeItem.type === "material" &&
-          recipeItem.selectionMode === "category" &&
-          recipeItem.targetCategory &&
-          !productItem.categorySelections?.[recipeItem.id],
-      )
-      .map((recipeItem) => ({
-        key: makeVariableKey(productItem.id, virtualMaterial.id, recipeItem.id),
-        virtualMaterialId: virtualMaterial.id,
-        virtualMaterialName: virtualMaterial.name,
-        category: recipeItem.targetCategory as string,
-        quantityPerBatch: recipeItem.quantity * scalePerProductBatch,
-        unit: recipeItem.unit,
-      }));
-  });
+export function getProductionVariableRequirements(selectedProduct: Product, materials: Material[], variableSelections: Record<string, string> = {}) {
+  return expandVirtualRecipeItems(selectedProduct.items, materials, [], variableSelections).requirements.filter(r => !r.savedSelection);
 }
 
 export function getProductionPlan(
@@ -68,209 +30,23 @@ export function getProductionPlan(
     selectedProduct.useProductionStages &&
     selectedProduct.productionStages?.length
   );
-  const { deductions, hasStockShortage, hasMissingVariableSelection } = (() => {
-    let shortage = false;
-    let missingVariable = false;
-
-    type PendingDeduction = Omit<
-      ProductionIngredientDeduction,
-      "quantityTotal" | "totalCost" | "stockBefore" | "stockAfter"
-    >;
-    const aggregated = new Map<string, PendingDeduction>();
-
-    const addIngredient = (
-      id: string,
-      targetId: string,
-      type: "material" | "product",
-      name: string,
-      unit: string,
-      quantityPerBatch: number,
-      unitCost: number,
-    ) => {
-      const key = `${type}:${targetId}`;
-      const existing = aggregated.get(key);
-      if (existing) {
-        existing.quantityPerBatch += quantityPerBatch;
-        return;
-      }
-      aggregated.set(key, {
-        id,
-        targetId,
-        type,
-        name,
-        unit,
-        quantityPerBatch,
-        unitCost,
-      });
-    };
-
-    selectedProduct.items.forEach((item) => {
-      if (item.type === "material") {
-        const mat = materials.find((m) => m.id === item.targetId);
-
-        // Moldes/ferramentas ficam vinculados à receita, mas não são consumidos.
-        if (mat?.usageType === "durable") return;
-
-        if (mat?.isVirtualRecipe && mat.recipeItems?.length) {
-          const virtualYield = Math.max(0.0001, mat.batchYield || 1);
-          const scalePerProductBatch = item.quantity / virtualYield;
-
-          mat.recipeItems.forEach((recipeItem) => {
-            const expandedQuantityPerBatch =
-              recipeItem.quantity * scalePerProductBatch;
-
-            if (
-              recipeItem.type === "material" &&
-              recipeItem.selectionMode === "category" &&
-              recipeItem.targetCategory
-            ) {
-              const selectionKey = makeVariableKey(
-                item.id,
-                mat.id,
-                recipeItem.id,
-              );
-              const chosenId =
-                item.categorySelections?.[recipeItem.id] ||
-                variableSelections[selectionKey];
-              const chosen = materials.find(
-                (m) =>
-                  m.id === chosenId &&
-                  !m.isVirtualRecipe &&
-                  m.category === recipeItem.targetCategory,
-              );
-
-              if (!chosen) {
-                missingVariable = true;
-                return;
-              }
-
-              if (chosen.usageType !== "durable") {
-                addIngredient(
-                  `${item.id}_${recipeItem.id}`,
-                  chosen.id,
-                  "material",
-                  chosen.name,
-                  UNIT_SHORT[chosen.unit] || recipeItem.unit,
-                  expandedQuantityPerBatch,
-                  chosen.inventoryUnitCost ?? chosen.unitCost,
-                );
-              }
-              return;
-            }
-
-            if (recipeItem.type === "material") {
-              const childMat = materials.find(
-                (m) => m.id === recipeItem.targetId,
-              );
-              if (childMat) {
-                if (childMat.usageType !== "durable") {
-                  addIngredient(
-                    `${item.id}_${recipeItem.id}`,
-                    childMat.id,
-                    "material",
-                    childMat.name,
-                    UNIT_SHORT[childMat.unit] || recipeItem.unit,
-                    expandedQuantityPerBatch,
-                    childMat.inventoryUnitCost ?? childMat.unitCost,
-                  );
-                }
-              } else {
-                addIngredient(
-                  `${item.id}_${recipeItem.id}`,
-                  recipeItem.targetId,
-                  "material",
-                  recipeItem.name,
-                  recipeItem.unit,
-                  expandedQuantityPerBatch,
-                  recipeItem.unitCost,
-                );
-              }
-              return;
-            }
-
-            const childProduct = products.find(
-              (p) => p.id === recipeItem.targetId,
-            );
-            const childUnitCost = childProduct
-              ? childProduct.unitCostFromBatch > 0
-                ? childProduct.unitCostFromBatch
-                : childProduct.totalCost
-              : recipeItem.unitCost;
-            addIngredient(
-              `${item.id}_${recipeItem.id}`,
-              recipeItem.targetId,
-              "product",
-              childProduct?.name || recipeItem.name,
-              recipeItem.unit,
-              expandedQuantityPerBatch,
-              childUnitCost,
-            );
-          });
-
-          return;
-        }
-
-        addIngredient(
-          item.id,
-          item.targetId,
-          "material",
-          mat?.name || item.name,
-          mat ? UNIT_SHORT[mat.unit] || item.unit : item.unit,
-          item.quantity,
-          mat?.inventoryUnitCost ?? mat?.unitCost ?? item.unitCost,
-        );
-        return;
-      }
-
-      const subProd = products.find((p) => p.id === item.targetId);
-      const subUnitCost = subProd
-        ? subProd.unitCostFromBatch > 0
-          ? subProd.unitCostFromBatch
-          : subProd.totalCost
-        : item.unitCost;
-      addIngredient(
-        item.id,
-        item.targetId,
-        "product",
-        subProd?.name || item.name,
-        item.unit,
-        item.quantity,
-        subUnitCost,
-      );
-    });
-
-    const list: ProductionIngredientDeduction[] = Array.from(
-      aggregated.values(),
-    ).map((item) => {
-      const quantityTotal = item.quantityPerBatch * parsedBatchCount;
-      let stockBefore = 0;
-
-      if (item.type === "material") {
-        stockBefore =
-          materials.find((m) => m.id === item.targetId)?.currentStock ?? 0;
-      } else {
-        stockBefore =
-          products.find((p) => p.id === item.targetId)?.currentStock ?? 0;
-      }
-
-      const stockAfter = stockBefore - quantityTotal;
-      if (stockAfter < 0) shortage = true;
-
-      return {
-        ...item,
-        quantityTotal,
-        totalCost: item.unitCost * quantityTotal,
-        stockBefore,
-        stockAfter,
-      };
-    });
-
-    return {
-      deductions: list,
-      hasStockShortage: shortage,
-      hasMissingVariableSelection: missingVariable,
-    };
-  })();
+  const expanded = expandVirtualRecipeItems(selectedProduct.items, materials, products, variableSelections);
+  const aggregated = new Map<string, RecipeItem>();
+  for (const item of expanded.leaves) {
+    const key = `${item.type}:${item.targetId}`;
+    const previous = aggregated.get(key);
+    aggregated.set(key, { ...item, quantity: (previous?.quantity || 0) + item.quantity });
+  }
+  const deductions: ProductionIngredientDeduction[] = [...aggregated.values()].map(item => {
+    const quantityTotal = item.quantity * parsedBatchCount;
+    const stockBefore = item.type === 'material'
+      ? materials.find(m => m.id === item.targetId)?.currentStock || 0
+      : products.find(p => p.id === item.targetId)?.currentStock || 0;
+    return { ...item, quantityPerBatch: item.quantity, quantityTotal,
+      totalCost: item.unitCost * quantityTotal, stockBefore, stockAfter: stockBefore - quantityTotal };
+  });
+  const hasStockShortage = deductions.some(item => item.stockAfter < -0.0001);
+  const hasMissingVariableSelection = expanded.errors.length > 0;
   const ingredientCost = deductions.reduce(
     (sum, item) => sum + item.totalCost,
     0,
@@ -281,7 +57,7 @@ export function getProductionPlan(
   const totalCost = selectedProduct
     ? ingredientCost +
       (nonIngredientCostPerBatch +
-        getVirtualRecipeLaborCost(selectedProduct.items, materials)) *
+        expanded.preparationCost) *
         parsedBatchCount
     : 0;
   const unitCost = quantityProduced > 0 ? totalCost / quantityProduced : 0;
@@ -295,6 +71,8 @@ export function getProductionPlan(
     deductions,
     hasStockShortage,
     hasMissingVariableSelection,
+    errors: expanded.errors,
+    virtualPreparationCost: expanded.preparationCost,
     totalCost,
     unitCost,
     variableSelections,

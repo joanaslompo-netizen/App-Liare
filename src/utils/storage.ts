@@ -1,3 +1,5 @@
+import { estimateMaterialUnitCost, materialRecipeCosts, expandVirtualRecipeItems } from './virtualMaterials';
+export { estimateMaterialUnitCost } from './virtualMaterials';
 import { workspaceStorage as localStorage } from './workspaceStorage';
 import { calculateRecipePricing } from './financials';
 import { synchronizeRecipeFamilies } from './recipeFamilies';
@@ -1931,71 +1933,7 @@ export const saveProjects = (projects: ProductionProject[]) => {
  * average current cost of the materials in that category as a planning estimate.
  */
 export const getVirtualRecipeLaborCost = (items: RecipeItem[], materials: Material[]): number =>
-  items.reduce((sum, item) => {
-    if (item.type !== 'material') return sum;
-    const material = materials.find((m) => m.id === item.targetId);
-    if (!material?.isVirtualRecipe || material.usageType === 'durable') return sum;
-    const labor = Math.max(0, material.productionTimeMinutes || 0) / 60
-      * Math.max(0, material.hourlyRate || 0);
-    return sum + labor * item.quantity / Math.max(0.0001, material.batchYield || 1);
-  }, 0);
-
-export const estimateMaterialUnitCost = (
-  material: Material,
-  allMaterials: Material[],
-  visited: Set<string> = new Set(),
-  categorySelections?: Record<string, string>
-): number => {
-  if (material.usageType === 'durable') return 0;
-
-  if (!material.isMadeInAtelier || !material.recipeItems?.length || !material.batchYield) {
-    return material.unitCost || 0;
-  }
-
-  if (visited.has(material.id)) return material.unitCost || 0;
-  const nextVisited = new Set(visited);
-  nextVisited.add(material.id);
-
-  const recipeCost = material.recipeItems.reduce((sum, item) => {
-    let unitCost = item.unitCost || 0;
-
-    if (item.type === 'material') {
-      if (item.selectionMode === 'category' && item.targetCategory) {
-        const selectedId = categorySelections?.[item.id];
-        const selected = selectedId
-          ? allMaterials.find(
-              (m) => m.id === selectedId && !m.isVirtualRecipe && m.category === item.targetCategory
-            )
-          : undefined;
-
-        if (selected) {
-          unitCost = selected.usageType === 'durable' ? 0 : (selected.unitCost || 0);
-        } else {
-          const options = allMaterials.filter(
-            (m) => !m.isVirtualRecipe && m.usageType !== 'durable' && m.category === item.targetCategory
-          );
-          if (options.length > 0) {
-            unitCost = options.reduce((acc, m) => acc + (m.unitCost || 0), 0) / options.length;
-          }
-        }
-      } else {
-        const child = allMaterials.find((m) => m.id === item.targetId);
-        if (child) {
-          unitCost = child.usageType === 'durable'
-            ? 0
-            : estimateMaterialUnitCost(child, allMaterials, nextVisited);
-        }
-      }
-    }
-
-    return sum + unitCost * item.quantity;
-  }, 0);
-
-  const laborCost = Math.max(0, material.productionTimeMinutes || 0) / 60
-    * Math.max(0, material.hourlyRate || 0);
-  const fixedCost = (recipeCost + laborCost) * Math.max(0, material.recipeFixedCostPercent || 0) / 100;
-  return (recipeCost + laborCost + fixedCost + Math.max(0, material.recipeOtherCosts || 0)) / Math.max(0.0001, material.batchYield);
-};
+  expandVirtualRecipeItems(items, materials).virtualLaborCost;
 
 /**
  * Recalculates product total cost, labor cost, suggested price and margins.
@@ -2103,11 +2041,12 @@ export const getRecipeItemEmbeddedLaborCost = (
 ): number => getEmbeddedRecipeLaborCost([item], materials, products);
 
 export function getEmbeddedRecipeLaborCost(items: RecipeItem[], materials: Material[], products: Product[], visiting = new Set<string>()): number {
-  return items.reduce((sum,item) => {
-    if(item.type === 'product') { const p=products.find(p=>p.id===item.targetId); return sum + (p ? ((p.laborCost||0)+(p.embeddedLaborCost||0))/Math.max(1,p.batchYield||1) : 0)*item.quantity; }
-    const m=materials.find(m=>m.id===item.targetId);
-    if(!m?.isMadeInAtelier||m.usageType==='durable'||visiting.has(m.id))return sum;
-    const inner=getEmbeddedRecipeLaborCost(m.recipeItems||[],materials,products,new Set([...visiting,m.id]));
-    return sum+item.quantity*((m.productionTimeMinutes||0)/60*(m.hourlyRate||0)+inner)/Math.max(0.0001,m.batchYield||1);
-  },0);
+  return items.reduce((sum, item) => {
+    if (item.type === 'product') {
+      const product = products.find(p => p.id === item.targetId);
+      return sum + (product ? ((product.laborCost || 0) + (product.embeddedLaborCost || 0)) / Math.max(1, product.batchYield || 1) : 0) * item.quantity;
+    }
+    const material = materials.find(m => m.id === item.targetId);
+    return sum + (material ? materialRecipeCosts(material, materials, item.categorySelections, visiting, products).laborUnitCost : 0) * item.quantity;
+  }, 0);
 }

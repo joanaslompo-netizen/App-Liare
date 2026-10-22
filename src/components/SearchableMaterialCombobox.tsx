@@ -165,7 +165,7 @@ export const SearchableMaterialCombobox: React.FC<SearchableMaterialComboboxProp
                 )}
               </div>
               <p className="text-[11px] text-stone-500 mt-0.5">
-                {selectedMaterial.usageType === 'durable'
+                {selectedMaterial.isVirtualRecipe ? 'Receita virtual • preparada na quantidade utilizada, sem estoque próprio' : selectedMaterial.usageType === 'durable'
                   ? <>Valor cadastrado: <span className="font-semibold text-stone-800">{formatCurrency(selectedMaterial.packagePrice)}</span> • Quantidade possuída: {formatNumber(selectedMaterial.currentStock)} un</>
                   : <>Ref. pacote: <span className="font-semibold text-stone-800">{formatCurrency(selectedMaterial.packagePrice)}</span> por {formatNumber(selectedMaterial.packageQuantity)} {UNIT_SHORT[selectedMaterial.packageUnit] || selectedMaterial.packageUnit} • Estoque atual: {formatNumber(selectedMaterial.currentStock)} {UNIT_SHORT[selectedMaterial.unit]}</>}
               </p>
@@ -271,7 +271,7 @@ export const SearchableMaterialCombobox: React.FC<SearchableMaterialComboboxProp
                   filteredMaterials.map((mat, idx) => {
                     const isSelected = mat.id === selectedMaterialId;
                     const isActive = idx === activeIndex;
-                    const isLowStock = mat.usageType !== 'durable' && !mat.isPaused && mat.minStock > 0 && mat.currentStock <= mat.minStock;
+                    const isLowStock = !mat.isVirtualRecipe && mat.usageType !== 'durable' && !mat.isPaused && mat.minStock > 0 && mat.currentStock <= mat.minStock;
 
                     return (
                       <li
@@ -323,7 +323,7 @@ export const SearchableMaterialCombobox: React.FC<SearchableMaterialComboboxProp
                               <span>•</span>
                               <span className={`inline-flex items-center gap-0.5 ${isLowStock ? 'text-amber-700 font-semibold' : 'text-stone-600'}`}>
                                 {isLowStock && <AlertCircle className="w-3 h-3 text-amber-600 shrink-0" />}
-                                {mat.usageType === 'durable' ? 'Quantidade: ' : 'Estoque: '}{formatNumber(mat.currentStock)} {mat.usageType === 'durable' ? 'un' : UNIT_SHORT[mat.unit]}
+                                {mat.isVirtualRecipe ? 'Virtual • sem estoque próprio' : <>{mat.usageType === 'durable' ? 'Quantidade: ' : 'Estoque: '}{formatNumber(mat.currentStock)} {mat.usageType === 'durable' ? 'un' : UNIT_SHORT[mat.unit]}</>}
                               </span>
                             </div>
                           </div>

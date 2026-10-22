@@ -1,3 +1,4 @@
+import { estimateMaterialUnitCost, expandVirtualRecipeItems, getCategoryMaterialOptions, getVirtualMaterialRequirements } from '../utils/virtualMaterials';
 import { ModalFrame } from './ModalFrame';
 import { getEmbeddedRecipeLaborCost, getRecipeItemEmbeddedLaborCost } from "../utils/storage";
 import { localDateString } from '../utils/localDate';
@@ -1289,15 +1290,9 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
     [itemTypeToAdd, selectedTargetId, allMaterials]
   );
 
-  const selectedVirtualRequirements = useMemo(() => {
-    if (!selectedMaterialToAdd?.isVirtualRecipe || !selectedMaterialToAdd.recipeItems?.length) return [];
-    return selectedMaterialToAdd.recipeItems
-      .filter((item) => item.type === 'material' && item.selectionMode === 'category' && item.targetCategory)
-      .map((item) => ({
-        recipeItemId: item.id,
-        category: item.targetCategory as string,
-      }));
-  }, [selectedMaterialToAdd]);
+  const selectedVirtualRequirements = useMemo(() => selectedMaterialToAdd?.isVirtualRecipe
+    ? getVirtualMaterialRequirements(selectedMaterialToAdd, allMaterials, recipeVariableSelections) : [],
+    [selectedMaterialToAdd, allMaterials, recipeVariableSelections]);
 
   // Labor & Overhead
   const [productionTimeMinutes, setProductionTimeMinutes] = useState<string>(
@@ -1474,43 +1469,12 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
         }
       }
 
-      if (mat.isVirtualRecipe && mat.recipeItems?.length) {
-        const selections: Record<string, string> = {};
-
-        for (const recipeItem of mat.recipeItems) {
-          if (recipeItem.type === 'material' && recipeItem.selectionMode === 'category' && recipeItem.targetCategory) {
-            const chosenId = recipeVariableSelections[recipeItem.id];
-            const chosen = allMaterials.find(
-              (m) => m.id === chosenId && !m.isVirtualRecipe && m.category === recipeItem.targetCategory
-            );
-
-            if (!chosen) {
-              alert(`Escolha um material da categoria ${recipeItem.targetCategory} para esta receita.`);
-              return;
-            }
-
-            selections[recipeItem.id] = chosen.id;
-          }
-        }
-
-        const recipeTotalCost = mat.recipeItems.reduce((sum, recipeItem) => {
-          if (recipeItem.type !== 'material') {
-            return sum + (recipeItem.unitCost || 0) * recipeItem.quantity;
-          }
-
-          if (recipeItem.selectionMode === 'category' && recipeItem.targetCategory) {
-            const chosen = allMaterials.find((m) => m.id === selections[recipeItem.id]);
-            const chosenCost = chosen?.usageType === 'durable' ? 0 : (chosen?.unitCost || recipeItem.unitCost || 0);
-            return sum + chosenCost * recipeItem.quantity;
-          }
-
-          const fixedMaterial = allMaterials.find((m) => m.id === recipeItem.targetId);
-          const fixedCost = fixedMaterial?.usageType === 'durable' ? 0 : (fixedMaterial?.unitCost || recipeItem.unitCost || 0);
-          return sum + fixedCost * recipeItem.quantity;
-        }, 0);
-
-        effectiveUnitCost = recipeTotalCost / Math.max(0.0001, mat.batchYield || 1);
-        categorySelections = selections;
+      if (mat.isVirtualRecipe) {
+        categorySelections = { ...recipeVariableSelections };
+        const check = expandVirtualRecipeItems([{ id: 'draft', type: 'material', targetId: mat.id,
+          name: mat.name, quantity: qty, unit: mat.unit, unitCost: 0, totalCost: 0, categorySelections }], allMaterials, allProducts);
+        if (check.errors.length) { alert(check.errors[0]); return; }
+        effectiveUnitCost = estimateMaterialUnitCost(mat, allMaterials, new Set(), categorySelections);
       }
 
       const total = isDurable ? 0 : effectiveUnitCost * qty;
@@ -2289,15 +2253,13 @@ const ProductRecipeModal: React.FC<ProductRecipeModalProps> = ({
                         Defina o aroma desta receita
                       </span>
                       <p className="text-[10px] text-purple-700 mt-0.5">
-                        Esta escolha ficará salva na receita da peça e será usada automaticamente quando você produzir este produto.
+                        Esta escolha ficará salva na receita. Essências virtuais serão preparadas na quantidade usada e consumirão seus ingredientes na produção.
                       </p>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {selectedVirtualRequirements.map((requirement, index) => {
-                        const categoryMaterials = allMaterials.filter(
-                          (m) => !m.isVirtualRecipe && m.category === requirement.category
-                        );
+                        const categoryMaterials = getCategoryMaterialOptions(allMaterials, requirement.category, requirement.unit, requirement.ancestors);
 
                         return (
                           <div key={requirement.recipeItemId}>

@@ -31,6 +31,10 @@ export const inheritRecipe = (variant: Product, mother: Product, materials: Mate
         const selected = materials.find((m) => m.id === selectedId);
         if (isAroma(requirement, materials) && selected?.category === requirement.targetCategory) {
           selections[requirement.id] = selectedId;
+          const prefix = `${requirement.id}::${selectedId}::`;
+          for (const [key, value] of Object.entries(old.categorySelections)) {
+            if (key.startsWith(prefix)) selections[key] = value;
+          }
         }
       }
       result.categorySelections = selections;

@@ -13,9 +13,8 @@ import {
   formatCurrency,
   formatDate,
   formatNumber,
-  UNIT_SHORT,
 } from "../utils/formatters";
-import { getVirtualRecipeLaborCost } from "../utils/storage";
+import { getProductionPlan } from "../utils/productionPlanning";
 
 interface StageProgressModalProps {
   production: Production;
@@ -114,203 +113,12 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
     setQuantity(availableToAdvance > 0 ? String(availableToAdvance) : "0");
   }, [selectedStageId, availableToAdvance]);
 
-  const makeVariableKey = (
-    productItemId: string,
-    virtualMaterialId: string,
-    recipeItemId: string,
-  ) => `${productItemId}::${virtualMaterialId}::${recipeItemId}`;
-
   const buildStageDeductions = (quantityToAdvance: number) => {
-    let shortage = false;
-    let missingVariable = false;
-    type PendingDeduction = Omit<
-      ProductionIngredientDeduction,
-      "quantityTotal" | "totalCost" | "stockBefore" | "stockAfter"
-    >;
-    const aggregated = new Map<string, PendingDeduction>();
-    const batchFactor = quantityToAdvance / batchYield;
-
-    const addIngredient = (
-      id: string,
-      targetId: string,
-      type: "material" | "product",
-      name: string,
-      unit: string,
-      quantityPerBatch: number,
-      unitCost: number,
-    ) => {
-      const key = `${type}:${targetId}`;
-      const existing = aggregated.get(key);
-      if (existing) {
-        existing.quantityPerBatch += quantityPerBatch;
-        return;
-      }
-      aggregated.set(key, {
-        id,
-        targetId,
-        type,
-        name,
-        unit,
-        quantityPerBatch,
-        unitCost,
-      });
-    };
-
-    stageRecipeItems.forEach((item) => {
-      if (item.type === "material") {
-        const mat = materials.find((material) => material.id === item.targetId);
-        if (mat?.usageType === "durable") return;
-
-        if (mat?.isVirtualRecipe && mat.recipeItems?.length) {
-          const virtualYield = Math.max(0.0001, mat.batchYield || 1);
-          const scalePerProductBatch = item.quantity / virtualYield;
-
-          mat.recipeItems.forEach((recipeItem) => {
-            const expandedQuantityPerBatch =
-              recipeItem.quantity * scalePerProductBatch;
-
-            if (
-              recipeItem.type === "material" &&
-              recipeItem.selectionMode === "category" &&
-              recipeItem.targetCategory
-            ) {
-              const selectionKey = makeVariableKey(
-                item.id,
-                mat.id,
-                recipeItem.id,
-              );
-              const chosenId =
-                item.categorySelections?.[recipeItem.id] ||
-                production.variableSelections?.[selectionKey];
-              const chosen = materials.find(
-                (material) =>
-                  material.id === chosenId &&
-                  !material.isVirtualRecipe &&
-                  material.category === recipeItem.targetCategory,
-              );
-
-              if (!chosen) {
-                missingVariable = true;
-                return;
-              }
-
-              if (chosen.usageType !== "durable") {
-                addIngredient(
-                  `${item.id}_${recipeItem.id}`,
-                  chosen.id,
-                  "material",
-                  chosen.name,
-                  UNIT_SHORT[chosen.unit] || recipeItem.unit,
-                  expandedQuantityPerBatch,
-                  chosen.inventoryUnitCost ?? chosen.unitCost,
-                );
-              }
-              return;
-            }
-
-            if (recipeItem.type === "material") {
-              const childMaterial = materials.find(
-                (material) => material.id === recipeItem.targetId,
-              );
-              if (childMaterial) {
-                if (childMaterial.usageType !== "durable") {
-                  addIngredient(
-                    `${item.id}_${recipeItem.id}`,
-                    childMaterial.id,
-                    "material",
-                    childMaterial.name,
-                    UNIT_SHORT[childMaterial.unit] || recipeItem.unit,
-                    expandedQuantityPerBatch,
-                    childMaterial.unitCost,
-                  );
-                }
-              } else {
-                addIngredient(
-                  `${item.id}_${recipeItem.id}`,
-                  recipeItem.targetId,
-                  "material",
-                  recipeItem.name,
-                  recipeItem.unit,
-                  expandedQuantityPerBatch,
-                  recipeItem.unitCost,
-                );
-              }
-              return;
-            }
-
-            const childProduct = products.find(
-              (candidate) => candidate.id === recipeItem.targetId,
-            );
-            const childUnitCost = childProduct
-              ? childProduct.unitCostFromBatch > 0
-                ? childProduct.unitCostFromBatch
-                : childProduct.totalCost
-              : recipeItem.unitCost;
-            addIngredient(
-              `${item.id}_${recipeItem.id}`,
-              recipeItem.targetId,
-              "product",
-              childProduct?.name || recipeItem.name,
-              recipeItem.unit,
-              expandedQuantityPerBatch,
-              childUnitCost,
-            );
-          });
-          return;
-        }
-
-        addIngredient(
-          item.id,
-          item.targetId,
-          "material",
-          mat?.name || item.name,
-          mat ? UNIT_SHORT[mat.unit] || item.unit : item.unit,
-          item.quantity,
-          mat?.inventoryUnitCost ?? mat?.unitCost ?? item.unitCost,
-        );
-        return;
-      }
-
-      const subProduct = products.find(
-        (candidate) => candidate.id === item.targetId,
-      );
-      const subUnitCost = subProduct
-        ? subProduct.unitCostFromBatch > 0
-          ? subProduct.unitCostFromBatch
-          : subProduct.totalCost
-        : item.unitCost;
-      addIngredient(
-        item.id,
-        item.targetId,
-        "product",
-        subProduct?.name || item.name,
-        item.unit,
-        item.quantity,
-        subUnitCost,
-      );
-    });
-
-    const deductions = Array.from(aggregated.values()).map((item) => {
-      const quantityTotal = item.quantityPerBatch * batchFactor;
-      const stockBefore =
-        item.type === "material"
-          ? (materials.find((material) => material.id === item.targetId)
-              ?.currentStock ?? 0)
-          : (products.find((candidate) => candidate.id === item.targetId)
-              ?.currentStock ?? 0);
-      const stockAfter = stockBefore - quantityTotal;
-      if (stockAfter < 0) shortage = true;
-
-      return {
-        ...item,
-        quantityTotal,
-        totalCost: item.unitCost * quantityTotal,
-        stockBefore,
-        stockAfter,
-      };
-    });
-
-    return { deductions, shortage, missingVariable, batchFactor };
+    const plan = getProductionPlan({ ...product, items: stageRecipeItems, batchYield } as Product,
+      quantityToAdvance, materials, products, production.variableSelections);
+    return { deductions: plan.deductions, shortage: plan.hasStockShortage,
+      missingVariable: plan.hasMissingVariableSelection, batchFactor: quantityToAdvance / batchYield,
+      preparationCost: plan.virtualPreparationCost, errors: plan.errors };
   };
 
   const parsedQuantity = Math.max(0, Number(quantity) || 0);
@@ -340,7 +148,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
 
     const result = buildStageDeductions(parsedQuantity);
     if (result.missingVariable) {
-      alert("Falta uma escolha de material variável nesta ordem de produção.");
+      alert(result.errors[0] || "Falta uma escolha de material variável nesta ordem de produção.");
       return;
     }
 
@@ -379,8 +187,8 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
       (sum, deduction) => sum + deduction.totalCost,
       0,
     );
-    const virtualLaborDelta =
-      getVirtualRecipeLaborCost(stageRecipeItems, materials) *
+    const virtualPreparationDelta =
+      result.preparationCost *
       result.batchFactor;
     const laborCostDelta =
       ((selectedStage.laborMinutes || 0) / 60) *
@@ -406,7 +214,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
           production.totalCost +
           ingredientCostDelta +
           laborCostDelta +
-          virtualLaborDelta +
+          virtualPreparationDelta +
           finalOverheadDelta
         ).toFixed(4),
       ),

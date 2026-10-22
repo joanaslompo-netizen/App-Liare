@@ -1,3 +1,4 @@
+import { expandVirtualRecipeItems } from './utils/virtualMaterials';
 import {syncFailureKind,retryDelay} from './services/syncRetryPolicy';
 import { ModalFrame } from './components/ModalFrame';
 import {canonicalJSON} from './services/workspaceRecordStore';
@@ -14,7 +15,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef, useSyncExtern
 import { 
   loadStoredData, 
   cascadeRecalculateAllProducts,
-  getVirtualRecipeLaborCost,
+  getEmbeddedRecipeLaborCost,
   DEFAULT_TODOS,
   DEFAULT_SETTINGS
 } from './utils/storage';
@@ -1096,115 +1097,11 @@ export default function App() {
       });
     };
 
-    for (const customItem of item.customRecipeItems) {
-      if (customItem.type === 'material') {
-        const mat = materials.find((m) => m.id === customItem.targetId);
-        if (!mat) {
-          alert(`O material "${customItem.name}" não foi encontrado no cadastro.`);
-          return null;
-        }
-
-        if (mat.usageType === 'durable') {
-          continue;
-        }
-
-        if (mat.isVirtualRecipe && mat.recipeItems?.length) {
-          const virtualYield = Math.max(0.0001, mat.batchYield || 1);
-          const scale = customItem.quantity / virtualYield;
-
-          for (const recipeItem of mat.recipeItems) {
-            const required = recipeItem.quantity * scale;
-
-            if (recipeItem.type === 'material' && recipeItem.selectionMode === 'category' && recipeItem.targetCategory) {
-              const chosenId = customItem.categorySelections?.[recipeItem.id];
-              const chosen = materials.find(
-                (m) => m.id === chosenId && !m.isVirtualRecipe && m.category === recipeItem.targetCategory
-              );
-              if (!chosen) {
-                alert(`Escolha qual material da categoria "${recipeItem.targetCategory}" será usado em "${mat.name}" antes de produzir.`);
-                return null;
-              }
-
-              if (chosen.usageType !== 'durable') {
-                addDeduction(
-                  `${customItem.id}_${recipeItem.id}`,
-                  chosen.id,
-                  'material',
-                  chosen.name,
-                  chosen.unit,
-                  required,
-                  chosen.unitCost
-                );
-              }
-              continue;
-            }
-
-            if (recipeItem.type === 'material') {
-              const child = materials.find((m) => m.id === recipeItem.targetId);
-              if (!child) {
-                alert(`O ingrediente "${recipeItem.name}" da receita virtual não foi encontrado.`);
-                return null;
-              }
-              if (child.usageType !== 'durable') {
-                addDeduction(
-                  `${customItem.id}_${recipeItem.id}`,
-                  child.id,
-                  'material',
-                  child.name,
-                  child.unit,
-                  required,
-                  child.unitCost
-                );
-              }
-              continue;
-            }
-
-            const subProduct = products.find((p) => p.id === recipeItem.targetId);
-            if (!subProduct) {
-              alert(`O componente "${recipeItem.name}" da receita virtual não foi encontrado.`);
-              return null;
-            }
-            const subCost = subProduct.unitCostFromBatch > 0 ? subProduct.unitCostFromBatch : subProduct.totalCost;
-            addDeduction(
-              `${customItem.id}_${recipeItem.id}`,
-              subProduct.id,
-              'product',
-              subProduct.name,
-              recipeItem.unit || 'un',
-              required,
-              subCost
-            );
-          }
-          continue;
-        }
-
-        addDeduction(
-          customItem.id,
-          mat.id,
-          'material',
-          mat.name,
-          mat.unit,
-          customItem.quantity,
-          mat.unitCost
-        );
-        continue;
-      }
-
-      const subProduct = products.find((p) => p.id === customItem.targetId);
-      if (!subProduct) {
-        alert(`O componente "${customItem.name}" não foi encontrado no cadastro.`);
-        return null;
-      }
-      const subCost = subProduct.unitCostFromBatch > 0 ? subProduct.unitCostFromBatch : subProduct.totalCost;
-      addDeduction(
-        customItem.id,
-        subProduct.id,
-        'product',
-        subProduct.name,
-        customItem.unit || 'un',
-        customItem.quantity,
-        subCost
-      );
+    const expanded = expandVirtualRecipeItems(item.customRecipeItems, materials, products);
+    if (expanded.errors.length) { alert(expanded.errors[0]); return null; }
+    for (const ingredient of expanded.leaves) {
+      addDeduction(ingredient.id, ingredient.targetId, ingredient.type, ingredient.name,
+        ingredient.unit, ingredient.quantity, ingredient.unitCost);
     }
 
     const pending = Array.from(aggregated.values());
@@ -1258,13 +1155,14 @@ export default function App() {
     const productId = existingCustomProduct?.id || `custom_prod_${now}_${Math.random().toString(36).slice(2, 6)}`;
     const productionId = `production_custom_${now}_${Math.random().toString(36).slice(2, 6)}`;
     const materialsCost = deductedItems.reduce((sum, d) => sum + d.totalCost, 0)
-      + getVirtualRecipeLaborCost(item.customRecipeItems, materials);
+      + expanded.preparationCost;
     const unitCost = materialsCost;
+    const embeddedLaborCost = getEmbeddedRecipeLaborCost(item.customRecipeItems, materials, products);
     const customBusinessCost =
-      materialsCost +
+      materialsCost - embeddedLaborCost +
       (existingCustomProduct?.fixedCost ?? 0) +
       (existingCustomProduct?.otherCosts ?? 0);
-    const customLaborRemuneration = existingCustomProduct?.laborCost ?? 0;
+    const customLaborRemuneration = (existingCustomProduct?.laborCost ?? 0) + embeddedLaborCost;
 
     const customProduct: Product = {
       id: productId,
@@ -1275,6 +1173,7 @@ export default function App() {
       isIntermediate: false,
       items: item.customRecipeItems.map((ri) => ({ ...ri })),
       materialsCost,
+      embeddedLaborCost,
       productionTimeMinutes: existingCustomProduct?.productionTimeMinutes ?? 0,
       hourlyRate: existingCustomProduct?.hourlyRate ?? 0,
       laborCost: existingCustomProduct?.laborCost ?? 0,

@@ -1,3 +1,4 @@
+import { getCategoryMaterialOptions } from '../utils/virtualMaterials';
 import React, { useMemo, useRef, useState } from "react";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import type { Material, Product, Production } from "../types";
@@ -104,9 +105,8 @@ export function NewProductionPage({
     event.preventDefault();
     if (submitted.current) return;
     if (!ready || !date) {
-      setError(
-        "Escolha o modelo e o aroma de cada item, confira as quantidades e complete os materiais variáveis.",
-      );
+      setError(plans.flatMap(plan => plan.errors)[0] ||
+        "Escolha o modelo e o aroma de cada item, confira as quantidades e complete os materiais variáveis.");
       return;
     }
     const shortages = aggregateProductionDeductions(plans, true).filter(
@@ -176,7 +176,7 @@ export function NewProductionPage({
           {rows.map((row, index) => {
             const product = products.find((p) => p.id === row.productId);
             const variables = product
-              ? getProductionVariableRequirements(product, materials)
+              ? getProductionVariableRequirements(product, materials, row.variables)
               : [];
             return (
               <div
@@ -255,11 +255,7 @@ export function NewProductionPage({
                           className={`${field} mt-1`}
                         >
                           <option value="">Selecione o material</option>
-                          {materials
-                            .filter(
-                              (m) =>
-                                m.category === v.category && !m.isVirtualRecipe,
-                            )
+                          {getCategoryMaterialOptions(materials, v.category, v.unit, v.ancestors)
                             .map((m) => (
                               <option key={m.id} value={m.id}>
                                 {m.name}
