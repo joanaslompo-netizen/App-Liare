@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import { DEFAULT_MATERIALS, DEFAULT_PRODUCTS, cascadeRecalculateAllProducts } from './storage';
+const wax = { ...DEFAULT_MATERIALS[0], id: 'wax', name: 'Cera', unitCost: 1, isMadeInAtelier: false, isVirtualRecipe: false };
+const other = { ...wax, id: 'other', name: 'Outro material' };
+const product = (id: string, targetId: string) => ({ ...DEFAULT_PRODUCTS[0], id, isFamilyMother: false, parentRecipeId: undefined, items: [{ id: `row_${id}`, type: 'material' as const, targetId, name: '', unit: 'g', quantity: 1, unitCost: 0, totalCost: 0 }] });
+const initial = cascadeRecalculateAllProducts([wax, other], [product('a', 'wax'), product('b', 'other')]);
+const old = initial.map(p => ({ ...p, updatedAt: '2020-01-01' }));
+const unchanged = cascadeRecalculateAllProducts([wax, { ...other, notes: 'Só uma observação' }], old);
+assert.deepEqual(unchanged, old, 'An unrelated edit/cascade on another day does not rewrite either recipe or its date');
+const changed = cascadeRecalculateAllProducts([{ ...wax, unitCost: 2 }, other], old);
+assert(changed[0].materialsCost > old[0].materialsCost);
+assert.notEqual(changed[0].updatedAt, old[0].updatedAt);
+assert.deepEqual(changed[1], old[1], 'A price change must leave the unrelated recipe unchanged');
+console.log('PASS pricing quota: unchanged cascades keep edit dates; a material price change rewrites only affected recipes.');

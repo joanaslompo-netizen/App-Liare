@@ -101,6 +101,8 @@ assert.equal(saved().finance.entries.length, 1);
 
 // The same local document syncs after the outage without creating a second receipt.
 scenario.quota = false;
+const originalNow = Date.now;
+Date.now = () => originalNow() + 27 * 60 * 60 * 1000; // provider's next daily renewal
 await cloudPanel();
 await click('Enviar agora');
 assert.equal(localStorage.getItem(pendingKey), null);
@@ -154,5 +156,6 @@ await click('Concluir Pedido');
 assert.equal(saved().sales.length, 4, 'Uma nova tentativa não duplica o pedido mantido na sessão');
 assert.equal(saved().finance.entries.length, 4, 'Uma nova tentativa não duplica o pagamento inicial');
 await act(async () => root.unmount());
+Date.now = originalNow;
 console.log('PASS pedidos: cota bloqueada, salvamento local, reabertura, sincronização sem duplicar, abertura offline, envio em andamento e falha real de persistência com nova tentativa.');
 process.exit(0);

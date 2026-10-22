@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {createRecordStore,HEAD_ID,PREVIOUS_HEAD_ID,ARCHIVE_ID,LEGACY_ID,canonicalJSON,LegacyWorkspaceChangedError,WorkspaceRevisionError,type RecordAdapter} from './workspaceRecordStore';
+import {createRecordStore,HEAD_ID,PREVIOUS_HEAD_ID,ARCHIVE_ID,LEGACY_ID,canonicalJSON,decodeRecordHead,LegacyWorkspaceChangedError,WorkspaceRevisionError,type RecordAdapter} from './workspaceRecordStore';
 import {syncFailureKind,retryDelay} from './syncRetryPolicy';
 export class MemoryAdapter implements RecordAdapter {
  docs=new Map<string,any>(); batches:any[][]=[]; fail=false; generation=0;
@@ -24,7 +24,7 @@ assert.deepEqual(a.docs.get(LEGACY_ID),original,'original remains untouched');as
 assert.deepEqual((await store.previous())!.data,original);
 const changed=structuredClone(loaded);changed.products[4].actualPrice=60;
 await store.mutate(()=>changed,72);const batch=a.batches.at(-1)!;
-assert.equal(batch.filter(x=>x.id.startsWith('r4_')).length,1,'one changed product writes one record');
+assert.equal(batch.filter(x=>/^r[45]_/.test(x.id)).length,1,'one changed product writes one record');
 assert.equal(batch.length,3,'changed record plus current and previous small manifests');
 assert(!batch.some(x=>[LEGACY_ID,ARCHIVE_ID].includes(x.id)));
 assert.deepEqual((await store.previous())!.data,loaded);
@@ -40,7 +40,7 @@ const beforeFailure=canonicalJSON([...a.docs]);a.fail=true;
 await assert.rejects(store.mutate(c=>({...c,settings:{changed:true}}),(await store.read())!.data.revision),/Quota/);
 assert.equal(canonicalJSON([...a.docs]),beforeFailure,'quota failure leaves no partial commit');a.fail=false;
 await assert.rejects(store.mutate(c=>c,1),WorkspaceRevisionError);
-const head=a.docs.get(HEAD_ID),missing=head.records[0].documentId,record=a.docs.get(missing);a.docs.delete(missing);
+const head=decodeRecordHead(a.docs.get(HEAD_ID),'owner'),missing=head.records[0].documentId,record=a.docs.get(missing);a.docs.delete(missing);
 await assert.rejects(store.read(),/ausente/);a.docs.set(missing,record);
 a.docs.set(LEGACY_ID,{...original,revision:72});await assert.rejects(store.read(),LegacyWorkspaceChangedError);assert(a.docs.get(HEAD_ID));assert(a.docs.get(ARCHIVE_ID));
 a.docs.set(LEGACY_ID,original);

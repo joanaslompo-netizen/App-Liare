@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import ts from 'typescript';
 import * as protocol from './workspaceRecordStore';
+import { cloudQuotaGuard } from './cloudQuotaGuard';
 import * as workspaceConfig from '../config/workspace';
 import * as ledger from '../utils/financeLedger';
 import {DEFAULT_SETTINGS,DEFAULT_PRODUCTS} from '../utils/storage';
@@ -12,8 +13,8 @@ const sale=(id:string)=>({id,date:'2026-10-14',productId:'p',productName:'Vela',
 cloud.sales=[sale('a'),sale('b')];cloud.finance.entries=[ledger.makeEntry('receipt',300,{id:'advance',customerId:'c'})];docs.set(legacy,structuredClone(cloud));
 const snapshot=(ref:string)=>({exists:()=>docs.has(ref),data:()=>structuredClone(docs.get(ref)),metadata:{hasPendingWrites:false}});
 let serverReadCount=0;
-const listeners=new Set<(data:any)=>void>();
-const firestore:any={doc:(_:unknown,...path:string[])=>path.join('/'),getDocFromCache:async()=>{throw Error('Cache miss');},getDocFromServer:async(ref:string)=>{serverReadCount++;return snapshot(ref);},onSnapshot:(_ref:any,callback:any)=>{listeners.add(callback);return ()=>listeners.delete(callback);},runTransaction:async(_:unknown,callback:any)=>{
+const listeners=new Map<(data:any)=>void,string>();
+const firestore:any={doc:(_:unknown,...path:string[])=>path.join('/'),getDocFromCache:async()=>{throw Error('Cache miss');},getDocFromServer:async(ref:string)=>{serverReadCount++;return snapshot(ref);},onSnapshot:(ref:any,callback:any)=>{listeners.set(callback,ref);return ()=>listeners.delete(callback);},runTransaction:async(_:unknown,callback:any)=>{
  for(let attempt=0;attempt<5;attempt++){
   const reads=new Map<string,number>(),writes=new Map<string,any>();
   const tx={get:async(ref:string)=>{reads.set(ref,versions.get(ref)||0);await new Promise(r=>setTimeout(r,0));return snapshot(ref);},set:(ref:string,value:any)=>writes.set(ref,value)};
@@ -25,8 +26,8 @@ const firestore:any={doc:(_:unknown,...path:string[])=>path.join('/'),getDocFrom
  throw Error('Transaction retry limit');
 }};
 function compile(path:string,imports:Record<string,any>){const source=fs.readFileSync(new URL(path,import.meta.url),'utf8');const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;const exports:any={};new Function('require','exports',compiled)((name:string)=>name in imports?imports[name]:assert.fail(`Unexpected import ${name}`),exports);return exports;}
-const adapter=compile('./firestoreRecordAdapter.ts',{'firebase/firestore':firestore,'./workspaceRecordStore':protocol});
-const service=compile('./cloudSync.ts',{'firebase/firestore':firestore,'../lib/firebase':{db:{}},'../utils/financeLedger':ledger,'../config/workspace':workspaceConfig,'./workspaceRecordStore':protocol,'./firestoreRecordAdapter':adapter});
+const adapter=compile('./firestoreRecordAdapter.ts',{'firebase/firestore':firestore,'./workspaceRecordStore':protocol,'./cloudQuotaGuard':{cloudQuotaGuard}});
+const service=compile('./cloudSync.ts',{'firebase/firestore':firestore,'../lib/firebase':{db:{}},'../utils/financeLedger':ledger,'../config/workspace':workspaceConfig,'./workspaceRecordStore':protocol,'./firestoreRecordAdapter':adapter,'./cloudQuotaGuard':{cloudQuotaGuard}});
 const local=structuredClone(cloud),base=service.createWorkspaceSyncBase(local);
 const results=await Promise.allSettled(['a','b'].map(id=>service.executeFinanceInCloud('test',local,base,{type:'entry',entry:ledger.makeEntry('credit_use',250,{id:`use_${id}`,saleId:id,customerId:'c'})})));
 assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
@@ -48,10 +49,29 @@ let finish!:()=>void;
 const received=new Promise<void>(resolve=>{finish=resolve;});
 const stop=service.subscribeToWorkspace('test',()=>{delivered++;finish();},(error:any)=>assert.fail(error));
 const beforeSnapshots=serverReadCount;
-for(const listener of listeners)listener({metadata:{hasPendingWrites:false}});
+for(const [listener,ref] of listeners)listener(snapshot(ref));
+await new Promise(resolve=>setTimeout(resolve,20));
+assert.equal(serverReadCount-beforeSnapshots,0,'Snapshots iniciais já conhecidos não baixam o índice e a base antiga novamente.');
+assert.equal(delivered,0);
+// A genuinely new head still causes a verified refresh, with rapid events grouped.
+for(const listener of listeners.keys())listener({metadata:{hasPendingWrites:false}});
 await received;
 assert.equal(serverReadCount-beforeSnapshots,2,'Os dois snapshots iniciais geram uma única leitura da base.');
 assert.equal(delivered,1);
 stop();
 assert.equal(listeners.size,0);
 console.log('PASS consultas: leituras concorrentes e eventos iniciais agrupados sem listeners remanescentes.');
+let quotaErrors=0;
+const stopQuota=service.subscribeToWorkspace('test',()=>assert.fail('Unexpected quota data'),()=>{quotaErrors++;});
+cloudQuotaGuard.record('test',{code:'resource-exhausted',message:'Free daily read units per project'},'read');
+assert.equal(listeners.size,0,'Cota de leitura encerra os listeners ativos do SDK');
+assert.equal(quotaErrors,1);
+const blocked=service.subscribeToWorkspace('test',()=>assert.fail('Unexpected data'),()=>{quotaErrors++;});
+await Promise.resolve();
+assert.equal(listeners.size,0,'Reabrir não cria novos listeners durante cota de leitura');
+assert.equal(quotaErrors,2);
+const beforePausedRead=serverReadCount;
+await assert.rejects(service.fetchWorkspaceFromCloud('test'));
+assert.equal(serverReadCount,beforePausedRead);
+stopQuota();blocked();
+console.log('PASS cota de leitura: listeners encerrados, reabertura e consultas bloqueadas antes de novas chamadas de banco.');

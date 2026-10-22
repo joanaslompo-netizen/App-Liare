@@ -1,13 +1,13 @@
-import { createRecordStore, HEAD_ID, LEGACY_ID, WorkspaceRevisionError } from './workspaceRecordStore';
+import { createRecordStore, HEAD_ID, LEGACY_ID, WorkspaceRevisionError, canonicalJSON, decodeRecordHead, digest } from './workspaceRecordStore';
 import { firestoreRecordAdapter } from './firestoreRecordAdapter';
+import { cloudQuotaGuard } from './cloudQuotaGuard';
 import { applyFinanceCommand, emptyFinance, validateFinanceData, type FinanceCommand } from "../utils/financeLedger";
 import {
   doc,
-  setDoc,
   onSnapshot,
   Unsubscribe
 } from 'firebase/firestore';
-import { db, User } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import { Material, Product, Purchase, Sale, Customer, Supplier, AtelierSettings, TodoItem, Production, ProductionProject, FinanceData, StockMovement } from '../types';
 
 export interface WorkspaceData {
@@ -53,21 +53,6 @@ export class CloudSyncConflictError extends Error {
     this.cloudRevision = cloudRevision;
     this.expectedRevision = expectedRevision;
     this.cloudData = cloudData;
-  }
-}
-
-export async function syncUserProfile(user: User): Promise<void> {
-  try {
-    const userRef = doc(db, 'users', user.uid);
-    await setDoc(userRef, {
-      userId: user.uid,
-      email: user.email || '',
-      displayName: user.displayName || 'Artesã(o)',
-      photoURL: user.photoURL || '',
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
-  } catch (err) {
-    console.warn('Erro ao sincronizar perfil de usuário no Firestore:', err);
   }
 }
 
@@ -256,12 +241,16 @@ export async function uploadWorkspaceToCloud(
   return mutateRecords(userId,()=>sanitizeForFirestore(compact),expectedRevision,deviceLabel);
 }
 const workspaceReads = new Map<string, Promise<WorkspaceData | null>>();
+const workspaceObservations = new Map<string, { head: string | null; legacyDigest: string }>();
 export function fetchWorkspaceFromCloud(userId:string):Promise<WorkspaceData|null> {
   if(!userId)return Promise.resolve(null);
   const pending=workspaceReads.get(userId);
   if(pending)return pending;
   const read=recordStore(userId).read()
-    .then(loaded=>loaded?workspaceFromData(loaded.data):null)
+    .then(async loaded=>{
+      if(loaded)workspaceObservations.set(userId,{head:loaded.head?canonicalJSON(loaded.head):null,legacyDigest:loaded.head?.legacyDigest||await digest(loaded.data)});
+      return loaded?workspaceFromData(loaded.data):null;
+    })
     .finally(()=>{workspaceReads.delete(userId);});
   workspaceReads.set(userId,read);
   return read;
@@ -273,6 +262,8 @@ export async function fetchPreviousWorkspaceFromCloud(userId:string):Promise<Wor
 }
 export function subscribeToWorkspace(userId:string,onData:(data:WorkspaceData)=>void,onError?:(error:Error)=>void):Unsubscribe {
   let stopped=false,sequence=0;
+  try { cloudQuotaGuard.assertAllowed(userId,'read'); }
+  catch(error) { queueMicrotask(()=>{if(!stopped)onError?.(error as Error);}); return ()=>{stopped=true;}; }
   let running=false,requested=false;
   let timer:ReturnType<typeof setTimeout>|undefined;
   // Both listeners are needed during cutover: a stale tab must never silently
@@ -293,22 +284,36 @@ export function subscribeToWorkspace(userId:string,onData:(data:WorkspaceData)=>
     // The two initial snapshots describe one workspace, not two full downloads.
     timer=setTimeout(()=>{timer=undefined;void refresh();},0);
   };
-  const listeners=[HEAD_ID,LEGACY_ID].map(id=>onSnapshot(doc(db,'users',userId,'workspaces',id),snapshot=>{
-    if(!snapshot.metadata.hasPendingWrites)schedule();
+  const listeners=[HEAD_ID,LEGACY_ID].map(id=>onSnapshot(doc(db,'users',userId,'workspaces',id),async snapshot=>{
+    if(snapshot.metadata.hasPendingWrites||snapshot.metadata.fromCache||stopped)return;
+    try {
+      const known=workspaceObservations.get(userId);
+      if(known && typeof snapshot.exists==='function') {
+        if(id===HEAD_ID) {
+          const fingerprint=snapshot.exists()?canonicalJSON(decodeRecordHead(snapshot.data(),userId)):null;
+          if(fingerprint===known.head)return;
+        } else if(await digest(snapshot.exists()?snapshot.data():null)===known.legacyDigest)return;
+      }
+      if(!stopped)schedule();
+    }catch(error){if(!stopped)onError?.(error as Error);}
   },error=>{if(!stopped)onError?.(error);}));
-  return ()=>{stopped=true;sequence++;if(timer!==undefined)clearTimeout(timer);listeners.forEach(unsubscribe=>unsubscribe());};
+  const stop=()=>{stopped=true;sequence++;if(timer!==undefined)clearTimeout(timer);listeners.forEach(unsubscribe=>unsubscribe());};
+  const stopQuotaWatch=cloudQuotaGuard.subscribe(userId,()=>{
+    try { cloudQuotaGuard.assertAllowed(userId,'read'); }
+    catch(error) { stop();onError?.(error as Error); }
+  });
+  return ()=>{stop();stopQuotaWatch();};
 }
 
 function unionRecords<T extends { id: string }>(local: T[] = [], cloud: T[] = []): T[] {
   const map = new Map(local.map(e => [e.id, e])); for (const e of cloud) map.set(e.id, e); return [...map.values()];
 }
 /** Each credit/order operation is recomputed inside the Firestore transaction. */
-export async function executeFinanceInCloud(userId:string,local:WorkspaceData,base:WorkspaceSyncBase|null,command:FinanceCommand):Promise<WorkspaceData> {
+export async function executeFinanceInCloud(userId:string,local:WorkspaceData,base:WorkspaceSyncBase|null,command:FinanceCommand,expectedRevision=local.revision):Promise<WorkspaceData> {
   // Re-read and recalculate inside one transaction. A retry never consumes
   // stock or credit twice, and unrelated record changes are preserved.
-  const store=recordStore(userId);
+  let expected=expectedRevision;
   for(let attempt=0;attempt<3;attempt++) {
-    const loaded=await store.read();const expected=loaded?.data?.revision;
     try{return await mutateRecords(userId,cloud=>{
       const merged=cloud?mergeWorkspaceData(base||createWorkspaceSyncBase(cloud),local,cloud):local;
       if(cloud)merged.sales=merged.sales.map(s=>{
@@ -317,7 +322,7 @@ export async function executeFinanceInCloud(userId:string,local:WorkspaceData,ba
         return {...s,commercialStatus:current.commercialStatus,cancelledAt:current.cancelledAt,financialTracking:true,legacyPaidCents:current.legacyPaidCents,returnAdjustmentCents:current.returnAdjustmentCents,deliveryHistory:current.deliveryHistory,items:s.items?.map(it=>{const ci=current.items?.find(x=>x.id===it.id);return ci?{...it,deliveredQuantity:ci.deliveredQuantity,returnedQuantity:ci.returnedQuantity,stockConsumedQuantity:ci.stockConsumedQuantity}:it;})};
       });
       return sanitizeForFirestore(compactWorkspaceForCloud(applyFinanceCommand(merged,command)));
-    },expected,'Financeiro');}catch(error){if(error instanceof CloudSyncConflictError&&attempt<2)continue;throw error;}
+    },expected,'Financeiro');}catch(error){if(error instanceof CloudSyncConflictError&&attempt<2){expected=error.cloudRevision;continue;}throw error;}
   }
   throw new Error('Não foi possível concluir a operação financeira.');
 }

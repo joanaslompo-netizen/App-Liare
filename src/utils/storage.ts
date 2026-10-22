@@ -1,6 +1,7 @@
 import { estimateMaterialUnitCost, materialRecipeCosts, expandVirtualRecipeItems } from './virtualMaterials';
 export { estimateMaterialUnitCost } from './virtualMaterials';
 import { workspaceStorage as localStorage } from './workspaceStorage';
+import { canonicalJSON } from '../services/workspaceRecordStore';
 import { calculateRecipePricing } from './financials';
 import { synchronizeRecipeFamilies } from './recipeFamilies';
 import { Material, Product, Purchase, Sale, Customer, Supplier, AtelierSettings, RecipeItem, TodoItem, Production, ProductionProject } from '../types';
@@ -1983,7 +1984,7 @@ export const recalculateProductPricing = (
     product.batchYield, product.profitMarginPercent, product.actualPrice, embeddedLaborCost
   );
 
-  return {
+  const recalculated = {
     ...product,
     items: updatedItems,
     materialsCost,
@@ -1996,8 +1997,10 @@ export const recalculateProductPricing = (
     actualPrice,
     netProfit,
     calculatedMarginPercent,
-    updatedAt: new Date().toISOString().split('T')[0],
   };
+  // Unchanged recipes must not acquire a new edit date during a cascade.
+  return canonicalJSON(recalculated) === canonicalJSON(product)
+    ? product : { ...recalculated, updatedAt: new Date().toISOString().split('T')[0] };
 };
 
 /**

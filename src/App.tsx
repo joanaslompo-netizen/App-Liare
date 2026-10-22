@@ -1,5 +1,6 @@
 import { expandVirtualRecipeItems } from './utils/virtualMaterials';
 import {syncFailureKind,retryDelay} from './services/syncRetryPolicy';
+import { cloudQuotaGuard } from './services/cloudQuotaGuard';
 import { ModalFrame } from './components/ModalFrame';
 import {canonicalJSON} from './services/workspaceRecordStore';
 import { workspaceStorage as localStorage } from './utils/workspaceStorage';
@@ -61,7 +62,6 @@ import {
   compactWorkspaceForCloud,
   uploadWorkspaceToCloud, 
   subscribeToWorkspace, 
-  syncUserProfile, 
   fetchWorkspaceFromCloud, 
   fetchPreviousWorkspaceFromCloud,
   mergeWorkspaceData,
@@ -145,6 +145,8 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [syncStatus, setSyncStatus] = useState<CloudSyncStatus>('offline');
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const [quotaRetryAt, setQuotaRetryAt] = useState<number | null>(null);
+  const [cloudRetryGeneration, setCloudRetryGeneration] = useState(0);
   const [isCloudSyncOpen, setIsCloudSyncOpen] = useState(false);
   const [syncNotification, setSyncNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
   
@@ -166,6 +168,19 @@ export default function App() {
   const syncAgainRef = useRef(false);
   const performCloudSyncRef = useRef<(showFeedback?: boolean) => Promise<void>>(async () => {});
   const hasObservedWorkspaceRef = useRef(false);
+  const rememberQuota = useCallback((uid: string, error: unknown, access: 'read' | 'write') => {
+    cloudQuotaGuard.record(uid, error, access);
+    const until = cloudQuotaGuard.retryAt(uid);
+    if (until) setQuotaRetryAt(until);
+  }, []);
+  useEffect(() => {
+    if (!quotaRetryAt) return;
+    const timer = setTimeout(() => {
+      setQuotaRetryAt(null);
+      setCloudRetryGeneration(generation => generation + 1);
+    }, Math.max(0, quotaRetryAt - Date.now()) + 1000);
+    return () => clearTimeout(timer);
+  }, [quotaRetryAt]);
 
   // Active navigation tab - default to 'home' (initial dashboard screen)
   const [activeTab, setActiveTab] = useState<NavTab>('home');
@@ -275,7 +290,7 @@ export default function App() {
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     try {
       if (user && (!hasLoadedCloudRef.current || !navigator.onLine)) throw new Error('Conecte a conta e aguarde a sincronização para registrar este movimento.');
-      const updated = user ? await executeFinanceInCloud(user.uid, workspaceRef.current, cloudBaseRef.current, command) : applyFinanceCommand(workspaceRef.current, command);
+      const updated = user ? await executeFinanceInCloud(user.uid, workspaceRef.current, cloudBaseRef.current, command, cloudRevisionRef.current) : applyFinanceCommand(workspaceRef.current, command);
       if (!localStorage.getItem("atelie_finance_initial_backup_v1")) localStorage.setItem("atelie_finance_initial_backup_v1", JSON.stringify(workspaceRef.current));
       saveWorkspaceSnapshot(updated);
       applyWorkspaceData(updated);
@@ -285,9 +300,9 @@ export default function App() {
         hasLocalChangesRef.current = false; storePendingSync(false); setSyncStatus('synced'); setLastSyncedAt(new Date());
       } else { hasLocalChangesRef.current = true; storePendingSync(true); setSyncStatus('offline'); }
       return true;
-    } catch (error) { alert(error instanceof Error ? error.message : 'Não foi possível registrar.'); return false; }
+    } catch (error) { if (user) rememberQuota(user.uid, error, 'write'); alert(error instanceof Error ? error.message : 'Não foi possível registrar.'); return false; }
     finally { financeLock.current = false; syncInFlightRef.current = false; setFinanceBusy(false); }
-  }, [user, applyWorkspaceData]);
+  }, [user, applyWorkspaceData, rememberQuota]);
 
   // Auto-dismiss notification toast
   useEffect(() => {
@@ -386,6 +401,7 @@ export default function App() {
       }
     } catch (error) {
       console.warn('Erro ao enviar dados para a nuvem:', error);
+      rememberQuota(user.uid, error, 'write');
       hasLocalChangesRef.current = true;
       storePendingSync(true);
       setSyncStatus(error instanceof CloudSyncConflictError ? 'pending' : 'error');
@@ -410,7 +426,7 @@ export default function App() {
         }, nextDelay);
       }
     }
-  }, [applyWorkspaceData, user]);
+  }, [applyWorkspaceData, user, rememberQuota]);
 
   performCloudSyncRef.current = performCloudSync;
 
@@ -428,9 +444,11 @@ export default function App() {
       if(unsubscribeDoc){unsubscribeDoc();unsubscribeDoc=null;}
       syncBlockedRef.current=false;syncRetryAttemptRef.current=0;
       if (currentUser) {
+        const until = cloudQuotaGuard.retryAt(currentUser.uid);
+        if (until) { syncBlockedRef.current = true; setQuotaRetryAt(until); }
         setSyncStatus('syncing');
-        // Profile metadata must never delay loading the atelier's actual data.
-        void syncUserProfile(currentUser);
+        // Display identity comes from Firebase Auth; opening the app does not
+        // rewrite a Firestore profile or start the SDK's separate write queue.
 
         try {
           // Fetch user's cloud workspace
@@ -490,6 +508,7 @@ export default function App() {
         } catch (err) {
           if (!isCurrent()) return;
           console.warn('Erro ao carregar dados do usuário na nuvem:', err);
+          rememberQuota(currentUser.uid, err, 'read');
           setSyncStatus('error');
         }
 
@@ -536,6 +555,7 @@ export default function App() {
           (error) => {
             if (!isCurrent()) return;
             console.warn('Erro na sincronização em tempo real:', error);
+            rememberQuota(currentUser.uid, error, 'read');
             syncBlockedRef.current=syncFailureKind(error)!=='transient';
             if(syncTimeoutRef.current)clearTimeout(syncTimeoutRef.current);
             setSyncStatus('error');
@@ -557,7 +577,7 @@ export default function App() {
       unsubscribeAuth();
       if (unsubscribeDoc) unsubscribeDoc();
     };
-  }, [applyWorkspaceData]);
+  }, [applyWorkspaceData, rememberQuota, cloudRetryGeneration]);
 
   // Alterações ficam salvas localmente na hora e entram em uma fila de envio.
   // Agrupa alterações rápidas e envia após quinze segundos sem novas mudanças.

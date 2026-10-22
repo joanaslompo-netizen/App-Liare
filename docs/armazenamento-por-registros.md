@@ -1,4 +1,10 @@
-# Armazenamento por registros — protocolo 4
+# Armazenamento por registros — protocolos 4 e 5
+
+O leitor aceita o formato 4 publicado anteriormente. Novas alterações usam o
+formato 5 com manifesto compacto e diferenças sobre registros imutáveis, sem
+reenviar imagens inalteradas. A profundidade máxima é 4; todas as camadas têm
+integridade SHA-256 conferida. A atualização ocorre junto de uma alteração real,
+sem migração em massa ao abrir. Ver `auditoria-cota-2026-10-22.md`.
 
 O app e a conexão privada usam o mesmo protocolo, mantido byte a byte em
 `src/services/workspaceRecordStore.ts` (app) e `src/workspaceRecordStore.ts`
@@ -9,7 +15,7 @@ O app e a conexão privada usam o mesmo protocolo, mantido byte a byte em
 - A base `liare_connected_v1` permanece intocada. Nada é apagado na migração.
 - A primeira gravação migra e salva a alteração em uma transação atômica.
 - `records_liare_connected_v1` contém apenas cabeçalho, ordem e referências.
-- Cada item tem documento próprio `r4_<hash da seção e ID>_<revisão>`.
+- Cada item tem documento próprio `r4_<hash da seção e ID>_<revisão>` ou `r5_...`.
 - Configurações e campos desconhecidos são preservados; entradas financeiras,
   contas a pagar e movimentos de estoque têm registros individuais.
 - Registros são versionados: uma edição cria uma versão nova, sem destruir a antiga.

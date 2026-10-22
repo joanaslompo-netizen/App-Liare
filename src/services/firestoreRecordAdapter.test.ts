@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import ts from 'typescript';
+import { cloudQuotaGuard } from './cloudQuotaGuard';
 
 const disk = new Map<string, any>();
 const server = new Map<string, any>();
 const reads: string[] = [];
+let transactionCalls = 0;
+let transactionFailure: { code: string; message: string } | null = null;
 const snapshot = (data: any) => ({ exists: () => data !== undefined, data: () => data });
 const firestore = {
   doc: (_db: unknown, ...path: string[]) => path.at(-1)!,
@@ -18,15 +21,21 @@ const firestore = {
     if (server.has(id)) disk.set(id, server.get(id));
     return snapshot(server.get(id));
   },
-  runTransaction: async (_db: unknown, operation: any) => operation({
+  runTransaction: async (_db: unknown, operation: any, options: any) => {
+    assert.equal(options.maxAttempts, 1, 'O SDK não pode repetir cota automaticamente');
+    transactionCalls++;
+    if (transactionFailure) throw transactionFailure;
+    return operation({
     get: async (id: string) => { reads.push(`transaction:${id}`); return snapshot(server.get(id)); },
     set: () => {},
-  }),
+    });
+  },
 };
 const source = fs.readFileSync(new URL('./firestoreRecordAdapter.ts', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const exports: any = {};
 new Function('require', 'exports', compiled)((name: string) => {
+  if (name === './cloudQuotaGuard') return { cloudQuotaGuard };
   assert.equal(name, 'firebase/firestore'); return firestore;
 }, exports);
 
@@ -48,4 +57,9 @@ const absent = 'r4_' + 'b'.repeat(32) + '_2';
 assert.equal(await adapter.get(absent), null);
 server.set(absent, { value: { id: 'new' } });
 assert.equal((await adapter.get(absent)).data.value.id, 'new', 'Falha/ausência não envenena o cache.');
+transactionFailure = { code: 'resource-exhausted', message: 'Free daily write units per project' };
+const beforeQuota = transactionCalls;
+await assert.rejects(adapter.transaction(async () => null));
+await assert.rejects(adapter.transaction(async () => null));
+assert.equal(transactionCalls - beforeQuota, 1, 'A cota provoca uma chamada; a nova tentativa é bloqueada antes de chegar ao SDK');
 console.log('PASS cache: nova visita sem baixar registro conhecido, consulta simultânea única, índices e transações atualizados no servidor, cache ausente recuperável.');

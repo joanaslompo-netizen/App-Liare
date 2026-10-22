@@ -13,6 +13,7 @@
     "test:finance": "node --import tsx src/utils/financeLedger.test.ts && node --import tsx src/services/cloudSync.test.ts && node --import tsx scripts/test-finance-app.tsx",
     "test:orders": "node --import tsx scripts/test-order-details.tsx && node --import tsx scripts/test-new-order.tsx",
     "test:order-local-save": "node --import tsx scripts/test-order-local-save.tsx",
+    "test:quota": "node --import tsx src/services/cloudQuotaGuard.test.ts && node --import tsx src/services/workspaceRecordStore.quota.test.ts && node --import tsx src/utils/pricingQuota.test.ts && node --import tsx scripts/test-sync-quota.tsx",
     "test:production": "node --import tsx src/utils/productionPlanning.test.ts && node --import tsx scripts/test-product-model-picker.tsx && node --import tsx scripts/test-production-workflow.tsx",
     "test:connection": "node --import tsx src/utils/workspaceStorage.test.ts && node --import tsx src/utils/workspaceStorageIndexedDb.test.ts && node --import tsx scripts/test-startup-storage.tsx",
     "test:storage": "node --import tsx src/services/workspaceRecordStore.test.ts && node --import tsx src/services/cloudSync.test.ts",
