@@ -162,8 +162,11 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                 </div>
 
                 <p className="text-[11px] text-stone-500">
-                  As alterações são salvas imediatamente neste aparelho e enviadas automaticamente após 10 minutos sem novas edições. Se quiser, use “Enviar agora”.
+                  As alterações são salvas neste aparelho e enviadas automaticamente após 15 segundos sem novas edições. Se quiser, use “Enviar agora”.
                 </p>
+                {syncStatus === 'syncing' && <p role="status" className="text-xs text-stone-600">
+                  Você pode fechar esta janela e continuar usando os dados deste aparelho enquanto a nuvem atualiza em segundo plano.
+                </p>}
 
                 <div className="flex flex-wrap gap-2 pt-1 border-t border-stone-200">
                   <button

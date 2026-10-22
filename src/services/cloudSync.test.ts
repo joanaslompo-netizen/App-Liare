@@ -11,7 +11,9 @@ let cloud:any={userId:'test',version:3,materials:[],products:[{...DEFAULT_PRODUC
 const sale=(id:string)=>({id,date:'2026-10-14',productId:'p',productName:'Vela',quantity:1,unitPrice:250,totalRevenue:250,totalCost:20,items:[{id:`line_${id}`,productId:'p',productName:'Vela',quantity:1,unitPrice:250,unitCost:20,totalCost:20}],customerId:'c',financialTracking:true,legacyPaidCents:0});
 cloud.sales=[sale('a'),sale('b')];cloud.finance.entries=[ledger.makeEntry('receipt',300,{id:'advance',customerId:'c'})];docs.set(legacy,structuredClone(cloud));
 const snapshot=(ref:string)=>({exists:()=>docs.has(ref),data:()=>structuredClone(docs.get(ref)),metadata:{hasPendingWrites:false}});
-const firestore:any={doc:(_:unknown,...path:string[])=>path.join('/'),getDocFromServer:async(ref:string)=>snapshot(ref),onSnapshot:()=>()=>{},runTransaction:async(_:unknown,callback:any)=>{
+let serverReadCount=0;
+const listeners=new Set<(data:any)=>void>();
+const firestore:any={doc:(_:unknown,...path:string[])=>path.join('/'),getDocFromCache:async()=>{throw Error('Cache miss');},getDocFromServer:async(ref:string)=>{serverReadCount++;return snapshot(ref);},onSnapshot:(_ref:any,callback:any)=>{listeners.add(callback);return ()=>listeners.delete(callback);},runTransaction:async(_:unknown,callback:any)=>{
  for(let attempt=0;attempt<5;attempt++){
   const reads=new Map<string,number>(),writes=new Map<string,any>();
   const tx={get:async(ref:string)=>{reads.set(ref,versions.get(ref)||0);await new Promise(r=>setTimeout(r,0));return snapshot(ref);},set:(ref:string,value:any)=>writes.set(ref,value)};
@@ -37,3 +39,19 @@ await service.uploadWorkspaceToCloud('test',combined,'Web',cloud.revision);const
 assert.equal((await service.fetchPreviousWorkspaceFromCloud('test')).products.length,1);
 await assert.rejects(service.uploadWorkspaceToCloud('test',local,'Web',1),service.CloudSyncConflictError);
 console.log('PASS fluxo SDK: migração + sincronização, conflito entre dispositivos, backup anterior, receita remota com fornecedor local e dois usos concorrentes de R$250 sobre crédito R$300 permitem só um.');
+const before=serverReadCount;
+const concurrent=await Promise.all([service.fetchWorkspaceFromCloud('test'),service.fetchWorkspaceFromCloud('test')]);
+assert.equal(serverReadCount-before,2,'Buscas simultâneas compartilham a leitura do índice e da proteção antiga.');
+assert.deepEqual(concurrent[0],concurrent[1]);
+let delivered=0;
+let finish!:()=>void;
+const received=new Promise<void>(resolve=>{finish=resolve;});
+const stop=service.subscribeToWorkspace('test',()=>{delivered++;finish();},(error:any)=>assert.fail(error));
+const beforeSnapshots=serverReadCount;
+for(const listener of listeners)listener({metadata:{hasPendingWrites:false}});
+await received;
+assert.equal(serverReadCount-beforeSnapshots,2,'Os dois snapshots iniciais geram uma única leitura da base.');
+assert.equal(delivered,1);
+stop();
+assert.equal(listeners.size,0);
+console.log('PASS consultas: leituras concorrentes e eventos iniciais agrupados sem listeners remanescentes.');

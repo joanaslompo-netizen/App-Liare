@@ -372,19 +372,25 @@ export default function App() {
   // Firebase Auth State Listener & Cloud Sync Subscription
   useEffect(() => {
     let unsubscribeDoc: (() => void) | null = null;
+    let disposed = false;
+    let authGeneration = 0;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+      const generation = ++authGeneration;
+      const isCurrent = () => !disposed && generation === authGeneration;
       setUser(currentUser);
 
       if(unsubscribeDoc){unsubscribeDoc();unsubscribeDoc=null;}
       syncBlockedRef.current=false;syncRetryAttemptRef.current=0;
       if (currentUser) {
         setSyncStatus('syncing');
-        await syncUserProfile(currentUser);
+        // Profile metadata must never delay loading the atelier's actual data.
+        void syncUserProfile(currentUser);
 
         try {
           // Fetch user's cloud workspace
           const cloudData = await fetchWorkspaceFromCloud(currentUser.uid);
+          if (!isCurrent()) return;
           
           if (cloudData) {
             cloudWorkspaceRef.current = cloudData;
@@ -415,28 +421,21 @@ export default function App() {
             }
           } else {
             // First time this user connects: upload their current local workspace to cloud so nothing is lost!
-            const createdCloud = await uploadWorkspaceToCloud(currentUser.uid, {
-              materials,
-              products,
-              purchases,
-              productions,
-              sales,
-              customers,
-              paymentMethods,
-              suppliers,
-              settings,
-              todos,
-              projects, finance, stockMovements,
-            });
+            const startedAtVersion = localChangeVersionRef.current;
+            const createdCloud = await uploadWorkspaceToCloud(currentUser.uid, workspaceRef.current);
+            if (!isCurrent()) return;
             cloudWorkspaceRef.current = createdCloud;
             cloudRevisionRef.current = createdCloud.revision || 1;
             hasLoadedCloudRef.current = true;
-            hasLocalChangesRef.current = false;
-            storePendingSync(false);
+            const changedDuringUpload = localChangeVersionRef.current !== startedAtVersion;
+            hasLocalChangesRef.current = changedDuringUpload;
+            storePendingSync(changedDuringUpload);
             cloudBaseRef.current = createWorkspaceSyncBase(createdCloud);
             storeCloudBase(createdCloud);
-            isIncomingCloudSyncRef.current = true;
-            setSyncStatus('synced');
+            setSyncStatus(changedDuringUpload ? 'pending' : 'synced');
+            if (changedDuringUpload) syncTimeoutRef.current = setTimeout(() => {
+              void performCloudSyncRef.current(false);
+            }, AUTO_SYNC_DELAY_MS);
             setLastSyncedAt(new Date());
             setSyncNotification({
               message: `Conta Google vinculada com sucesso! Seus dados cadastrados foram salvos com segurança na nuvem.`,
@@ -444,14 +443,17 @@ export default function App() {
             });
           }
         } catch (err) {
+          if (!isCurrent()) return;
           console.warn('Erro ao carregar dados do usuário na nuvem:', err);
           setSyncStatus('error');
         }
 
         // Subscribe to real-time changes across devices (Notebook <-> Phone <-> Tablet)
+        if (!isCurrent()) return;
         unsubscribeDoc = subscribeToWorkspace(
           currentUser.uid,
           (updatedData) => {
+            if (!isCurrent()) return;
             if (updatedData) {
               cloudWorkspaceRef.current = updatedData;
               const incomingRevision = updatedData.revision || 0;
@@ -459,9 +461,20 @@ export default function App() {
 
               // Uma revisão recebida nunca substitui trabalho local ainda pendente.
               // A próxima sincronização fará a mesclagem automaticamente.
-              if (hasLocalChangesRef.current && hasLoadedCloudRef.current) {
+              if (hasLocalChangesRef.current) {
+                hasLoadedCloudRef.current = true;
+                if (!cloudBaseRef.current) {
+                  cloudBaseRef.current = createWorkspaceSyncBase(updatedData);
+                  storeCloudBase(updatedData);
+                }
                 setSyncStatus('pending');
                 if (incomingRevision !== cloudRevisionRef.current) syncAgainRef.current = true;
+                if (!syncInFlightRef.current && !syncBlockedRef.current) {
+                  if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+                  syncTimeoutRef.current = setTimeout(() => {
+                    void performCloudSyncRef.current(false);
+                  }, AUTO_SYNC_DELAY_MS);
+                }
                 return;
               }
               cloudRevisionRef.current = incomingRevision;
@@ -476,6 +489,7 @@ export default function App() {
             }
           },
           (error) => {
+            if (!isCurrent()) return;
             console.warn('Erro na sincronização em tempo real:', error);
             syncBlockedRef.current=syncFailureKind(error)!=='transient';
             if(syncTimeoutRef.current)clearTimeout(syncTimeoutRef.current);
@@ -492,6 +506,9 @@ export default function App() {
     });
 
     return () => {
+      disposed = true;
+      authGeneration += 1;
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
       unsubscribeAuth();
       if (unsubscribeDoc) unsubscribeDoc();
     };

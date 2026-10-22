@@ -15,7 +15,8 @@
     "test:production": "node --import tsx src/utils/productionPlanning.test.ts && node --import tsx scripts/test-product-model-picker.tsx && node --import tsx scripts/test-production-workflow.tsx",
     "test:connection": "node --import tsx src/utils/workspaceStorage.test.ts && node --import tsx src/utils/workspaceStorageIndexedDb.test.ts && node --import tsx scripts/test-startup-storage.tsx",
     "test:storage": "node --import tsx src/services/workspaceRecordStore.test.ts && node --import tsx src/services/cloudSync.test.ts",
-    "test:modals": "node --import tsx scripts/test-modal-frame.tsx"
+    "test:modals": "node --import tsx scripts/test-modal-frame.tsx",
+    "test:cloud-startup": "node --import tsx src/services/firestoreRecordAdapter.test.ts && node --import tsx scripts/test-cloud-startup.tsx"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

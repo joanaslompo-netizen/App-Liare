@@ -8,7 +8,7 @@ import {
   onAuthStateChanged,
   User 
 } from 'firebase/auth';
-import { initializeFirestore } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import firebaseConfigJson from '../../firebase-applet-config.json';
 
 const firebaseConfig = {
@@ -33,6 +33,11 @@ export const db = initializeFirestore(
   app,
   {
     experimentalAutoDetectLongPolling: true,
+    // Keep immutable records between visits, including when several tabs are open.
+    // The record adapter still reads mutable manifests directly from the server.
+    ...(typeof indexedDB !== 'undefined' ? {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    } : {}),
   },
   firebaseConfigJson.firestoreDatabaseId && firebaseConfigJson.firestoreDatabaseId !== '(default)'
     ? firebaseConfigJson.firestoreDatabaseId

@@ -255,10 +255,16 @@ export async function uploadWorkspaceToCloud(
   validateFinanceData(compact.finance||emptyFinance());
   return mutateRecords(userId,()=>sanitizeForFirestore(compact),expectedRevision,deviceLabel);
 }
-export async function fetchWorkspaceFromCloud(userId:string):Promise<WorkspaceData|null> {
-  if(!userId)return null;
-  const loaded=await recordStore(userId).read();
-  return loaded?workspaceFromData(loaded.data):null;
+const workspaceReads = new Map<string, Promise<WorkspaceData | null>>();
+export function fetchWorkspaceFromCloud(userId:string):Promise<WorkspaceData|null> {
+  if(!userId)return Promise.resolve(null);
+  const pending=workspaceReads.get(userId);
+  if(pending)return pending;
+  const read=recordStore(userId).read()
+    .then(loaded=>loaded?workspaceFromData(loaded.data):null)
+    .finally(()=>{workspaceReads.delete(userId);});
+  workspaceReads.set(userId,read);
+  return read;
 }
 export async function fetchPreviousWorkspaceFromCloud(userId:string):Promise<WorkspaceData|null> {
   if(!userId)return null;
@@ -267,13 +273,30 @@ export async function fetchPreviousWorkspaceFromCloud(userId:string):Promise<Wor
 }
 export function subscribeToWorkspace(userId:string,onData:(data:WorkspaceData)=>void,onError?:(error:Error)=>void):Unsubscribe {
   let stopped=false,sequence=0;
+  let running=false,requested=false;
+  let timer:ReturnType<typeof setTimeout>|undefined;
   // Both listeners are needed during cutover: a stale tab must never silently
   // change the legacy workspace behind the new record-based store.
-  const refresh=async()=>{const current=++sequence;try{const data=await fetchWorkspaceFromCloud(userId);if(!stopped&&current===sequence&&data)onData(data);}catch(error){if(!stopped&&current===sequence)onError?.(error as Error);}};
+  const refresh=async()=>{
+    running=true;
+    try {
+      while(requested&&!stopped){
+        requested=false;const current=sequence;
+        try{const data=await fetchWorkspaceFromCloud(userId);if(!stopped&&current===sequence&&data)onData(data);}
+        catch(error){if(!stopped&&current===sequence)onError?.(error as Error);}
+      }
+    } finally {running=false;}
+  };
+  const schedule=()=>{
+    sequence++;requested=true;
+    if(stopped||running||timer!==undefined)return;
+    // The two initial snapshots describe one workspace, not two full downloads.
+    timer=setTimeout(()=>{timer=undefined;void refresh();},0);
+  };
   const listeners=[HEAD_ID,LEGACY_ID].map(id=>onSnapshot(doc(db,'users',userId,'workspaces',id),snapshot=>{
-    if(!snapshot.metadata.hasPendingWrites)void refresh();
+    if(!snapshot.metadata.hasPendingWrites)schedule();
   },error=>{if(!stopped)onError?.(error);}));
-  return ()=>{stopped=true;sequence++;listeners.forEach(unsubscribe=>unsubscribe());};
+  return ()=>{stopped=true;sequence++;if(timer!==undefined)clearTimeout(timer);listeners.forEach(unsubscribe=>unsubscribe());};
 }
 
 function unionRecords<T extends { id: string }>(local: T[] = [], cloud: T[] = []): T[] {
