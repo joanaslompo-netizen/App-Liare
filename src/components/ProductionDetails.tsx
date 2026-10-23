@@ -16,6 +16,7 @@ import {
 } from "../utils/formatters";
 import { getProductionPlan } from "../utils/productionPlanning";
 import { ProductionMaterialPlan } from './ProductionMaterialPlan';
+import { ProductionIngredientForecast } from './ProductionIngredientForecast';
 
 interface StageProgressModalProps {
   production: Production;
@@ -119,7 +120,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
   const buildStageDeductions = (quantityToAdvance: number) => {
     const plan = getProductionPlan({ ...product, items: stageRecipeItems, batchYield } as Product,
       quantityToAdvance, materials, products, production.variableSelections);
-    return { deductions: plan.deductions, shortage: plan.hasStockShortage,
+    return { deductions: plan.deductions, forecast: plan.forecast, shortage: plan.hasStockShortage,
       missingVariable: plan.hasMissingVariableSelection, batchFactor: quantityToAdvance / batchYield,
       preparationCost: plan.virtualPreparationCost, automaticManufacturing: plan.automaticManufacturing, errors: plan.errors };
   };
@@ -390,30 +391,13 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
                 <h5 className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-2">
                   Previsão de insumos desta etapa
                 </h5>
-                {preview.deductions.length === 0 ? (
+                {preview.forecast.length === 0 ? (
                   <p className="text-[11px] text-stone-500 bg-white border border-stone-200 rounded-lg p-3">
                     Esta etapa não possui insumos consumíveis. Apenas o
                     progresso e a mão de obra serão registrados.
                   </p>
                 ) : (
-                  <div className="space-y-1.5">
-                    {preview.deductions.map((deduction) => (
-                      <div
-                        key={`${deduction.type}-${deduction.targetId}`}
-                        className="flex items-center justify-between gap-3 bg-white border border-stone-200 rounded-lg px-3 py-2 text-[11px]"
-                      >
-                        <span className="font-medium text-stone-800 truncate">
-                          {deduction.name}
-                        </span>
-                        <span
-                          className={`font-bold shrink-0 ${deduction.stockAfter < 0 ? "text-rose-700" : "text-stone-700"}`}
-                        >
-                          {formatNumber(deduction.quantityTotal)}{" "}
-                          {deduction.unit}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  <ProductionIngredientForecast items={preview.forecast} />
                 )}
               </div>
             </div>

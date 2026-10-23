@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import type { Material, Product, Production, ProductionIngredientDeduction } from '../types';
-import { aggregateProductionDeductions, getProductionPlan } from '../utils/productionPlanning';
+import { aggregateProductionDeductions, getProductionPlan, replanProductionSequence } from '../utils/productionPlanning';
 import { formatNumber } from '../utils/formatters';
+import { ProductionIngredientForecast } from './ProductionIngredientForecast';
 
 function MaterialList({ items }: { items: ProductionIngredientDeduction[] }) {
   if (!items.length) return <p className="text-sm text-[#75665c]">Sem insumos consumíveis.</p>;
@@ -27,13 +28,15 @@ export function ProductionMaterialPlan({ production, product, materials, product
   const stages = useMemo(() => {
     const items = production.recipeItemsSnapshot || product?.items;
     if (!items) return [];
-    return [...(production.stageProgress || [])].sort((a, b) => a.order - b.order).map(stage => {
+    const stagePlans = [...(production.stageProgress || [])].sort((a, b) => a.order - b.order).map(stage => {
       const units = valid ? Math.max(0, parsed - (remainingOnly ? stage.completedQuantity : 0)) : 0;
       const plan = getProductionPlan({ totalCost: 0, materialsCost: 0, ...product, batchYield: production.batchYield,
         items: items.filter(item => item.productionStageId === stage.stageId) } as Product,
       units, materials, products, production.variableSelections);
       return { stage, units, plan };
     });
+    const sharedPlans = replanProductionSequence(stagePlans.map(value => value.plan), false);
+    return stagePlans.map((value, index) => ({ ...value, plan: sharedPlans[index] }));
   }, [production, product, materials, products, parsed, valid, remainingOnly]);
   const total = aggregateProductionDeductions(stages.map(stage => stage.plan));
   const errors = [...new Set(stages.flatMap(stage => stage.plan.errors))];
@@ -60,7 +63,7 @@ export function ProductionMaterialPlan({ production, product, materials, product
       </label>
     </div>
     {!valid ? <p role="status" className="text-sm text-[#956350]">Informe uma quantidade inteira maior que zero para simular.</p> : <>
-      <p className="text-xs text-[#75665c]">{remainingOnly ? 'Necessário para o que falta concluir' : 'Total planejado, incluindo etapas já realizadas'} · {formatNumber(parsed)} unidades. As receitas virtuais aparecem separadas nos ingredientes.</p>
+      <p className="text-xs text-[#75665c]">{remainingOnly ? 'Necessário para o que falta concluir' : 'Total planejado, incluindo etapas já realizadas'} · {formatNumber(parsed)} unidades. Cada receita aparece com seus insumos logo abaixo.</p>
       {errors.length > 0 && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
         Não foi possível calcular todos os insumos: {errors.join(' ')}
       </div>}
@@ -70,7 +73,7 @@ export function ProductionMaterialPlan({ production, product, materials, product
           <p className="text-xs font-medium text-[#8a817a]">Etapa {index + 1} · {formatNumber(units)} unidades</p>
           <h5 className="mt-1 font-semibold text-[#352f2b]">{stage.stageName}</h5>
           <p className="mb-2 mt-1 text-xs text-[#75665c]">Já concluídas: {formatNumber(stage.completedQuantity)} de {formatNumber(stage.plannedQuantity)}</p>
-          {units > 0 ? <MaterialList items={plan.deductions} /> : <p className="text-sm text-[#75665c]">Nada a separar para esta etapa.</p>}
+          {units > 0 ? (plan.forecast.length ? <ProductionIngredientForecast items={plan.forecast} /> : <p className="text-sm text-[#75665c]">Sem insumos consumíveis.</p>) : <p className="text-sm text-[#75665c]">Nada a separar para esta etapa.</p>}
         </section>)}
       </div>
       <section aria-label="Total geral de insumos" className="rounded-xl border border-[#dcc6b8] bg-white p-4">

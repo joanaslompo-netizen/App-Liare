@@ -1,7 +1,18 @@
 import type { AutomaticManufacture, Material, Product, Production, RecipeItem, StockMovement } from '../types';
-import { expandVirtualRecipeItems } from './virtualMaterials';
+import { expandVirtualRecipeItems, type ExpandedRecipeNode } from './virtualMaterials';
 
 const rounded = (value: number) => Number(value.toFixed(8));
+
+/** Preview only; never stored on a production or used as an additional deduction. */
+export interface ConsumptionForecastNode {
+  item: RecipeItem;
+  quantityTotal: number;
+  stockQuantity: number;
+  manufactureQuantity: number;
+  isVirtualRecipe: boolean;
+  stockAfter?: number;
+  children: ConsumptionForecastNode[];
+}
 
 /** A pure stock plan: use ready stock first and manufacture only the deficit.
  * The new component is immediately consumed, so only its existing stock and
@@ -23,7 +34,7 @@ export function planAutomaticConsumption(items: RecipeItem[], materials: Materia
     used.set(key, { ...item, quantity: rounded((previous?.quantity || 0) + quantity) });
     balances.set(key, rounded((balances.get(key) || 0) - quantity));
   };
-  const consume = (item: RecipeItem, quantity: number, ancestors: string[]) => {
+  const consume = (item: RecipeItem, quantity: number, ancestors: string[]): ConsumptionForecastNode | undefined => {
     if (!Number.isFinite(quantity) || quantity < 0) { errors.push(`Quantidade inválida em "${item.name}".`); return; }
     if (quantity <= 0.00000001) return;
     const key = `${item.type}:${item.targetId}`;
@@ -31,9 +42,11 @@ export function planAutomaticConsumption(items: RecipeItem[], materials: Materia
     const product = item.type === 'product' ? products.find(value => value.id === item.targetId) : undefined;
     if (material?.usageType === 'durable') return;
     const available = Math.max(0, balances.get(key) || 0);
-    if (available + 0.00000001 >= quantity) { add(item, quantity); return; }
+    const node: ConsumptionForecastNode = { item, quantityTotal: rounded(quantity), stockQuantity: rounded(Math.min(available, quantity)),
+      manufactureQuantity: 0, isVirtualRecipe: false, children: [] };
+    if (available + 0.00000001 >= quantity) { add(item, quantity); return { ...node, stockAfter: balances.get(key) }; }
     const canMake = material ? material.isMadeInAtelier : !!product?.items?.length;
-    if (!canMake) { add(item, quantity); return; }
+    if (!canMake) { add(item, quantity); return { ...node, stockAfter: balances.get(key) }; }
     if (ancestors.includes(key)) { errors.push(`A receita de "${item.name}" contém uma referência circular.`); return; }
     const yieldQty = material?.batchYield ?? product?.batchYield;
     if (!Number.isFinite(yieldQty) || yieldQty! <= 0 || (material && !material.recipeItems?.length)) { errors.push(`Confira os ingredientes e o rendimento de "${item.name}".`); return; }
@@ -52,12 +65,24 @@ export function planAutomaticConsumption(items: RecipeItem[], materials: Materia
     }
     errors.push(...recipe.errors);
     preparationCost += recipe.preparationCost * scale;
-    for (const child of recipe.leaves) consume(child, child.quantity * scale, [...ancestors, key]);
+    node.manufactureQuantity = missing;
+    // A physical material's temporary virtual root represents this same item.
+    // Keep only its children below the physical item's full required quantity.
+    node.children = consumeTree(material ? recipe.tree.flatMap(root => root.children) : recipe.tree, scale, [...ancestors, key]);
     automaticManufacturing.push({ type: item.type, targetId: item.targetId, name: item.name, quantity: missing, unit: item.unit });
+    return node;
   };
-  for (const item of expanded.leaves) consume(item, item.quantity * factor, []);
+  function consumeTree(nodes: ExpandedRecipeNode[], scale: number, ancestors: string[]): ConsumptionForecastNode[] {
+    return nodes.flatMap(node => {
+      if (node.isVirtualRecipe) return [{ item: node.item, quantityTotal: rounded(node.item.quantity * scale),
+        stockQuantity: 0, manufactureQuantity: 0, isVirtualRecipe: true, children: consumeTree(node.children, scale, ancestors) }];
+      const consumed = consume(node.item, node.item.quantity * scale, ancestors);
+      return consumed ? [consumed] : [];
+    });
+  }
+  const forecast = consumeTree(expanded.tree, factor, []);
   const deductions = [...used.entries()].map(([key, item]) => ({ ...item, quantityPerBatch: factor > 0 ? item.quantity / factor : 0, quantityTotal: item.quantity, totalCost: item.unitCost * item.quantity, stockBefore: initial.get(key) || 0, stockAfter: rounded((initial.get(key) || 0) - item.quantity) }));
-  return { deductions, automaticManufacturing, errors: [...new Set(errors)], preparationCost, requirements: expanded.requirements, hasStockShortage: deductions.some(item => item.stockAfter < -0.0001) };
+  return { deductions, automaticManufacturing, forecast, errors: [...new Set(errors)], preparationCost, requirements: expanded.requirements, hasStockShortage: deductions.some(item => item.stockAfter < -0.0001) };
 }
 
 /** Never double-consume ingredients of a component already being made by stages. */

@@ -55,6 +55,7 @@ export function getProductionPlan(
     parsedBatchCount,
     isStagedProduction,
     deductions,
+    forecast: expanded.forecast,
     hasStockShortage,
     hasMissingVariableSelection,
     errors: expanded.errors,

@@ -73,23 +73,32 @@ export interface VirtualRequirement {
   savedSelection: boolean;
 }
 
+/** Display hierarchy alongside the unchanged flat ingredients used for stock/costs. */
+export interface ExpandedRecipeNode {
+  item: RecipeItem;
+  isVirtualRecipe: boolean;
+  children: ExpandedRecipeNode[];
+}
+
 /** Expand only virtual materials. Physical made materials/products consume their own stock. */
 export function expandVirtualRecipeItems(items: RecipeItem[], materials: Material[], products: Product[] = [],
   variableSelections: Record<string, string> = {}) {
   const leaves: RecipeItem[] = [], requirements: VirtualRequirement[] = [], errors: string[] = [];
+  const tree: ExpandedRecipeNode[] = [];
   let preparationCost = 0, virtualLaborCost = 0;
   for (const root of items) {
     const rootPrefix = `${root.id}::${root.targetId}::`;
     const dynamic = Object.fromEntries(Object.entries(variableSelections).filter(([key]) => key.startsWith(rootPrefix))
       .map(([key, value]) => [key.slice(rootPrefix.length), value]));
     const visit = (item: RecipeItem, scale: number, path: string[], saved: Record<string, string>,
-      chosenAtProduction: Record<string, string>, ancestors: string[], owner?: Material) => {
+      chosenAtProduction: Record<string, string>, ancestors: string[], owner?: Material): ExpandedRecipeNode | undefined => {
       const quantity = item.quantity * scale;
       if (item.type === 'product') {
         const product = products.find(p => p.id === item.targetId);
         if (!product) { errors.push(`O componente "${item.name}" não foi encontrado.`); return; }
-        leaves.push({ ...item, quantity, name: product.name, unitCost: product.unitCostFromBatch > 0 ? product.unitCostFromBatch : product.totalCost });
-        return;
+        const resolved = { ...item, quantity, name: product.name, unitCost: product.unitCostFromBatch > 0 ? product.unitCostFromBatch : product.totalCost };
+        leaves.push(resolved);
+        return { item: resolved, isVirtualRecipe: false, children: [] };
       }
       let material: Material | undefined;
       if (item.selectionMode === 'category' && item.targetCategory) {
@@ -107,9 +116,10 @@ export function expandVirtualRecipeItems(items: RecipeItem[], materials: Materia
       }
       if (material.usageType === 'durable') return;
       if (!material.isVirtualRecipe) {
-        leaves.push({ ...item, selectionMode: 'fixed', targetId: material.id, name: material.name,
-          unit: UNIT_SHORT[material.unit] || item.unit, quantity, unitCost: material.inventoryUnitCost ?? material.unitCost });
-        return;
+        const resolved: RecipeItem = { ...item, selectionMode: 'fixed', targetId: material.id, name: material.name,
+          unit: UNIT_SHORT[material.unit] || item.unit, quantity, unitCost: material.inventoryUnitCost ?? material.unitCost };
+        leaves.push(resolved);
+        return { item: resolved, isVirtualRecipe: false, children: [] };
       }
       if (ancestors.includes(material.id)) { errors.push(`A fórmula de "${material.name}" contém uma referência circular.`); return; }
       if (!material.recipeItems?.length || !Number.isFinite(material.batchYield) || material.batchYield! <= 0) {
@@ -122,12 +132,15 @@ export function expandVirtualRecipeItems(items: RecipeItem[], materials: Materia
       preparationCost += costs.preparationUnitCost * quantity;
       virtualLaborCost += costs.ownLaborUnitCost * quantity;
       const nextPath = isRoot ? [] : [...path, item.id, material.id];
-      for (const child of material.recipeItems) visit(child, quantity / material.batchYield!, nextPath, nextSaved,
-        nextDynamic, [...ancestors, material.id], material);
+      const children = material.recipeItems.map(child => visit(child, quantity / material.batchYield!, nextPath, nextSaved,
+        nextDynamic, [...ancestors, material.id], material)).filter((node): node is ExpandedRecipeNode => !!node);
+      return { item: { ...item, targetId: material.id, name: material.name, quantity, unit: UNIT_SHORT[material.unit] || item.unit },
+        isVirtualRecipe: true, children };
     };
-    visit(root, 1, [], {}, {}, []);
+    const node = visit(root, 1, [], {}, {}, []);
+    if (node) tree.push(node);
   }
-  return { leaves, requirements, errors, preparationCost, virtualLaborCost };
+  return { leaves, requirements, errors, preparationCost, virtualLaborCost, tree };
 }
 
 export function getVirtualMaterialRequirements(material: Material, materials: Material[], choices: Record<string, string> = {}) {
