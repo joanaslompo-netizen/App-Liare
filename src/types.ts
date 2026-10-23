@@ -377,6 +377,7 @@ export interface ProductionStageProgress {
 }
 
 export interface Production {
+  automaticManufacturing?: AutomaticManufacture[];
   id: string;
   date: string; // YYYY-MM-DD
   productId: string;
@@ -573,4 +574,12 @@ export interface StockMovement {
   reason: string;
   referenceId?: string;
   businessUnitCost?: number;
+}
+
+export interface AutomaticManufacture {
+  type: 'material' | 'product';
+  targetId: string;
+  name: string;
+  quantity: number;
+  unit: string;
 }

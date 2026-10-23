@@ -121,7 +121,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
       quantityToAdvance, materials, products, production.variableSelections);
     return { deductions: plan.deductions, shortage: plan.hasStockShortage,
       missingVariable: plan.hasMissingVariableSelection, batchFactor: quantityToAdvance / batchYield,
-      preparationCost: plan.virtualPreparationCost, errors: plan.errors };
+      preparationCost: plan.virtualPreparationCost, automaticManufacturing: plan.automaticManufacturing, errors: plan.errors };
   };
 
   const parsedQuantity = Math.max(0, Number(quantity) || 0);
@@ -226,10 +226,12 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
         recordedDeductions,
       ),
       stageProgress: nextStageProgress,
+      automaticManufacturing: tracksStock ? [...(production.automaticManufacturing || []), ...result.automaticManufacturing] : production.automaticManufacturing,
       completedAt: isCompleted ? localDateString() : undefined,
     };
 
-    onAdvance(updatedProduction, recordedDeductions, finishedQuantityDelta);
+    try { onAdvance(updatedProduction, recordedDeductions, finishedQuantityDelta); }
+    catch (failure) { alert(failure instanceof Error ? failure.message : 'Não foi possível registrar a etapa.'); }
   };
 
   return (
@@ -595,6 +597,7 @@ export const ViewProductionModal: React.FC<ViewProductionModalProps> = ({
             </div>
           </div>
 
+          {!!production.automaticManufacturing?.length && <div className="rounded-xl border border-stone-200 bg-stone-50 p-3 text-sm"><h4 className="font-semibold">Produzido automaticamente para este consumo</h4><ul className="mt-2 space-y-1">{production.automaticManufacturing.map((item,index)=><li key={`${item.type}:${item.targetId}:${index}`}>{item.name}: {formatNumber(item.quantity)} {item.unit}</li>)}</ul></div>}
           {production.notes && (
             <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 text-xs text-stone-600">
               <strong className="block text-[10px] text-stone-500 uppercase font-semibold mb-0.5">

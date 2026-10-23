@@ -1,4 +1,5 @@
-import type { CreditCard, Customer, DeliveryEvent, FinancialAccount, FinanceBill, FinanceData, FinanceEntry, Material, Product, Purchase, PurchasePayment, Sale, SaleItem, StockMovement } from '../types';
+import type { CreditCard, Customer, DeliveryEvent, FinancialAccount, FinanceBill, FinanceData, FinanceEntry, Material, Product, Production, Purchase, PurchasePayment, Sale, SaleItem, StockMovement } from '../types';
+import { automaticStockMovements, planAutomaticConsumption, validateAutomaticManufacturing } from './automaticManufacturing';
 import { cardFirstDueDate, financialAccounts, monthlyDueDate } from './bankAccounts';
 import { getUnitConversionMultiplier } from './formatters';
 import { cascadeRecalculateAllProducts } from './storage';
@@ -61,7 +62,7 @@ export function accountCashEffect(entry: FinanceEntry, finance: FinanceData, acc
 export const accountBalance = (finance: FinanceData, account: string, until = localDateString()) => finance.entries.filter(entry => entry.date <= until).reduce((sum, entry) => sum + accountCashEffect(entry, finance, account), 0);
 export const billBalance = (bill: FinanceBill, finance: FinanceData) => Math.max(0, bill.amountCents - activeEntries(finance).filter(e => e.billId === bill.id && ['expense_payment', 'purchase_payment'].includes(e.kind)).reduce((s, e) => s + e.amountCents, 0));
 
-export interface LedgerWorkspace { sales: Sale[]; products: Product[]; customers?: Customer[]; materials?: Material[]; purchases?: Purchase[]; finance?: FinanceData; stockMovements?: StockMovement[]; settings: { lastOrderNumber?: number }; }
+export interface LedgerWorkspace { sales: Sale[]; products: Product[]; productions?: Production[]; customers?: Customer[]; materials?: Material[]; purchases?: Purchase[]; finance?: FinanceData; stockMovements?: StockMovement[]; settings: { lastOrderNumber?: number }; }
 export type FinanceCommand =
   | { type: 'save_account'; account: FinancialAccount; openingBalanceCents?: number; date: string }
   | { type: 'save_card'; card: CreditCard }
@@ -297,17 +298,32 @@ export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, comman
     if (command.quantity > (command.kind === 'delivery' ? item.quantity - net : net)) fail('A quantidade supera o saldo desse item.');
     const productId = item.isCustom ? item.customProductId : item.productId;
     const product = next.products.find(p => p.id === productId);
+    let manufacturedQuantity = 0;
     if (command.kind === 'delivery') {
       if (!product) fail('Produza o item antes de entregar.');
-      const reservedOther = next.sales.filter(s => s.id !== sale.id && isActiveOrder(s)).flatMap(orderItems).filter(it => (it.isCustom ? it.customProductId : it.productId) === productId).reduce((s, it) => s + (it.reservedQuantity || 0), 0);
-      if ((product.currentStock || 0) - reservedOther < command.quantity) fail('Estoque insuficiente para esta entrega.');
+      const protectedStock = new Map<string, number>();
+      for (const order of next.sales.filter(order => order.id !== sale.id && isActiveOrder(order))) for (const row of orderItems(order)) {
+        const id = row.isCustom ? row.customProductId : row.productId;
+        if (id) protectedStock.set(id, (protectedStock.get(id) || 0) + (row.reservedQuantity || 0));
+      }
+      const plan = planAutomaticConsumption([{ id: item.id || product.id, type: 'product', targetId: product.id, name: product.name, unit: 'un', quantity: command.quantity, unitCost: product.unitCostFromBatch || item.unitCost, totalCost: 0 }], next.materials || [], next.products, 1, {}, protectedStock);
+      if (plan.errors.length) fail(plan.errors[0]);
+      if (plan.hasStockShortage) fail('Estoque insuficiente dos materiais necessários para esta entrega.');
+      validateAutomaticManufacturing(plan.automaticManufacturing, next.productions);
+      manufacturedQuantity = plan.automaticManufacturing.filter(event => event.type === 'product' && event.targetId === product.id).reduce((sum,event)=>sum+event.quantity,0);
+      next.materials = next.materials?.map(material => { const deduction = plan.deductions.find(row => row.type === 'material' && row.targetId === material.id); return deduction ? { ...material, currentStock: Number((material.currentStock - deduction.quantityTotal).toFixed(4)), updatedAt: command.date } : material; });
+      next.products = next.products.map(value => { const deduction = plan.deductions.find(row => row.type === 'product' && row.targetId === value.id); return deduction ? { ...value, currentStock: Number(((value.currentStock || 0) - deduction.quantityTotal).toFixed(4)) } : value; });
+      next.stockMovements!.push(...plan.deductions.filter(row => row.type !== 'product' || row.targetId !== product.id).map((row, index) => ({ id: `${command.id}_ingredient_${index}`, date: command.date, targetId: row.targetId, type: row.type, quantity: -row.quantityTotal, reason: 'Insumo para entrega com produção automática', referenceId: sale.id })));
+      next.stockMovements!.push(...automaticStockMovements(plan.automaticManufacturing, command.id, command.date, sale.id).filter(movement => movement.type !== 'product' || movement.targetId !== product.id || movement.quantity > 0));
     }
     const delta = command.kind === 'delivery' ? -command.quantity : command.restock ? command.quantity : 0;
-    next.products = next.products.map(p => p.id === productId ? { ...p, currentStock: (p.currentStock || 0) + delta } : p);
+    if (command.kind === 'return') next.products = next.products.map(p => p.id === productId ? { ...p, currentStock: (p.currentStock || 0) + delta } : p);
     const estimated = product ? getProductFinancialSplit(product) : {businessCostPerUnit:item.unitCost,laborRemunerationPerUnit:0};
+    const deliveryBusinessCost = manufacturedQuantity && product ? ((command.quantity-manufacturedQuantity)*(product.inventoryBusinessCost ?? estimated.businessCostPerUnit)+manufacturedQuantity*estimated.businessCostPerUnit)/command.quantity : product?.inventoryBusinessCost ?? item.unitBusinessCost ?? estimated.businessCostPerUnit;
+    const deliveryLaborCost = manufacturedQuantity && product ? ((command.quantity-manufacturedQuantity)*(product.inventoryLaborCost ?? estimated.laborRemunerationPerUnit)+manufacturedQuantity*estimated.laborRemunerationPerUnit)/command.quantity : product?.inventoryLaborCost ?? item.unitLaborRemuneration ?? estimated.laborRemunerationPerUnit;
     const allocated = allocateCents(cents(sale.totalRevenue-(sale.shippingCharged||0)),sale.items!.map(it=>cents(it.quantity*it.unitPrice)));
     const priorEvent = sale.deliveryHistory?.find(e=>e.itemId===item.id&&e.kind==='delivery');
-    const event: DeliveryEvent = { ...command, unitBusinessCost: command.kind==='return' ? priorEvent?.unitBusinessCost ?? item.unitBusinessCost ?? estimated.businessCostPerUnit : product?.inventoryBusinessCost ?? item.unitBusinessCost ?? estimated.businessCostPerUnit, unitLaborRemuneration: command.kind==='return' ? priorEvent?.unitLaborRemuneration ?? item.unitLaborRemuneration ?? estimated.laborRemunerationPerUnit : product?.inventoryLaborCost ?? item.unitLaborRemuneration ?? estimated.laborRemunerationPerUnit, unitRevenueCents: command.kind==='return' ? priorEvent?.unitRevenueCents ?? allocated[sale.items!.findIndex(it=>it.id===item.id)]/item.quantity : allocated[sale.items!.findIndex(it=>it.id===item.id)]/item.quantity };
+    const event: DeliveryEvent = { ...command, unitBusinessCost: command.kind==='return' ? priorEvent?.unitBusinessCost ?? item.unitBusinessCost ?? estimated.businessCostPerUnit : deliveryBusinessCost, unitLaborRemuneration: command.kind==='return' ? priorEvent?.unitLaborRemuneration ?? item.unitLaborRemuneration ?? estimated.laborRemunerationPerUnit : deliveryLaborCost, unitRevenueCents: command.kind==='return' ? priorEvent?.unitRevenueCents ?? allocated[sale.items!.findIndex(it=>it.id===item.id)]/item.quantity : allocated[sale.items!.findIndex(it=>it.id===item.id)]/item.quantity };
     if(command.kind==='return' && command.restock && product) next.products=next.products.map(p=>p.id===product.id?{...p,inventoryBusinessCost:((product.currentStock||0)*(product.inventoryBusinessCost??estimated.businessCostPerUnit)+command.quantity*(event.unitBusinessCost||0))/((product.currentStock||0)+command.quantity),inventoryLaborCost:((product.currentStock||0)*(product.inventoryLaborCost??estimated.laborRemunerationPerUnit)+command.quantity*(event.unitLaborRemuneration||0))/((product.currentStock||0)+command.quantity)}:p);
     sale.deliveryHistory = [...(sale.deliveryHistory || []), event];
     sale.items = sale.items!.map(it => it.id === item.id ? { ...it, deliveredQuantity: (it.deliveredQuantity || 0) + (command.kind === 'delivery' ? command.quantity : 0), returnedQuantity: (it.returnedQuantity || 0) + (command.kind === 'return' ? command.quantity : 0), stockConsumedQuantity: net + (command.kind === 'delivery' ? command.quantity : -command.quantity), reservedQuantity: Math.max(0, (it.reservedQuantity || 0) - (command.kind === 'delivery' ? command.quantity : 0)) } : it);

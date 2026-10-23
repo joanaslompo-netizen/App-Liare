@@ -4,6 +4,8 @@ import { doc, getFirestore, terminate, writeBatch } from 'firebase/firestore';
 import { createRecordStore, decodeRecordHead, HEAD_ID, LEGACY_ID, PREVIOUS_HEAD_ID, type RecordAdapter, type StoreWrite, type WriteContext } from './workspaceRecordStore';
 import { applyFinanceCommand, type FinanceCommand } from '../utils/financeLedger';
 import { DEFAULT_SETTINGS } from '../utils/storage';
+import { autoMaterials, autoProducts } from '../../scripts/automaticManufacturingFixtures';
+import { buildProductionBatch, getProductionPlan } from '../utils/productionPlanning';
 
 // Use the installed SDK's real write parser, without committing or contacting a
 // server. A permissive transaction mock missed the nested-array regression.
@@ -53,6 +55,9 @@ try {
   current = await store.mutate(data => applyFinanceCommand(data, { type: 'save_card', card: { id: 'card', name: 'Cartão teste', closingDay: 25, dueDay: 31, paymentAccount: 'bank' } }), current.revision);
   current = await store.mutate(data => applyFinanceCommand(data, { ...command, purchase: { ...command.purchase, id: 'card-purchase' }, cardId: 'card', installments: 3, dueDate: '2026-10-31' }), current.revision);
   assert.deepEqual((await store.read())!.data, current, 'Contas, cartões e parcelas também passam no parser real e sobrevivem à reconstrução');
+  const production = buildProductionBatch([getProductionPlan(autoProducts[1], 1, autoMaterials, autoProducts)], '2026-10-23', '', true)[0];
+  current = await store.mutate(data => ({ ...data, productions: [production] }), current.revision);
+  assert.deepEqual((await store.read())!.data.productions[0].automaticManufacturing, production.automaticManufacturing, 'Histórico da fabricação automática passa no SDK real');
   console.log('PASS SDK real: compra, estoque, conta a pagar, manifesto atual/anterior e leitura exata; formato antigo recusado pelo SDK, novo formato aceito sem conexão nem commit real.');
 } finally {
   await terminate(db);

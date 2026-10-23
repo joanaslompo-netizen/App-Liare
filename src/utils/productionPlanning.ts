@@ -7,6 +7,7 @@ import type {
 } from "../types";
 import { localDateString } from "./localDate";
 import { expandVirtualRecipeItems } from './virtualMaterials';
+import { planAutomaticConsumption } from './automaticManufacturing';
 export { makeVariableKey } from './virtualMaterials';
 
 export function getProductionVariableRequirements(selectedProduct: Product, materials: Material[], variableSelections: Record<string, string> = {}) {
@@ -30,22 +31,9 @@ export function getProductionPlan(
     selectedProduct.useProductionStages &&
     selectedProduct.productionStages?.length
   );
-  const expanded = expandVirtualRecipeItems(selectedProduct.items, materials, products, variableSelections);
-  const aggregated = new Map<string, RecipeItem>();
-  for (const item of expanded.leaves) {
-    const key = `${item.type}:${item.targetId}`;
-    const previous = aggregated.get(key);
-    aggregated.set(key, { ...item, quantity: (previous?.quantity || 0) + item.quantity });
-  }
-  const deductions: ProductionIngredientDeduction[] = [...aggregated.values()].map(item => {
-    const quantityTotal = item.quantity * parsedBatchCount;
-    const stockBefore = item.type === 'material'
-      ? materials.find(m => m.id === item.targetId)?.currentStock || 0
-      : products.find(p => p.id === item.targetId)?.currentStock || 0;
-    return { ...item, quantityPerBatch: item.quantity, quantityTotal,
-      totalCost: item.unitCost * quantityTotal, stockBefore, stockAfter: stockBefore - quantityTotal };
-  });
-  const hasStockShortage = deductions.some(item => item.stockAfter < -0.0001);
+  const expanded = planAutomaticConsumption(selectedProduct.items, materials, products, parsedBatchCount, variableSelections);
+  const deductions: ProductionIngredientDeduction[] = expanded.deductions;
+  const hasStockShortage = expanded.hasStockShortage;
   const hasMissingVariableSelection = expanded.errors.length > 0;
   const ingredientCost = deductions.reduce(
     (sum, item) => sum + item.totalCost,
@@ -56,9 +44,7 @@ export function getProductionPlan(
     : 0;
   const totalCost = selectedProduct
     ? ingredientCost +
-      (nonIngredientCostPerBatch +
-        expanded.preparationCost) *
-        parsedBatchCount
+      nonIngredientCostPerBatch * parsedBatchCount + expanded.preparationCost
     : 0;
   const unitCost = quantityProduced > 0 ? totalCost / quantityProduced : 0;
 
@@ -72,7 +58,10 @@ export function getProductionPlan(
     hasStockShortage,
     hasMissingVariableSelection,
     errors: expanded.errors,
-    virtualPreparationCost: expanded.preparationCost,
+    virtualPreparationCost: parsedBatchCount > 0 ? expanded.preparationCost / parsedBatchCount : 0,
+    automaticManufacturing: expanded.automaticManufacturing,
+    sourceMaterials: materials,
+    sourceProducts: products,
     totalCost,
     unitCost,
     variableSelections,
@@ -86,7 +75,7 @@ export function aggregateProductionDeductions(
   immediateOnly = false,
 ) {
   const totals = new Map<string, ProductionIngredientDeduction>();
-  plans
+  replanProductionSequence(plans, immediateOnly)
     .filter((p) => !immediateOnly || !p.isStagedProduction)
     .forEach((plan) =>
       plan.deductions.forEach((item) => {
@@ -97,11 +86,32 @@ export function aggregateProductionDeductions(
           ...item,
           quantityTotal,
           totalCost: (old?.totalCost || 0) + item.totalCost,
-          stockAfter: item.stockBefore - quantityTotal,
+          stockBefore: old?.stockBefore ?? item.stockBefore,
+          stockAfter: (old?.stockBefore ?? item.stockBefore) - quantityTotal,
         });
       }),
     );
   return [...totals.values()];
+}
+
+/** Replan against shared balances so two selected recipes cannot use the same ready component twice. */
+export function replanProductionSequence(plans: ProductionPlan[], immediateOnly = true): ProductionPlan[] {
+  let materials = plans[0]?.sourceMaterials || [];
+  let products = plans[0]?.sourceProducts || [];
+  return plans.map(original => {
+    if (immediateOnly && original.isStagedProduction) return original;
+    const plan = getProductionPlan(original.product, original.quantityProduced, materials, products, original.variableSelections);
+    materials = materials.map(material => {
+      const deduction = plan.deductions.find(item => item.type === 'material' && item.targetId === material.id);
+      return deduction ? {...material, currentStock: Math.max(0, material.currentStock - deduction.quantityTotal)} : material;
+    });
+    products = products.map(product => {
+      const deduction = plan.deductions.find(item => item.type === 'product' && item.targetId === product.id);
+      const currentStock = Math.max(0, (product.currentStock || 0) - (deduction?.quantityTotal || 0)) + (product.id === plan.product.id ? plan.quantityProduced : 0);
+      return {...product, currentStock};
+    });
+    return plan;
+  });
 }
 
 /** Record shared stock before/after in order, without consuming staged work early. */
@@ -111,26 +121,7 @@ export function buildProductionBatch(
   notes: string,
   updateStock: boolean,
 ) {
-  const balances = new Map<string, number>();
-  return plans.map((plan) => {
-    const production = buildProductionRecord(plan, date, notes, updateStock);
-    if (updateStock)
-      production.deductedItems = production.deductedItems.map((item) => {
-        const key = `${item.type}:${item.targetId}`;
-        const stockBefore = balances.get(key) ?? item.stockBefore;
-        const stockAfter = Math.max(
-          0,
-          Number((stockBefore - item.quantityTotal).toFixed(4)),
-        );
-        balances.set(key, stockAfter);
-        return { ...item, stockBefore, stockAfter };
-      });
-    if (updateStock && production.quantityProduced > 0) {
-      const key = `product:${production.productId}`;
-      balances.set(key, (balances.get(key) ?? plan.product.currentStock ?? 0) + production.quantityProduced);
-    }
-    return production;
-  });
+  return replanProductionSequence(plans, true).map(plan => buildProductionRecord(plan, date, notes, updateStock));
 }
 
 export function buildProductionRecord(
@@ -184,6 +175,7 @@ export function buildProductionRecord(
     totalCost: isStagedProduction ? 0 : totalCost,
     plannedTotalCost: isStagedProduction ? totalCost : undefined,
     deductedItems: recordedDeductions,
+    automaticManufacturing: updateStock && !isStagedProduction ? plan.automaticManufacturing : undefined,
     stageProgress: isStagedProduction
       ? sortedStages.map((stage, index) => ({
           stageId: stage.id,

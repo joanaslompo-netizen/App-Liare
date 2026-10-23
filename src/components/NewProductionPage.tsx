@@ -7,6 +7,7 @@ import {
   aggregateProductionDeductions,
   buildProductionBatch,
   getProductionPlan,
+  replanProductionSequence,
   getProductionVariableRequirements,
 } from "../utils/productionPlanning";
 import { formatCurrency, formatNumber } from "../utils/formatters";
@@ -88,7 +89,7 @@ export function NewProductionPage({
         quantity: (previous?.quantity || 0) + quantity,
       });
     });
-    return [...merged.values()].map((row) =>
+    return replanProductionSequence([...merged.values()].map((row) =>
       getProductionPlan(
         row.product,
         row.quantity,
@@ -96,7 +97,7 @@ export function NewProductionPage({
         products,
         row.variables,
       ),
-    );
+    ));
   }, [rows, products, materials]);
   const deductions = aggregateProductionDeductions(plans);
   const ready =
@@ -372,6 +373,7 @@ export function NewProductionPage({
             </div>
           </details>
         )}
+        {plans.some(plan => plan.automaticManufacturing.length > 0) && <p role="status" className="rounded-xl border border-[#e5dad1] bg-white p-3 text-sm">O app vai fabricar e consumir automaticamente o que faltar de: {[...new Set(plans.flatMap(plan => plan.automaticManufacturing.map(item => item.name)))].join(', ')}. Os ingredientes correspondentes já estão incluídos na baixa prevista.</p>}
         {direct.length > 0 && (
           <p className="text-sm text-[#75665c]">
             {direct.map((p) => p.product.name).join("; ")}:{" "}

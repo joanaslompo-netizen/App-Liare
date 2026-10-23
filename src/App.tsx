@@ -1,4 +1,4 @@
-import { expandVirtualRecipeItems } from './utils/virtualMaterials';
+import { planAutomaticConsumption, automaticStockMovements, validateAutomaticManufacturing } from './utils/automaticManufacturing';
 import {syncFailureKind,retryDelay} from './services/syncRetryPolicy';
 import { cloudQuotaGuard } from './services/cloudQuotaGuard';
 import { ModalFrame } from './components/ModalFrame';
@@ -786,52 +786,23 @@ export default function App() {
         return;
       }
 
-      const ingredientRequirements = target.recipeItems
-        .map((item) => ({
-          ...item,
-          required: item.quantity * batchCount,
-        }))
-        .filter((item) => {
-          const ingredient = prev.find((m) => m.id === item.targetId);
-          return ingredient?.usageType !== 'durable';
-        });
-
-      const insufficient = ingredientRequirements.find((req) => {
-        const ingredient = prev.find((m) => m.id === req.targetId);
-        return !ingredient || ingredient.currentStock < req.required;
-      });
-
-      if (insufficient) {
-        const ingredient = prev.find((m) => m.id === insufficient.targetId);
-        alert('Estoque insuficiente de "' + (ingredient?.name || insufficient.name) + '". Necessário: ' +
-          insufficient.required + ' ' + insufficient.unit + '. Disponível: ' +
-          (ingredient?.currentStock ?? 0) + ' ' + (ingredient?.unit || insufficient.unit) + '.');
-        return;
-      }
-
-      const updated = prev.map((m) => {
-        if (m.id === materialId) {
-          return {
-            ...m,
-            currentStock: Number((m.currentStock + m.batchYield! * batchCount).toFixed(4)),
-            updatedAt: new Date().toISOString().split('T')[0],
-          };
-        }
-
-        const req = ingredientRequirements.find((item) => item.targetId === m.id);
-        if (req) {
-          return {
-            ...m,
-            currentStock: Number((m.currentStock - req.required).toFixed(4)),
-            updatedAt: new Date().toISOString().split('T')[0],
-          };
-        }
-
-        return m;
-      });
-
-      setMaterials(updated);
-      setStockMovements(moves=>[...moves,...ingredientRequirements.map(req=>({id:crypto.randomUUID(),date:new Date().toLocaleDateString('sv-SE'),targetId:req.targetId,type:'material' as const,quantity:-req.required,reason:'Produção de material interno',referenceId:materialId})),{id:crypto.randomUUID(),date:new Date().toLocaleDateString('sv-SE'),targetId:materialId,type:'material' as const,quantity:target.batchYield*batchCount,reason:'Material interno finalizado'}]);
+      const plan = planAutomaticConsumption(target.recipeItems, prev, workspaceRef.current.products, batchCount);
+      if (plan.errors.length) { alert(plan.errors[0]); return; }
+      if (plan.hasStockShortage) { alert('Estoque insuficiente dos materiais necessários para fabricar este item.'); return; }
+      try { validateAutomaticManufacturing(plan.automaticManufacturing, workspaceRef.current.productions); }
+      catch (failure) { alert(failure instanceof Error ? failure.message : 'Não foi possível produzir.'); return; }
+      const today = new Date().toLocaleDateString('sv-SE');
+      const operationId = crypto.randomUUID();
+      setMaterials(current => current.map(material => {
+        const deduction = plan.deductions.find(item => item.type === 'material' && item.targetId === material.id);
+        const quantity = (material.id === materialId ? target.batchYield! * batchCount : 0) - (deduction?.quantityTotal || 0);
+        return quantity ? {...material,currentStock:Number((material.currentStock+quantity).toFixed(4)),updatedAt:today} : material;
+      }));
+      setProducts(current => current.map(product => {
+        const deduction = plan.deductions.find(item => item.type === 'product' && item.targetId === product.id);
+        return deduction ? {...product,currentStock:Number(((product.currentStock||0)-deduction.quantityTotal).toFixed(4))} : product;
+      }));
+      setStockMovements(moves => [...moves, ...plan.deductions.map((item,index)=>({id:`${operationId}_ingredient_${index}`,date:today,targetId:item.targetId,type:item.type,quantity:-item.quantityTotal,reason:'Produção de material interno',referenceId:materialId})), ...automaticStockMovements(plan.automaticManufacturing,operationId,today,materialId), {id:operationId,date:today,targetId:materialId,type:'material' as const,quantity:target.batchYield!*batchCount,reason:'Material interno finalizado'}]);
   }, []);
 
   // ----------------------------------------------------
@@ -917,7 +888,8 @@ export default function App() {
   // ----------------------------------------------------
   const handleSaveProduction = useCallback((production: Production, updateStock: boolean) => {
     if(workspaceRef.current.productions?.some(p=>p.id===production.id))return;
-    if(updateStock) setStockMovements(prev=>[...prev,...production.deductedItems.map(d=>({id:`${production.id}_${d.targetId}`,date:production.date,targetId:d.targetId,type:d.type,quantity:-d.quantityTotal,reason:'Produção',referenceId:production.id})),...(production.quantityProduced>0?[{id:`${production.id}_finished`,date:production.date,targetId:production.productId,type:'product' as const,quantity:production.quantityProduced,reason:'Produto finalizado',referenceId:production.id}]:[])]);
+    if(updateStock) validateAutomaticManufacturing(production.automaticManufacturing, workspaceRef.current.productions);
+    if(updateStock) setStockMovements(prev=>[...prev,...automaticStockMovements(production.automaticManufacturing, production.id, production.date),...production.deductedItems.map(d=>({id:`${production.id}_${d.targetId}`,date:production.date,targetId:d.targetId,type:d.type,quantity:-d.quantityTotal,reason:'Produção',referenceId:production.id})),...(production.quantityProduced>0?[{id:`${production.id}_finished`,date:production.date,targetId:production.productId,type:'product' as const,quantity:production.quantityProduced,reason:'Produto finalizado',referenceId:production.id}]:[])]);
     setProductions((prev) => [production, ...prev]);
 
     if (updateStock) {
@@ -984,12 +956,16 @@ export default function App() {
     deductions: ProductionIngredientDeduction[],
     finishedQuantityDelta: number
   ) => {
+    const previous = workspaceRef.current.productions?.find(item => item.id === production.id);
+    if (previous && canonicalJSON(previous.stageProgress) === canonicalJSON(production.stageProgress) && previous.quantityProduced === production.quantityProduced) return;
+    const newAutomatic = (production.automaticManufacturing || []).slice(previous?.automaticManufacturing?.length || 0);
+    if (production.stockTrackingEnabled !== false) validateAutomaticManufacturing(newAutomatic, workspaceRef.current.productions);
     setProductions((prev) => prev.map((item) => (
       item.id === production.id ? production : item
     )));
 
     if (production.stockTrackingEnabled === false) return;
-    setStockMovements(prev=>[...prev,...deductions.map(d=>({id:crypto.randomUUID(),date:production.date,targetId:d.targetId,type:d.type,quantity:-d.quantityTotal,reason:'Etapa de produção',referenceId:production.id})),...(finishedQuantityDelta>0?[{id:crypto.randomUUID(),date:production.date,targetId:production.productId,type:'product' as const,quantity:finishedQuantityDelta,reason:'Produto finalizado',referenceId:production.id}]:[])]);
+    setStockMovements(prev=>[...prev,...automaticStockMovements(newAutomatic, `${production.id}_${canonicalJSON(production.stageProgress).length}_${production.stageProgress?.reduce((sum,stage)=>sum+stage.completedQuantity,0)}`, production.date, production.id),...deductions.map(d=>({id:crypto.randomUUID(),date:production.date,targetId:d.targetId,type:d.type,quantity:-d.quantityTotal,reason:'Etapa de produção',referenceId:production.id})),...(finishedQuantityDelta>0?[{id:crypto.randomUUID(),date:production.date,targetId:production.productId,type:'product' as const,quantity:finishedQuantityDelta,reason:'Produto finalizado',referenceId:production.id}]:[])]);
 
     if (finishedQuantityDelta > 0) {
       setProducts((prevProducts) => prevProducts.map((product) => {
@@ -1163,8 +1139,11 @@ export default function App() {
       });
     };
 
-    const expanded = expandVirtualRecipeItems(item.customRecipeItems, materials, products);
+    const plannedConsumption = planAutomaticConsumption(item.customRecipeItems, materials, products);
+    const expanded = {...plannedConsumption, leaves: plannedConsumption.deductions.map(deduction => ({...deduction,quantity:deduction.quantityTotal}))};
     if (expanded.errors.length) { alert(expanded.errors[0]); return null; }
+    try { validateAutomaticManufacturing(expanded.automaticManufacturing, workspaceRef.current.productions); }
+    catch (failure) { alert(failure instanceof Error ? failure.message : 'Não foi possível produzir.'); return null; }
     for (const ingredient of expanded.leaves) {
       addDeduction(ingredient.id, ingredient.targetId, ingredient.type, ingredient.name,
         ingredient.unit, ingredient.quantity, ingredient.unitCost);
@@ -1273,6 +1252,7 @@ export default function App() {
       productId,
       productName: item.productName,
       productCategory: 'Personalizadas',
+      automaticManufacturing: expanded.automaticManufacturing,
       productImageUrl: item.productImageUrl,
       isIntermediate: false,
       batchYield: 1,
@@ -1323,6 +1303,7 @@ export default function App() {
       return [customProduct, ...next];
     });
 
+    setStockMovements(moves => [...moves, ...deductedItems.map((deduction,index)=>({id:`${productionId}_ingredient_${index}`,date:today,targetId:deduction.targetId,type:deduction.type,quantity:-deduction.quantityTotal,reason:'Produção personalizada',referenceId:productionId})), ...automaticStockMovements(expanded.automaticManufacturing,productionId,today), {id:productionId,date:today,targetId:productId,type:'product' as const,quantity:1,reason:'Produto personalizado finalizado',referenceId:productionId}]);
     setProductions((prev) => [production, ...prev]);
 
     const producedQuantity = (item.customProducedQuantity ?? 0) + 1;
@@ -1816,6 +1797,7 @@ export default function App() {
             materials={materials}
             onSaveProduction={handleSaveProduction}
             onSaveProductions={batch => {
+              batch.forEach(production => { if (production.stockTrackingEnabled !== false) validateAutomaticManufacturing(production.automaticManufacturing, workspaceRef.current.productions); });
               batch.forEach(production => handleSaveProduction(
                 production, production.stockTrackingEnabled !== false && production.status !== 'in_progress'
               ));
