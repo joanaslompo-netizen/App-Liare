@@ -43,7 +43,7 @@ const mocks: Record<string, string> = {
     export const createWorkspaceSyncBase=()=>({schema:1,entities:{},settings:'',paymentMethods:''});
     export const compactWorkspaceForCloud=data=>data;
     export const mergeWorkspaceData=(_base,local)=>local;
-    export class CloudSyncConflictError extends Error {}`,
+    export class CloudSyncConflictError extends Error {} export class OrderSyncConflictError extends Error {}`,
 };
 const bundle = await build({
   entryPoints: ['src/App.tsx'], bundle: true, write: false, format: 'cjs', platform: 'node', packages: 'external',

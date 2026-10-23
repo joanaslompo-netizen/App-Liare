@@ -20,20 +20,20 @@ const fixture = {
   sales: [], purchases: [], productions: [], customers: [], suppliers: [], todos: [], projects: [], paymentMethods: ['PIX'],
   settings: DEFAULT_SETTINGS, finance: { version: 1, entries: [], bills: [] }, stockMovements: [], revision: 1,
 };
-const scenario = { cloud: fixture as any, uploads: 0, financeCalls: 0, quota: true, delayedRead: null as Promise<any> | null, delayedUpload: null as Promise<any> | null, errors: new Set<(error: Error) => void>() };
+const scenario = { cloud: fixture as any, uploads: 0, financeCalls: 0, quota: true, delayedRead: null as Promise<any> | null, delayedUpload: null as Promise<any> | null, lastUpload: null as any, errors: new Set<(error: Error) => void>() };
 (globalThis as any).__orderLocalSave = scenario;
 const quotaError = Object.assign(new Error('Quota limit exceeded. Free daily write units per project'), { code: 'resource-exhausted' });
 const mocks: Record<string, string> = {
   firebase: `export const auth={},googleProvider={},db={}; export const signInWithPopup=async()=>{},firebaseSignOut=async()=>{};
     export const onAuthStateChanged=(_auth,callback)=>{let active=true;queueMicrotask(()=>{if(active)callback({uid:'test',email:'test@example.com'});});return ()=>{active=false;};};`,
   cloud: `const s=globalThis.__orderLocalSave;
-    export {createWorkspaceSyncBase,mergeWorkspaceData,compactWorkspaceForCloud,CloudSyncConflictError} from ${JSON.stringify(resolve('src/services/cloudSync.ts'))};
+    export {createWorkspaceSyncBase,mergeWorkspaceData,compactWorkspaceForCloud,CloudSyncConflictError,OrderSyncConflictError} from ${JSON.stringify(resolve('src/services/cloudSync.ts'))};
     export const syncUserProfile=async()=>{};
     export const fetchWorkspaceFromCloud=()=>s.delayedRead || Promise.resolve(s.cloud);
     export const fetchPreviousWorkspaceFromCloud=async()=>null;
     export const subscribeToWorkspace=(_uid,_data,error)=>{s.errors.add(error);return ()=>s.errors.delete(error);};
     export const executeFinanceInCloud=async()=>{s.financeCalls++;throw Object.assign(Error('Quota limit exceeded. Free daily write units per project'),{code:'resource-exhausted'});};
-    export const uploadWorkspaceToCloud=async(_uid,data)=>{s.uploads++;if(s.delayedUpload)return s.delayedUpload;if(s.quota)throw Object.assign(Error('Quota limit exceeded'),{code:'resource-exhausted'});s.cloud={...data,revision:(s.cloud.revision||0)+1};return s.cloud;};`,
+    export const uploadWorkspaceToCloud=async(_uid,data)=>{s.uploads++;s.lastUpload=data;if(s.delayedUpload)return s.delayedUpload;if(s.quota)throw Object.assign(Error('Quota limit exceeded'),{code:'resource-exhausted'});s.cloud={...data,revision:(s.cloud.revision||0)+1};return s.cloud;};`,
 };
 const bundle = await build({ entryPoints: ['src/App.tsx'], bundle: true, write: false, format: 'cjs', platform: 'node', packages: 'external', plugins: [{ name: 'cloud-quota', setup(build) {
   build.onResolve({ filter: /\/lib\/firebase$/ }, () => ({ path: 'firebase', namespace: 'mock' }));
@@ -110,6 +110,64 @@ assert.equal(scenario.cloud.sales.length, 1);
 assert.equal(scenario.cloud.finance.entries.length, 1);
 await click('Fechar');
 
+// Editing an already-synced order also works with quota exhausted.
+scenario.quota = true;
+await act(async () => scenario.errors.forEach(onError => onError(quotaError)));
+const receiptsBeforeEdit = structuredClone(saved().finance.entries);
+const originalOrderNumber = saved().sales[0].orderNumber;
+const uploadsBeforeEdit = scenario.uploads;
+async function openFirstOrder() {
+  await click('Pedidos');
+  await click(`Pedido #${String(originalOrderNumber).padStart(6, '0')}`);
+}
+async function fillOrderLabel(label: string, value: string) {
+  const form = document.querySelector('[aria-label="Editar dados do pedido"]')!;
+  const row = [...form.querySelectorAll('label')].find(node => node.textContent?.includes(label));
+  const control = row?.querySelector('input,textarea') as HTMLInputElement;
+  assert(control, label);
+  await act(async () => {
+    const prototype = control.tagName === 'TEXTAREA' ? dom.window.HTMLTextAreaElement.prototype : dom.window.HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(control, value);
+    control.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  });
+}
+await openFirstOrder();
+await click('Editar dados');
+await fillOrderLabel('Contato', '11999990000');
+await fillOrderLabel('Prazo de entrega', '2026-11-10');
+await fillOrderLabel('Combinado / observações', 'Entregar na portaria');
+await click('Salvar dados do pedido');
+assert(!document.querySelector('[aria-label="Editar dados do pedido"]'));
+await click('Editar itens');
+await fill('Quantidade de Vela teste', '3');
+await fill('Preço de Vela teste', '20');
+await click('Salvar itens do pedido');
+assert.equal(scenario.financeCalls, 0, 'Editar pedido sincronizado não exige transação remota');
+assert.equal(scenario.uploads, uploadsBeforeEdit, 'Editar durante a pausa não chama a nuvem');
+assert.equal(alerts.length, 0, alerts.join('; '));
+assert.equal(saved().sales.length, 1);
+assert.equal(saved().sales[0].orderNumber, originalOrderNumber);
+assert.equal(saved().sales[0].totalRevenue, 60);
+assert.equal(saved().sales[0].items[0].reservedQuantity, 3);
+assert.equal(saved().products[0].currentStock, 10);
+assert.deepEqual(saved().finance.entries, receiptsBeforeEdit);
+await remount();
+assert.equal(saved().sales[0].customerContact, '11999990000');
+assert.equal(saved().sales[0].deliveryScheduledDate, '2026-11-10');
+assert.equal(saved().sales[0].notes, 'Entregar na portaria');
+assert.equal(saved().sales[0].totalRevenue, 60);
+assert.equal(localStorage.getItem(pendingKey), 'true');
+scenario.quota = false;
+Date.now = () => originalNow() + 54 * 60 * 60 * 1000;
+await cloudPanel();
+await click('Enviar agora');
+await click('Fechar');
+assert.equal(localStorage.getItem(pendingKey), null);
+assert.equal(scenario.cloud.sales.length, 1);
+assert.equal(scenario.cloud.sales[0].totalRevenue, 60);
+assert.equal(scenario.cloud.sales[0].notes, 'Entregar na portaria');
+assert.deepEqual(scenario.cloud.finance.entries, receiptsBeforeEdit);
+
 // A connected account is allowed to save while its initial cloud read hangs/offline.
 scenario.delayedRead = new Promise(() => {});
 Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
@@ -124,7 +182,11 @@ scenario.delayedRead = null;
 Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
 await remount();
 
-// An old upload response cannot clear a newer order or its pending flag.
+// An old upload response cannot clear a newer order or existing-order edit.
+await openFirstOrder();
+await click('Editar dados');
+await fillOrderLabel('Combinado / observações', 'Edição anterior ao envio');
+await click('Salvar dados do pedido');
 let resolveUpload!: (value: any) => void;
 scenario.delayedUpload = new Promise(resolve => { resolveUpload = resolve; });
 await cloudPanel();
@@ -133,7 +195,12 @@ await click('Fechar');
 await prepareOrder('Cliente durante envio');
 await click('Concluir Pedido');
 const latestId = saved().sales[0].id;
-await act(async () => resolveUpload({ ...scenario.cloud, revision: 10 }));
+await openFirstOrder();
+await click('Editar dados');
+await fillOrderLabel('Combinado / observações', 'Edição mais recente durante envio');
+await click('Salvar dados do pedido');
+await act(async () => resolveUpload({ ...scenario.lastUpload, revision: 10 }));
+assert.equal(saved().sales.find((sale:any)=>sale.id===firstId).notes, 'Edição mais recente durante envio');
 assert.equal(saved().sales.length, 3);
 assert(saved().sales.some((sale: any) => sale.id === latestId));
 assert.equal(localStorage.getItem(pendingKey), 'true');
@@ -143,6 +210,7 @@ await click('Enviar agora');
 await click('Fechar');
 assert.equal(scenario.cloud.sales.length, 3);
 assert.equal(scenario.cloud.finance.entries.length, 3);
+assert.equal(scenario.cloud.sales.find((sale:any)=>sale.id===firstId).notes, 'Edição mais recente durante envio');
 
 // A real device-storage failure keeps the form; retry reuses its document ID.
 await prepareOrder('Cliente com falha no aparelho');
@@ -157,5 +225,5 @@ assert.equal(saved().sales.length, 4, 'Uma nova tentativa não duplica o pedido 
 assert.equal(saved().finance.entries.length, 4, 'Uma nova tentativa não duplica o pagamento inicial');
 await act(async () => root.unmount());
 Date.now = originalNow;
-console.log('PASS pedidos: cota bloqueada, salvamento local, reabertura, sincronização sem duplicar, abertura offline, envio em andamento e falha real de persistência com nova tentativa.');
+console.log('PASS pedidos: criação e edição de pedido já sincronizado com cota bloqueada; dados, itens, pagamentos e reservas preservados ao reabrir e sincronizar; abertura offline, envio em andamento e falha real de persistência com nova tentativa.');
 process.exit(0);

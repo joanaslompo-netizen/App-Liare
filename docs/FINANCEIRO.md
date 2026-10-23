@@ -7,7 +7,7 @@
 - Crédito por cliente, saldo inicial, adiantamento, cortesia, uso no pedido e devolução.
 - Cortesia não vira dinheiro; uso de crédito quita o pedido sem nova entrada de caixa.
 - Movimentos imutáveis e estornos com referência; pagamentos antigos permanecem como legado, sem datas inventadas.
-- Pedidos: rascunho/confirmado/cancelado, reserva automática ao salvar e numeração sequencial. Novos pedidos são salvos primeiro no aparelho e ficam pendentes de envio; edições de pedidos já na nuvem mantêm as verificações transacionais.
+- Pedidos: rascunho/confirmado/cancelado, reserva automática ao salvar e numeração sequencial. Criação e edição de pedidos são salvas primeiro no aparelho e ficam pendentes de envio; a mesclagem recusa alterações concorrentes no mesmo pedido ou em seu histórico antes da gravação protegida por revisão.
 - Movimentos por pedido: pagamentos, crédito, entregas parciais, devoluções físicas, compensação de devolução parcial e cancelamento.
 - Edições preservam pagamentos. Aumento de total cria saldo; redução gera crédito do excedente para cliente identificado.
 - Cancelamento preserva histórico. Pagamento misto devolve crédito original e reembolsa somente a parte recebida em dinheiro.
@@ -29,7 +29,7 @@
 7. Em devolução, primeiro registre as peças e sua condição. Depois use **Devolver valor**, escolhendo crédito ou dinheiro.
 8. Na compra real, marque se já foi paga; se não, informe vencimento. Confira **A pagar** e custo atualizado do material.
 9. Abra relatórios: **Peças entregues** para realizado e **Pedidos confirmados** para estimativa. Pedidos mistos devem mostrar seus produtos separados.
-10. Confira a edição em outro aparelho conectado à mesma conta. Novos pedidos entram na fila de envio após a cópia local ser confirmada. Créditos e demais operações de pedidos conectados continuam usando transações.
+10. Confira a edição em outro aparelho conectado à mesma conta. Criação e edição de pedidos entram na fila de envio após a cópia local ser confirmada. Recebimentos, créditos, entregas e demais movimentos explícitos continuam usando transações.
 
 Não faça pagamentos fictícios na conta real para testar. Se houver divergência, registre pedido, ação e valores esperados/observados.
 
@@ -40,7 +40,7 @@ Não faça pagamentos fictícios na conta real para testar. Se houver divergênc
 - Custos antigos sem remuneração separada são identificados como legado; não são recompostos com a receita atual.
 - Despesas cadastradas no resultado devem ser gastos adicionais, não valores já incluídos no rateio das receitas.
 - Compra anterior à reforma sem evidência da movimentação de estoque não tem reversão física automática; ajuste precisa de conferência.
-- Conta conectada exige conexão para movimentações financeiras e alterações de pedidos já sincronizados. Novos pedidos, inclusive rascunhos e suas novas tentativas antes do primeiro envio, podem ser salvos durante falha/cota da nuvem, espera da carga inicial ou falta de conexão. Pagamento inicial, reservas e fila acompanham o snapshot local. Conflitos de crédito impedem gravação na nuvem.
+- Conta conectada exige conexão para movimentações financeiras explícitas. Criação e edição de pedidos, inclusive os já sincronizados, podem ser salvas durante falha/cota da nuvem, espera da carga inicial ou falta de conexão. Pagamento inicial, reservas e fila acompanham o snapshot local. Conflitos de crédito impedem gravação na nuvem.
 
 ## Correção de novos pedidos — 22/10/2026
 
@@ -50,6 +50,16 @@ Não faça pagamentos fictícios na conta real para testar. Se houver divergênc
 - Edição local é marcada antes da espera; resposta de envio iniciada anteriormente não limpa nem substitui o pedido mais novo.
 - `npm run test:order-local-save`: interface real com nuvem simulada; cota bloqueada, reabertura, envio após recuperação sem duplicar, abertura offline, envio antigo em andamento e falha de armazenamento com nova tentativa.
 - Testes de armazenamento, pedidos, financeiro e abertura da nuvem, tipagem e build executados. Não foram criados pedidos nem pagamentos fictícios na conta real. O consumo que esgotou a cota precisa ser apurado separadamente no painel do banco.
+
+## Correção de edição de pedidos — 23/10/2026
+
+- A correção anterior permitia salvar pedidos novos localmente, mas a edição de pedidos já sincronizados ainda passava pela transação remota. A cota bloqueava o salvamento dessa edição.
+- Todo `save_order` agora usa a mesma persistência local durável e fila de envio: dados, prazo, observações, itens, quantidades e preços. Pagamentos e entregas já registrados mantêm as validações do livro financeiro.
+- Na mesclagem, uma edição pendente não sobrescreve um pedido que recebeu outra edição, cancelamento, entrega ou movimento financeiro desconhecido na nuvem. O envio para, exibe a necessidade de conferência e preserva as duas versões. Alterações em outros registros continuam podendo ser mescladas.
+- Reservas são recalculadas com o estoque e os demais pedidos da mesclagem; créditos por redução do total mantêm os identificadores, sem duplicação ao repetir o envio.
+- Após um envio que terminou enquanto o usuário continuava editando, a base avança para o próprio envio confirmado e as edições mais recentes são reaplicadas. Isso impede tratar o próprio envio anterior como conflito ou perder uma edição nova.
+- Regressão de interface com nuvem simulada: editar dados e itens de pedido já sincronizado durante cota, reabrir e recuperar, preservar número/pagamentos/estoque, enviar depois e editar o mesmo pedido durante um envio anterior.
+- Regressão do serviço: alterações não relacionadas, estoque novo, conflitos de histórico e duas reduções concorrentes do total; nenhuma operação fictícia na conta real.
 
 ## Validação
 

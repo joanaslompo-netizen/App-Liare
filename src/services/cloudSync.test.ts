@@ -36,6 +36,42 @@ assert.deepEqual(docs.get(legacy),local,'finance migration never modifies legacy
 const merged=service.mergeWorkspaceData(base,{...local,finance:ledger.emptyFinance()},cloud);assert.equal(ledger.creditBalance(merged.finance,'c'),5000);
 const device=structuredClone(cloud),remote=structuredClone(cloud);device.suppliers=[{id:'local_supplier',name:'Fornecedor local'}];remote.products.push({...remote.products[0],id:'chatgpt_recipe',name:'Receita da conexão'});
 const combined=service.mergeWorkspaceData(service.createWorkspaceSyncBase(cloud),device,remote);assert(combined.products.some((p:any)=>p.id==='chatgpt_recipe'));assert(combined.suppliers.some((p:any)=>p.id==='local_supplier'));assert.deepEqual(combined.finance,remote.finance);
+// A queued edit merges unrelated changes, but never overwrites newer order history.
+const editBase = structuredClone(cloud), editSyncBase = service.createWorkspaceSyncBase(editBase);
+let offlineEdit = ledger.applyFinanceCommand(editBase, {type:'save_order',sale:{...editBase.sales[0],notes:'Entregar na portaria'}});
+let remoteStock = structuredClone(editBase);
+remoteStock.products[0].currentStock = 0;
+remoteStock.suppliers.push({id:'new-supplier',name:'Outro fornecedor'});
+const editedMerge = service.mergeWorkspaceData(editSyncBase, offlineEdit, remoteStock);
+assert.equal(editedMerge.sales[0].notes,'Entregar na portaria');
+assert.equal(editedMerge.sales[0].items[0].reservedQuantity,0,'Reserva acompanha estoque atual ao sincronizar');
+assert(editedMerge.suppliers.some((s:any)=>s.id==='new-supplier'));
+assert.deepEqual(editedMerge.finance.entries,editBase.finance.entries);
+for (const change of ['delivery','cancellation','receipt','competing-edit']) {
+  const newer=structuredClone(editBase), order=newer.sales[0];
+  if(change==='delivery')order.deliveryHistory=[{id:'remote-delivery',date:'2026-10-23',kind:'delivery',items:[]}];
+  if(change==='cancellation')order.commercialStatus='cancelled';
+  if(change==='receipt')newer.finance.entries.push(ledger.makeEntry('receipt',10,{id:'remote-receipt',saleId:order.id,allocatedCents:1000}));
+  if(change==='competing-edit')order.notes='Alteração em outro aparelho';
+  const unchanged=structuredClone(newer);
+  assert.throws(()=>service.mergeWorkspaceData(editSyncBase,offlineEdit,newer),service.OrderSyncConflictError,change);
+  assert.deepEqual(newer,unchanged,'Conflito preserva a nuvem');
+  assert.equal(offlineEdit.sales[0].notes,'Entregar na portaria','Conflito preserva a edição local');
+}
+// A price reduction releases the excess just once across retries and acknowledgements.
+const paidBase=structuredClone(editBase);
+paidBase.finance.entries=[ledger.makeEntry('receipt',100,{id:'paid-before-edit',saleId:paidBase.sales[0].id,customerId:'c',allocatedCents:10000})];
+const priceEdit=ledger.applyFinanceCommand(paidBase,{type:'save_order',sale:{...paidBase.sales[0],totalRevenue:80}});
+const priceBase=service.createWorkspaceSyncBase(paidBase);
+const priceMerge=service.mergeWorkspaceData(priceBase,priceEdit,paidBase);
+assert.equal(priceMerge.finance.entries.filter((e:any)=>e.kind==='credit_release').length,1);
+assert.equal(ledger.creditBalance(priceMerge.finance,'c'),2000);
+const afterAck=service.mergeWorkspaceData(priceBase,priceEdit,priceMerge);
+assert.deepEqual(afterAck.finance.entries,priceMerge.finance.entries);
+assert.equal(ledger.orderPaid(afterAck.sales[0],afterAck.finance),8000);
+const competingPrice=ledger.applyFinanceCommand(paidBase,{type:'save_order',sale:{...paidBase.sales[0],totalRevenue:80}});
+assert.throws(()=>service.mergeWorkspaceData(priceBase,priceEdit,competingPrice),service.OrderSyncConflictError,'Duas reduções iguais não duplicam crédito');
+console.log('PASS edição pendente: reserva atualizada, alterações não relacionadas mescladas, crédito sem duplicação e conflito com entrega/cancelamento/recebimento/edição preservando as duas versões.');
 await service.uploadWorkspaceToCloud('test',combined,'Web',cloud.revision);const uploaded=await service.fetchWorkspaceFromCloud('test');assert.equal(uploaded.products.length,2);assert.equal(uploaded.suppliers.length,1);
 assert.equal((await service.fetchPreviousWorkspaceFromCloud('test')).products.length,1);
 await assert.rejects(service.uploadWorkspaceToCloud('test',local,'Web',1),service.CloudSyncConflictError);

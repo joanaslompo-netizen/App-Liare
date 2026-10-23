@@ -56,6 +56,13 @@ export class CloudSyncConflictError extends Error {
   }
 }
 
+export class OrderSyncConflictError extends Error {
+  constructor(order: Sale) {
+    super(`O pedido #${order.orderNumber || order.id} recebeu outra alteração ou movimento na nuvem. Sua edição continua salva neste aparelho. Confira as duas versões antes de sincronizar.`);
+    this.name = 'OrderSyncConflictError';
+  }
+}
+
 function sanitizeForFirestore<T>(data: T): T {
   if (data === undefined) return null as unknown as T;
   if (data === null || typeof data !== 'object') return data;
@@ -141,7 +148,28 @@ export function mergeWorkspaceData(
   local: WorkspaceData,
   cloud: WorkspaceData
 ): WorkspaceData {
-  return {
+  // An offline edit may change reservations or release an overpayment as credit.
+  // Never combine it blindly with a newer delivery, cancellation or receipt.
+  // Unrelated orders, recipes and customer movements can still merge normally.
+  const localEntries = new Map((local.finance?.entries || []).map(entry => [entry.id, entry]));
+  const cloudSales = new Map(cloud.sales.map(sale => [sale.id, sale]));
+  const editedSales: Sale[] = [];
+  const same = (left: unknown, right: unknown) => canonicalJSON(sanitizeForFirestore(left ?? null)) === canonicalJSON(sanitizeForFirestore(right ?? null));
+  // Reservations are derived from current stock, rather than a competing edit.
+  const orderContent = (sale?: Sale) => sale && ({ ...sale, items: sale.items?.map(({ reservedQuantity, ...item }) => item) });
+  const sameOrder = (left?: Sale, right?: Sale) => same(orderContent(left), orderContent(right));
+  for (const sale of compactWorkspaceForCloud(local).sales) {
+    const stored = base.entities.sales[sale.id];
+    const previous = stored ? JSON.parse(stored) as Sale : undefined;
+    if (sameOrder(sale, previous)) continue;
+    const remote = cloudSales.get(sale.id);
+    if (!sameOrder(remote, previous) && !sameOrder(remote, sale)) throw new OrderSyncConflictError(sale);
+    if ((cloud.finance?.entries || []).some(entry => entry.saleId === sale.id && !same(entry, localEntries.get(entry.id)))) {
+      throw new OrderSyncConflictError(sale);
+    }
+    editedSales.push(sale);
+  }
+  let merged: WorkspaceData = {
     ...cloud,
     finance: { version: 1, entries: unionRecords(local.finance?.entries, cloud.finance?.entries), bills: mergeEntityList(base.bills || {}, local.finance?.bills, cloud.finance?.bills) },
     stockMovements: unionRecords(local.stockMovements, cloud.stockMovements),
@@ -157,6 +185,10 @@ export function mergeWorkspaceData(
     paymentMethods: mergeValue(base.paymentMethods, local.paymentMethods || [], cloud.paymentMethods || []),
     settings: mergeValue(base.settings, local.settings, cloud.settings),
   };
+  // Recompute reservations with the latest merged stock and other orders. Local
+  // receipts/credit releases keep their IDs and are not registered a second time.
+  for (const sale of editedSales) merged = applyFinanceCommand(merged, { type: 'save_order', sale });
+  return merged;
 }
 
 const isEmbeddedImage = (value?: string) =>

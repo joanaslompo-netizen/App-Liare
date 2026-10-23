@@ -18,7 +18,7 @@ const mocks: Record<string, string> = {
   firebase: `export const auth={},googleProvider={},db={};export const signInWithPopup=async()=>{},firebaseSignOut=async()=>{};
     export const onAuthStateChanged=(_auth,callback)=>{let active=true;queueMicrotask(()=>{if(active)callback({uid:'quota-owner',email:'test@example.com'});});return ()=>{active=false;};};`,
   cloud: `const s=globalThis.__syncQuota;
-    export {createWorkspaceSyncBase,mergeWorkspaceData,compactWorkspaceForCloud,CloudSyncConflictError} from ${JSON.stringify(resolve('src/services/cloudSync.ts'))};
+    export {createWorkspaceSyncBase,mergeWorkspaceData,compactWorkspaceForCloud,CloudSyncConflictError,OrderSyncConflictError} from ${JSON.stringify(resolve('src/services/cloudSync.ts'))};
     export const syncUserProfile=async()=>{s.profiles++;};export const fetchWorkspaceFromCloud=async()=>s.cloud;
     export const fetchPreviousWorkspaceFromCloud=async()=>null;export const subscribeToWorkspace=()=>()=>{};
     export const executeFinanceInCloud=async()=>{throw Error('Unexpected financial operation');};

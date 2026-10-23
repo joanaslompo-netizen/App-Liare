@@ -69,7 +69,8 @@ import {
   WorkspaceData,
   WorkspaceSyncBase,
   CloudSyncStatus,
-  CloudSyncConflictError
+  CloudSyncConflictError,
+  OrderSyncConflictError
 } from './services/cloudSync';
 import { CheckCircle2, X, ShoppingBag, Hammer, Package, Tag, BarChart3, Plus, Settings, AlertTriangle, ClipboardList } from 'lucide-react';
 
@@ -241,14 +242,9 @@ export default function App() {
   }, []);
 
   const handleFinanceAction = useCallback(async (command: FinanceCommand): Promise<boolean> => {
-    // New orders (including retries/edits before their first upload) save locally
-    // first. Existing cloud orders retain transactional history/credit checks.
-    const isLocalOrder = command.type === 'save_order' && (
-      !workspaceRef.current.sales.some(sale => sale.id === command.sale.id) ||
-      (cloudBaseRef.current && !cloudBaseRef.current.entities.sales[command.sale.id] &&
-        !cloudWorkspaceRef.current?.sales.some(sale => sale.id === command.sale.id))
-    );
-    if (command.type === 'save_order' && isLocalOrder) {
+    // Creating and editing an order use the same durable local save. The cloud
+    // merge refuses competing order/history changes before its revisioned commit.
+    if (command.type === 'save_order') {
       if (financeLock.current) { alert('Aguarde a operação em andamento.'); return false; }
       financeLock.current = true;
       setFinanceBusy(true);
@@ -394,6 +390,12 @@ export default function App() {
           });
         }
       } else {
+        // Advance the base of our own successful upload while preserving edits
+        // made during that upload and unrelated records accepted from the cloud.
+        const rebased = mergeWorkspaceData(createWorkspaceSyncBase(compactWorkspaceForCloud(localSnapshot)), workspaceRef.current, uploaded);
+        cloudBaseRef.current = createWorkspaceSyncBase(uploaded);
+        storeCloudBase(uploaded);
+        applyWorkspaceData(rebased);
         hasLocalChangesRef.current = true;
         storePendingSync(true);
         setSyncStatus('pending');
@@ -406,7 +408,7 @@ export default function App() {
       storePendingSync(true);
       setSyncStatus(error instanceof CloudSyncConflictError ? 'pending' : 'error');
       setSyncNotification({
-        message: error instanceof CloudSyncConflictError
+        message: error instanceof OrderSyncConflictError ? error.message : error instanceof CloudSyncConflictError
           ? 'Sua alteração continua salva neste aparelho e será enviada novamente automaticamente.'
           : 'Não foi possível acessar a nuvem agora. Sua alteração continua salva neste aparelho.',
         type: error instanceof CloudSyncConflictError ? 'info' : 'error',
