@@ -10,7 +10,7 @@ import { OrderDetailView, type OrderFocus } from "./components/OrderDetailView";
 import { applyFinanceCommand, emptyFinance, projectOrder, type FinanceCommand } from "./utils/financeLedger";
 import { executeFinanceInCloud } from "./services/cloudSync";
 import { saveWorkspaceSnapshot } from "./utils/storage";
-import type { FinanceData, StockMovement } from "./types";
+import type { FinanceData, PurchasePayment, StockMovement } from "./types";
 import { ensureOrderNumbers, getHighestOrderNumber } from './utils/orderNumbers';
 import React, { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { 
@@ -908,7 +908,7 @@ export default function App() {
   // ----------------------------------------------------
   // Purchase Handlers
   // ----------------------------------------------------
-  const handleSavePurchase = useCallback(async (purchase: Purchase, updateStock: boolean, payment?: {paidNow: boolean; dueDate: string; account: string}) => handleFinanceAction({type:'purchase',purchase,updateStock,paidNow:payment?.paidNow ?? false,dueDate:payment?.dueDate || purchase.date,account:payment?.account || 'Principal'}), [handleFinanceAction]);
+  const handleSavePurchase = useCallback(async (purchase: Purchase, updateStock: boolean, payment?: PurchasePayment) => handleFinanceAction({type:'purchase',purchase,updateStock,paidNow:payment?.paidNow ?? false,dueDate:payment?.dueDate || purchase.date,account:payment?.account || 'Principal',cardId:payment?.cardId,installments:payment?.installments}), [handleFinanceAction]);
 
   const handleDeletePurchase = useCallback((id: string) => { if(confirm('Cancelar a compra e reverter a entrada de estoque? O histórico será preservado.')) void handleFinanceAction({type:'cancel_purchase',purchaseId:id,date:new Date().toLocaleDateString('sv-SE')}); }, [handleFinanceAction]);
 
@@ -1798,6 +1798,7 @@ export default function App() {
 
         {activeTab === 'purchases' && (
           <PurchasesView
+            finance={finance}
             purchases={purchases}
             materials={materials}
             suppliers={suppliers}

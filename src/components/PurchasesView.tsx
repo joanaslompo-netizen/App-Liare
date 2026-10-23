@@ -16,7 +16,7 @@ import {
   DollarSign, 
   ArrowUpRight 
 } from 'lucide-react';
-import { Purchase, PurchaseItem, Material, Supplier, UnitOfMeasure } from '../types';
+import { Purchase, PurchaseItem, PurchasePayment, FinanceData, Material, Supplier, UnitOfMeasure } from '../types';
 import { 
   formatCurrency, 
   formatDate, 
@@ -24,13 +24,17 @@ import {
   UNIT_SHORT,
   matchesSearchText
 } from '../utils/formatters';
+import { FinancialAccountSelect } from './FinancialAccountSelect';
+import { accountName, cardFirstDueDate, monthlyDueDate } from '../utils/bankAccounts';
+import { allocateCents, cents, money, newId } from '../utils/financeLedger';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
 
 interface PurchasesViewProps {
+  finance?: FinanceData;
   purchases: Purchase[];
   materials: Material[];
   suppliers: Supplier[];
-  onSavePurchase: (purchase: Purchase, updateStock: boolean, payment?: {paidNow: boolean; dueDate: string; account: string}) => void | boolean | Promise<boolean>;
+  onSavePurchase: (purchase: Purchase, updateStock: boolean, payment?: PurchasePayment) => void | boolean | Promise<boolean>;
   onDeletePurchase: (id: string) => void;
   onOpenSuppliers?: () => void;
   openNewPurchaseSignal?: number;
@@ -38,6 +42,7 @@ interface PurchasesViewProps {
 
 export const PurchasesView: React.FC<PurchasesViewProps> = ({
   purchases,
+  finance = {version: 1, entries: [], bills: []},
   materials,
   suppliers,
   onSavePurchase,
@@ -285,12 +290,14 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
       {isModalOpen && (
         <NewPurchaseModal
           isOpen={isModalOpen}
+          finance={finance}
           materials={materials}
           suppliers={suppliers}
           onClose={() => setIsModalOpen(false)}
           onSave={async (p, updateStock, payment) => {
-            if (await onSavePurchase(p, updateStock, payment) === false) return;
+            if (await onSavePurchase(p, updateStock, payment) === false) return false;
             setIsModalOpen(false);
+            return true;
           }}
         />
       )}
@@ -299,6 +306,7 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
       {viewingPurchase && (
         <PurchaseDetailsModal
           purchase={viewingPurchase}
+          finance={finance}
           onClose={() => setViewingPurchase(null)}
         />
       )}
@@ -311,14 +319,16 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
 // ==========================================
 
 interface NewPurchaseModalProps {
+  finance: FinanceData;
   isOpen: boolean;
   materials: Material[];
   suppliers: Supplier[];
   onClose: () => void;
-  onSave: (p: Purchase, updateStock: boolean, payment?: {paidNow: boolean; dueDate: string; account: string}) => void | Promise<void>;
+  onSave: (p: Purchase, updateStock: boolean, payment?: PurchasePayment) => boolean | Promise<boolean>;
 }
 
 const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
+  finance,
   materials,
   suppliers,
   onClose,
@@ -331,8 +341,15 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
   const [shippingCost, setShippingCost] = useState('0');
   const [notes, setNotes] = useState('');
   const [updateStock, setUpdateStock] = useState(true);
-  const [paidNow, setPaidNow] = useState(true);
+  const [paymentType, setPaymentType] = useState('paid');
+  const [cardId, setCardId] = useState(finance.cards?.[0]?.id || '');
+  const [installments, setInstallments] = useState(1);
+  const [busy, setBusy] = useState(false);
+  const [purchaseId] = useState(newId);
+  const selectedCard = finance.cards?.find(card => card.id === cardId);
   const [dueDate, setDueDate] = useState(localDateString());
+  const closingDay = selectedCard?.closingDay, cardDueDay = selectedCard?.dueDay;
+  useEffect(() => { if (paymentType === 'card' && closingDay && cardDueDay && date) setDueDate(cardFirstDueDate(date, {closingDay, dueDay: cardDueDay})); }, [paymentType, cardId, closingDay, cardDueDay, date]);
   const [account, setAccount] = useState("Principal");
 
   // Items in this purchase
@@ -390,8 +407,10 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
   const parsedShipping = parseFloat(shippingCost) || 0;
   const totalAmount = itemsTotal + parsedShipping;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (busy) return;
+    if (paymentType === 'card' && !selectedCard) { alert('Selecione um cartão cadastrado.'); return; }
     if (items.length === 0) {
       alert('Adicione pelo menos um item à compra.');
       return;
@@ -401,7 +420,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
     const supplierName = sup ? sup.name : (freeSupplierName.trim() || 'Fornecedor Avulso');
 
     const purchase: Purchase = {
-      id: `pur_${Date.now()}`,
+      id: purchaseId,
       date,
       supplierId: supplierId || undefined,
       supplierName,
@@ -413,7 +432,10 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
       createdAt: localDateString(),
     };
 
-    onSave(purchase, updateStock, {paidNow, dueDate, account});
+    setBusy(true);
+    try { await onSave(purchase, updateStock, {paidNow: paymentType === 'paid', dueDate, account, ...(paymentType === 'card' ? {cardId} : {}), installments: paymentType === 'paid' ? 1 : installments}); }
+    catch (failure) { alert(failure instanceof Error ? failure.message : 'Não foi possível salvar a compra.'); }
+    finally { setBusy(false); }
   };
 
   return (
@@ -438,10 +460,11 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
         <form onSubmit={handleSubmit} className="liare-modal-body p-6 space-y-5 text-stone-900">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+              <label htmlFor="purchase-date" className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
                 Data da Compra *
               </label>
               <input
+                id="purchase-date"
                 type="date"
                 required
                 value={date}
@@ -527,7 +550,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end pt-1">
               <div className="sm:col-span-4">
-                <label className="block text-[11px] font-medium text-stone-600 mb-1">
+                <label htmlFor="purchase-quantity" className="block text-[11px] font-medium text-stone-600 mb-1">
                   Quantidade Comprada
                 </label>
                 <div className="relative">
@@ -535,6 +558,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
                     type="number"
                     step="any"
                     min="0.01"
+                    id="purchase-quantity"
                     value={qty}
                     onChange={(e) => {
                       const newQty = e.target.value;
@@ -557,8 +581,8 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
               </div>
 
               <div className="sm:col-span-4">
-                <label className="block text-[11px] font-medium text-stone-600 mb-1">
-                  Valor Total Pago (R$) <span className="text-rose-500">*</span>
+                <label htmlFor="purchase-item-total" className="block text-[11px] font-medium text-stone-600 mb-1">
+                  Valor total deste item (R$) <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-stone-400">
@@ -568,6 +592,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
                     type="number"
                     step="0.01"
                     min="0"
+                    id="purchase-item-total"
                     value={pricePaid}
                     onChange={(e) => setPricePaid(e.target.value)}
                     placeholder="0,00"
@@ -682,7 +707,16 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
             </label>
           </div>
 
-          <div className="space-y-3 rounded-xl border p-3"><label className="flex gap-2 text-sm"><input type="checkbox" checked={paidNow} onChange={e=>setPaidNow(e.target.checked)} />Compra já paga</label>{paidNow ? <label className="block text-sm">Conta de saída<input required className="mt-1 w-full rounded-lg border p-2 text-base" value={account} onChange={e=>setAccount(e.target.value)} /></label> : <label className="block text-sm">Vencimento<input required type="date" className="mt-1 w-full rounded-lg border p-2 text-base" value={dueDate} onChange={e=>setDueDate(e.target.value)} /></label>}<p className="text-xs text-stone-500">Custo da última compra usado na receita; custo médio mantido para o estoque.</p></div>
+          <div className="space-y-3 rounded-xl border border-stone-200 bg-stone-50 p-4">
+            <label className="block text-sm font-semibold">Pagamento<select aria-label="Pagamento da compra" className="mt-1 w-full rounded-xl border bg-white p-2.5 text-base" value={paymentType} onChange={event => {setPaymentType(event.target.value); if(event.target.value === 'paid')setInstallments(1);}}><option value="paid">Já paguei à vista</option><option value="later">Pagar depois / boleto</option><option value="card">Cartão de crédito</option></select></label>
+            {paymentType === 'paid' ? <label className="block text-sm">Conta de saída<FinancialAccountSelect required finance={finance} className="mt-1 w-full rounded-xl border bg-white p-2.5 text-base" value={account} onChange={setAccount}/></label> : <>
+              {paymentType === 'card' && <label className="block text-sm">Cartão<select required aria-label="Cartão da compra" className="mt-1 w-full rounded-xl border bg-white p-2.5 text-base" value={cardId} onChange={event=>setCardId(event.target.value)}><option value="">Selecione o cartão</option>{finance.cards?.map(card=><option key={card.id} value={card.id}>{card.name}</option>)}</select>{!finance.cards?.length && <span className="mt-1 block text-xs text-stone-500">Cadastre em Financeiro → Contas e cartões.</span>}</label>}
+              <div className="grid grid-cols-2 gap-3"><label className="text-sm">Número de parcelas<input aria-label="Número de parcelas" required type="number" min="1" max="36" step="1" className="mt-1 w-full rounded-xl border bg-white p-2.5 text-base" value={installments || ''} onChange={event=>setInstallments(Number(event.target.value))}/></label><label className="text-sm">Primeiro vencimento<input aria-label="Primeiro vencimento" required type="date" className="mt-1 w-full rounded-xl border bg-white p-2.5 text-base" value={dueDate} onChange={event=>setDueDate(event.target.value)}/></label></div>
+              {totalAmount > 0 && /^\d{4}-\d{2}-\d{2}$/.test(dueDate) && Number.isInteger(installments) && installments >= 1 && installments <= 36 && <details className="rounded-xl border bg-white p-3" open><summary className="cursor-pointer text-sm font-medium">{installments === 1 ? 'Pagamento à vista no vencimento' : `${installments} parcelas · total ${formatCurrency(totalAmount)}`}</summary><div className="mt-2 space-y-1">{allocateCents(cents(totalAmount), Array(installments).fill(1)).map((value,index)=><div key={index} className="flex justify-between text-sm"><span>{index+1}/{installments} · {formatDate(index === 0 ? dueDate : monthlyDueDate(dueDate,index,paymentType === 'card' ? selectedCard?.dueDay : undefined))}</span><strong>{formatCurrency(money(value))}</strong></div>)}</div></details>}
+              <p className="text-xs text-stone-500">A compra entra no estoque uma vez. {paymentType === 'card' ? 'As parcelas entram nas faturas; a conta bancária só muda ao registrar o pagamento.' : 'As parcelas ficam em A pagar até você registrar os pagamentos.'}</p>
+            </>}
+            <p className="text-xs text-stone-500">Custo da última compra usado na receita; custo médio mantido para o estoque.</p>
+          </div>
           {/* Notes */}
           <div>
             <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
@@ -708,10 +742,11 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
             </button>
             <button
               type="submit"
+              disabled={busy}
               className="px-5 py-2 text-sm font-medium bg-stone-900 hover:bg-stone-800 text-white rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <Check className="w-4 h-4 text-amber-400" />
-              <span>Salvar Compra</span>
+              <span>{busy ? 'Salvando…' : 'Salvar Compra'}</span>
             </button>
           </div>
         </form>
@@ -721,8 +756,9 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
 };
 
 // Details Modal
-const PurchaseDetailsModal: React.FC<{ purchase: Purchase; onClose: () => void }> = ({
+const PurchaseDetailsModal: React.FC<{ purchase: Purchase; finance: FinanceData; onClose: () => void }> = ({
   purchase,
+  finance,
   onClose,
 }) => {
   return (
@@ -785,10 +821,11 @@ const PurchaseDetailsModal: React.FC<{ purchase: Purchase; onClose: () => void }
           </div>
 
           <div className="bg-stone-50 p-3 rounded-lg border border-stone-200 flex justify-between items-center">
-            <span className="font-bold text-stone-900 text-sm">Total Pago:</span>
+            <span className="font-bold text-stone-900 text-sm">Total da compra:</span>
             <span className="text-lg font-black text-stone-900">{formatCurrency(purchase.totalAmount)}</span>
           </div>
 
+          {purchase.paymentPlan && <p className="rounded-xl border bg-stone-50 p-3 text-sm">{purchase.paymentPlan.cardId ? `Cartão ${finance.cards?.find(card=>card.id===purchase.paymentPlan?.cardId)?.name || 'cadastrado'}` : purchase.paymentPlan.paidNow ? `Pago pela conta ${accountName(finance,purchase.paymentPlan.account)}` : 'A pagar'} · {purchase.paymentPlan.installments || 1} parcela(s){!purchase.paymentPlan.paidNow && ` · Primeiro vencimento: ${formatDate(purchase.paymentPlan.dueDate)}`}</p>}
           {purchase.notes && (
             <div className="text-stone-600">
               <span className="font-semibold block">Observações:</span>

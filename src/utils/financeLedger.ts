@@ -1,4 +1,5 @@
-import type { Customer, DeliveryEvent, FinanceBill, FinanceData, FinanceEntry, Material, Product, Purchase, Sale, SaleItem, StockMovement } from '../types';
+import type { CreditCard, Customer, DeliveryEvent, FinancialAccount, FinanceBill, FinanceData, FinanceEntry, Material, Product, Purchase, PurchasePayment, Sale, SaleItem, StockMovement } from '../types';
+import { cardFirstDueDate, financialAccounts, monthlyDueDate } from './bankAccounts';
 import { getUnitConversionMultiplier } from './formatters';
 import { cascadeRecalculateAllProducts } from './storage';
 import { getProductFinancialSplit } from './financials';
@@ -49,10 +50,22 @@ export function cashEffect(entry: FinanceEntry, finance: FinanceData): number {
   if (['credit_refund', 'refund', 'expense_payment', 'purchase_payment', 'withdrawal'].includes(entry.kind)) return -entry.amountCents;
   return 0;
 }
+export function accountCashEffect(entry: FinanceEntry, finance: FinanceData, account = 'all'): number {
+  if (entry.kind === 'reversal') {
+    const original = finance.entries.find(item => item.id === entry.referenceId);
+    return original ? -accountCashEffect(original, finance, account) : 0;
+  }
+  if (entry.kind === 'transfer') return account === 'all' ? 0 : entry.account === account ? -entry.amountCents : entry.targetAccount === account ? entry.amountCents : 0;
+  return account !== 'all' && entry.account !== account ? 0 : cashEffect(entry, finance);
+}
+export const accountBalance = (finance: FinanceData, account: string, until = localDateString()) => finance.entries.filter(entry => entry.date <= until).reduce((sum, entry) => sum + accountCashEffect(entry, finance, account), 0);
 export const billBalance = (bill: FinanceBill, finance: FinanceData) => Math.max(0, bill.amountCents - activeEntries(finance).filter(e => e.billId === bill.id && ['expense_payment', 'purchase_payment'].includes(e.kind)).reduce((s, e) => s + e.amountCents, 0));
 
 export interface LedgerWorkspace { sales: Sale[]; products: Product[]; customers?: Customer[]; materials?: Material[]; purchases?: Purchase[]; finance?: FinanceData; stockMovements?: StockMovement[]; settings: { lastOrderNumber?: number }; }
 export type FinanceCommand =
+  | { type: 'save_account'; account: FinancialAccount; openingBalanceCents?: number; date: string }
+  | { type: 'save_card'; card: CreditCard }
+  | { type: 'pay_card_invoice'; cardId: string; month: string; billIds: string[]; amountCents: number; account: string; date: string; id: string }
   | { type: 'entry'; entry: FinanceEntry }
   | { type: 'bill'; bill: FinanceBill }
   | { type: 'cancel_bill'; billId: string; date: string }
@@ -61,7 +74,7 @@ export type FinanceCommand =
   | { type: 'cancel_order'; saleId: string; date: string; id: string; destination: 'credit' | 'refund' }
   | { type: 'confirm_order'; saleId: string }
   | { type: 'refund_order'; saleId: string; amountCents: number; destination: 'credit'|'refund'; date: string; id: string; account: string }
-  | { type: 'purchase'; purchase: Purchase; updateStock: boolean; paidNow: boolean; dueDate: string; account: string }
+  | ({ type: 'purchase'; purchase: Purchase; updateStock: boolean } & PurchasePayment)
   | { type: 'cancel_purchase'; purchaseId: string; date: string }
   | { type: 'stock_adjust'; materialId: string; delta: number; date: string; id: string };
 
@@ -75,8 +88,9 @@ export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, comman
   const entry = (e: FinanceEntry) => {
     if (finance.entries.some(x => x.id === e.id)) return;
     requireDate(e.date);
-    if (!Number.isSafeInteger(e.amountCents) || e.amountCents <= 0) fail('Informe um valor positivo.');
-    if ((e.feeCents || 0) < 0 || (e.feeCents || 0) > e.amountCents) fail('A taxa deve ficar entre zero e o valor recebido.');
+    if (!Number.isSafeInteger(e.amountCents) || (e.kind === 'cash_opening' ? e.amountCents === 0 : e.amountCents <= 0)) fail('Informe um valor válido.');
+    if (e.kind === 'transfer' && (!e.account || !e.targetAccount || e.account === e.targetAccount)) fail('Selecione contas diferentes para a transferência.');
+    if ((e.feeCents || 0) < 0 || (e.feeCents || 0) > Math.max(0, e.amountCents)) fail('A taxa deve ficar entre zero e o valor recebido.');
     if (e.customerId && !next.customers?.some(c => c.id === e.customerId)) fail('Selecione um cliente cadastrado.');
     if (['credit_use','credit_refund','credit_grant','credit_opening','credit_release'].includes(e.kind) && !e.customerId) fail('Selecione o cliente do crédito.');
     if (['credit_use','credit_refund'].includes(e.kind) && creditBalance(finance, e.customerId!) < e.amountCents) fail('O cliente não tem crédito suficiente.');
@@ -140,9 +154,46 @@ export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, comman
   };
 
   if (command.type === 'entry') entry({ ...command.entry });
+  if (command.type === 'save_account') {
+    if (command.openingBalanceCents !== undefined && !Number.isSafeInteger(command.openingBalanceCents)) fail('Informe um saldo inicial válido.');
+    const account = { ...command.account, name: command.account.name.trim() };
+    if (!account.id || !account.name) fail('Informe o nome da conta.');
+    if (financialAccounts(finance).some(item => item.id !== account.id && item.name.toLocaleLowerCase('pt-BR') === account.name.toLocaleLowerCase('pt-BR'))) fail('Já existe uma conta com esse nome.');
+    const registered = finance.accounts?.some(item => item.id === account.id);
+    const hasMovements = finance.entries.some(item => item.account === account.id || item.targetAccount === account.id);
+    if (command.openingBalanceCents && !registered && !hasMovements) entry(makeEntry('cash_opening', money(command.openingBalanceCents), { id: `opening_${account.id}`, account: account.id, date: command.date, note: 'Saldo inicial da conta' }));
+    finance.accounts = [...(finance.accounts || []).filter(item => item.id !== account.id), account];
+  }
+  if (command.type === 'save_card') {
+    const card = { ...command.card, name: command.card.name.trim() };
+    if (!card.id || !card.name) fail('Informe o nome do cartão.');
+    if (![card.closingDay, card.dueDay].every(day => Number.isInteger(day) && day >= 1 && day <= 31) || card.closingDay === card.dueDay) fail('Informe dias diferentes de fechamento e vencimento, entre 1 e 31.');
+    if (!financialAccounts(finance).some(account => account.id === card.paymentAccount)) fail('Selecione a conta de pagamento.');
+    if (finance.cards?.some(item => item.id !== card.id && item.name.toLocaleLowerCase('pt-BR') === card.name.toLocaleLowerCase('pt-BR'))) fail('Já existe um cartão com esse nome.');
+    finance.cards = [...(finance.cards || []).filter(item => item.id !== card.id), card];
+  }
+  if (command.type === 'pay_card_invoice') {
+    if (!finance.cards?.some(card => card.id === command.cardId)) fail('Cartão não encontrado.');
+    if (!command.billIds.length || new Set(command.billIds).size !== command.billIds.length) fail('Selecione as parcelas da fatura.');
+    if (command.billIds.every(id => finance.entries.some(item => item.id === `cardpay_${command.id}_${id}`))) return source;
+    requireDate(command.date);
+    if (!financialAccounts(finance).some(account => account.id === command.account)) fail('Selecione a conta de saída.');
+    const bills = command.billIds.map(id => finance.bills.find(bill => bill.id === id) || fail('Uma parcela da fatura não foi encontrada.'));
+    if (bills.some(bill => bill.cancelledAt || bill.cardId !== command.cardId || bill.dueDate.slice(0, 7) !== command.month || billBalance(bill, finance) <= 0)) fail('A fatura mudou. Confira os valores antes de pagar.');
+    if (bills.reduce((sum, bill) => sum + billBalance(bill, finance), 0) !== command.amountCents) fail('A fatura mudou. Confira os valores antes de pagar.');
+    for (const bill of bills) entry(makeEntry(bill.purchaseId ? 'purchase_payment' : 'expense_payment', money(billBalance(bill, finance)), { id: `cardpay_${command.id}_${bill.id}`, billId: bill.id, purchaseId: bill.purchaseId, account: command.account, date: command.date, method: 'Pagamento de fatura', note: bill.name }));
+  }
   if (command.type === 'purchase') {
     if (next.purchases?.some(p => p.id === command.purchase.id)) return source;
     const purchase = command.purchase;
+    requireDate(purchase.date);
+    const card = command.cardId !== undefined ? finance.cards?.find(item => item.id === command.cardId) || fail('Selecione um cartão cadastrado.') : undefined;
+    const installmentCount = command.installments ?? 1;
+    if (!Number.isInteger(installmentCount) || installmentCount < 1 || installmentCount > 36 || cents(purchase.totalAmount) < installmentCount) fail('Informe de 1 a 36 parcelas, com valor mínimo de um centavo por parcela.');
+    if (command.paidNow && (card || installmentCount > 1)) fail('Uma compra parcelada ou no cartão deve ficar a pagar.');
+    const firstDue = command.paidNow ? purchase.date : command.dueDate || (card ? cardFirstDueDate(purchase.date, card) : purchase.date);
+    requireDate(firstDue);
+    if (!command.paidNow && firstDue < purchase.date) fail('O primeiro vencimento não pode ser anterior à compra.');
     const shipping = allocateCents(cents(purchase.shippingCost), purchase.items.map(it => cents(it.totalPrice)));
     if (purchase.totalAmount <= 0 || purchase.items.some(it => it.quantity <= 0 || it.totalPrice < 0)) fail('Confira as quantidades e valores da compra.');
     const items = purchase.items.map((it,i) => {
@@ -152,7 +203,7 @@ export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, comman
       if (!Number.isFinite(baseQuantity) || baseQuantity <= 0) fail('Quantidade convertida inválida.');
       return { ...it, baseQuantity, landedCost: it.totalPrice + money(shipping[i]) };
     });
-    next.purchases = [{ ...purchase, items, stockApplied: command.updateStock }, ...(next.purchases || [])];
+    next.purchases = [{ ...purchase, items, stockApplied: command.updateStock, paymentPlan: { paidNow: command.paidNow, dueDate: firstDue, account: command.account, ...(card ? { cardId: card.id } : {}), installments: installmentCount } }, ...(next.purchases || [])];
     next.materials = (next.materials || []).map(mat => {
       const rows = items.filter(it => it.materialId === mat.id); if (!rows.length) return mat;
       const quantity = rows.reduce((s,it)=>s+it.baseQuantity,0), value = rows.reduce((s,it)=>s+it.landedCost,0), last = value / quantity;
@@ -162,8 +213,10 @@ export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, comman
       return { ...mat, currentStock:current, inventoryUnitCost:average, lastPurchaseUnitCost:last, unitCost:last, packagePrice:last*(mat.packageQuantity || 1)*getUnitConversionMultiplier(mat.packageUnit,mat.unit), updatedAt:purchase.date };
     });
     next.products = cascadeRecalculateAllProducts(next.materials,next.products);
-    const bill: FinanceBill = { id:`bill_${purchase.id}`,name:`Compra · ${purchase.supplierName}`,category:'Materiais',amountCents:cents(purchase.totalAmount),dueDate:command.dueDate,competenceDate:purchase.date,purchaseId:purchase.id,createdAt:new Date().toISOString() };
-    finance.bills.push(bill);
+    const values = allocateCents(cents(purchase.totalAmount), Array(installmentCount).fill(1));
+    const bills: FinanceBill[] = values.map((amountCents, index) => ({ id: installmentCount === 1 ? `bill_${purchase.id}` : `bill_${purchase.id}_${index + 1}`, name: `Compra · ${purchase.supplierName}${installmentCount > 1 ? ` · ${index + 1}/${installmentCount}` : ''}`, category: 'Materiais', amountCents, dueDate: index === 0 ? firstDue : monthlyDueDate(firstDue, index, card?.dueDay), competenceDate: purchase.date, purchaseId: purchase.id, createdAt: new Date().toISOString(), ...(card ? { cardId: card.id } : {}), installmentNumber: index + 1, installmentCount }));
+    finance.bills.push(...bills);
+    const bill = bills[0];
     if (command.paidNow) entry(makeEntry('purchase_payment',purchase.totalAmount,{id:`paid_${purchase.id}`,billId:bill.id,purchaseId:purchase.id,date:purchase.date,account:command.account,note:bill.name}));
   }
   if (command.type === 'cancel_purchase') {

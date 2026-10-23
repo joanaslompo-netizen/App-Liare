@@ -38,6 +38,8 @@ export interface WorkspaceSyncBase {
   paymentMethods: string;
   settings: string;
   bills?: Record<string, string>;
+  accounts?: Record<string, string>;
+  cards?: Record<string, string>;
 }
 
 export type CloudSyncStatus = 'offline' | 'idle' | 'pending' | 'syncing' | 'synced' | 'error';
@@ -136,6 +138,8 @@ export function createWorkspaceSyncBase(workspace: WorkspaceData): WorkspaceSync
     paymentMethods: fingerprint(workspace.paymentMethods || []),
     settings: fingerprint(workspace.settings),
     bills: Object.fromEntries((workspace.finance?.bills || []).map(b => [b.id, fingerprint(b)])),
+    accounts: Object.fromEntries((workspace.finance?.accounts || []).map(account => [account.id, fingerprint(account)])),
+    cards: Object.fromEntries((workspace.finance?.cards || []).map(card => [card.id, fingerprint(card)])),
   };
 }
 
@@ -171,7 +175,13 @@ export function mergeWorkspaceData(
   }
   let merged: WorkspaceData = {
     ...cloud,
-    finance: { version: 1, entries: unionRecords(local.finance?.entries, cloud.finance?.entries), bills: mergeEntityList(base.bills || {}, local.finance?.bills, cloud.finance?.bills) },
+    finance: {
+      ...cloud.finance, ...local.finance, version: 1,
+      entries: unionRecords(local.finance?.entries, cloud.finance?.entries),
+      bills: mergeEntityList(base.bills || {}, local.finance?.bills, cloud.finance?.bills),
+      ...(local.finance?.accounts || cloud.finance?.accounts ? { accounts: mergeEntityList(base.accounts || {}, local.finance?.accounts, cloud.finance?.accounts) } : {}),
+      ...(local.finance?.cards || cloud.finance?.cards ? { cards: mergeEntityList(base.cards || {}, local.finance?.cards, cloud.finance?.cards) } : {}),
+    },
     stockMovements: unionRecords(local.stockMovements, cloud.stockMovements),
     materials: mergeEntityList(base.entities.materials, local.materials, cloud.materials),
     products: mergeEntityList(base.entities.products, local.products, cloud.products),

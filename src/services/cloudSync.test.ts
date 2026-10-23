@@ -36,6 +36,15 @@ assert.deepEqual(docs.get(legacy),local,'finance migration never modifies legacy
 const merged=service.mergeWorkspaceData(base,{...local,finance:ledger.emptyFinance()},cloud);assert.equal(ledger.creditBalance(merged.finance,'c'),5000);
 const device=structuredClone(cloud),remote=structuredClone(cloud);device.suppliers=[{id:'local_supplier',name:'Fornecedor local'}];remote.products.push({...remote.products[0],id:'chatgpt_recipe',name:'Receita da conexão'});
 const combined=service.mergeWorkspaceData(service.createWorkspaceSyncBase(cloud),device,remote);assert(combined.products.some((p:any)=>p.id==='chatgpt_recipe'));assert(combined.suppliers.some((p:any)=>p.id==='local_supplier'));assert.deepEqual(combined.finance,remote.finance);
+const configured=structuredClone(cloud);
+configured.finance.accounts=[{id:'bank',name:'Conta LIARE'}];
+configured.finance.cards=[{id:'card',name:'Cartão LIARE',closingDay:5,dueDay:12,paymentAccount:'bank'}];
+const bankDevice=structuredClone(configured),bankRemote=structuredClone(configured);
+bankDevice.finance.cards[0].name='Cartão novo nome';
+bankRemote.finance.accounts.push({id:'another-bank',name:'Outra conta'});
+const bankMerged=service.mergeWorkspaceData(service.createWorkspaceSyncBase(configured),bankDevice,bankRemote);
+assert.equal(bankMerged.finance.cards[0].name,'Cartão novo nome');
+assert.equal(bankMerged.finance.accounts.length,2,'Contas e cartões sobrevivem à mesclagem de alterações independentes');
 // A queued edit merges unrelated changes, but never overwrites newer order history.
 const editBase = structuredClone(cloud), editSyncBase = service.createWorkspaceSyncBase(editBase);
 let offlineEdit = ledger.applyFinanceCommand(editBase, {type:'save_order',sale:{...editBase.sales[0],notes:'Entregar na portaria'}});
@@ -76,6 +85,17 @@ await service.uploadWorkspaceToCloud('test',combined,'Web',cloud.revision);const
 assert.equal((await service.fetchPreviousWorkspaceFromCloud('test')).products.length,1);
 await assert.rejects(service.uploadWorkspaceToCloud('test',local,'Web',1),service.CloudSyncConflictError);
 console.log('PASS fluxo SDK: migração + sincronização, conflito entre dispositivos, backup anterior, receita remota com fornecedor local e dois usos concorrentes de R$250 sobre crédito R$300 permitem só um.');
+cloud=await service.executeFinanceInCloud('test',uploaded,service.createWorkspaceSyncBase(uploaded),{type:'save_account',account:{id:'bank-race',name:'Conta de teste'},date:'2026-01-01',openingBalanceCents:100000});
+cloud=await service.executeFinanceInCloud('test',cloud,service.createWorkspaceSyncBase(cloud),{type:'save_card',card:{id:'card-race',name:'Cartão de teste',closingDay:5,dueDay:12,paymentAccount:'bank-race'}});
+cloud=await service.executeFinanceInCloud('test',cloud,service.createWorkspaceSyncBase(cloud),{type:'bill',bill:{id:'card-bill-race',name:'Parcela de teste',category:'Materiais',amountCents:5000,dueDate:'2026-10-12',competenceDate:'2026-10-01',createdAt:'2026-10-01',cardId:'card-race'}});
+const beforeInvoice=structuredClone(cloud),invoiceBase=service.createWorkspaceSyncBase(beforeInvoice);
+const invoiceRace=await Promise.allSettled(['one','two'].map(id=>service.executeFinanceInCloud('test',beforeInvoice,invoiceBase,{type:'pay_card_invoice',id,cardId:'card-race',month:'2026-10',billIds:['card-bill-race'],amountCents:5000,account:'bank-race',date:'2026-10-12'})));
+assert.equal(invoiceRace.filter(result=>result.status==='fulfilled').length,1,'Pagamento concorrente da fatura só é aceito uma vez');
+cloud=await service.fetchWorkspaceFromCloud('test');
+assert.equal(ledger.accountBalance(cloud.finance,'bank-race'),95000);
+assert.equal(cloud.finance.cards[0].name,'Cartão de teste');
+assert.equal(cloud.finance.entries.filter((entry:any)=>entry.billId==='card-bill-race').length,1);
+console.log('PASS fatura concorrente: duas tentativas simultâneas quitam uma vez, preservando contas e cartões na nuvem.');
 const before=serverReadCount;
 const concurrent=await Promise.all([service.fetchWorkspaceFromCloud('test'),service.fetchWorkspaceFromCloud('test')]);
 assert.equal(serverReadCount-before,2,'Buscas simultâneas compartilham a leitura do índice e da proteção antiga.');

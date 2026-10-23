@@ -48,6 +48,11 @@ try {
   assert.deepEqual(decodeRecordHead({ ...head, recordRows: head.recordRows.map(JSON.parse) }, 'payload-owner'), decodeRecordHead(head, 'payload-owner'), 'Previous tuple representation remains readable');
   assert.throws(() => decodeRecordHead({ ...head, recordRows: ['broken JSON'] }, 'payload-owner'), /inválida/);
   assert.deepEqual(adapter.docs.get(LEGACY_ID), original);
+  let current = (await store.read())!.data;
+  current = await store.mutate(data => applyFinanceCommand(data, { type: 'save_account', account: { id: 'bank', name: 'Conta teste' }, date: '2026-01-01', openingBalanceCents: 100000 }), current.revision);
+  current = await store.mutate(data => applyFinanceCommand(data, { type: 'save_card', card: { id: 'card', name: 'Cartão teste', closingDay: 25, dueDay: 31, paymentAccount: 'bank' } }), current.revision);
+  current = await store.mutate(data => applyFinanceCommand(data, { ...command, purchase: { ...command.purchase, id: 'card-purchase' }, cardId: 'card', installments: 3, dueDate: '2026-10-31' }), current.revision);
+  assert.deepEqual((await store.read())!.data, current, 'Contas, cartões e parcelas também passam no parser real e sobrevivem à reconstrução');
   console.log('PASS SDK real: compra, estoque, conta a pagar, manifesto atual/anterior e leitura exata; formato antigo recusado pelo SDK, novo formato aceito sem conexão nem commit real.');
 } finally {
   await terminate(db);

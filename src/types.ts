@@ -196,6 +196,7 @@ export interface PurchaseItem {
 }
 
 export interface Purchase {
+  paymentPlan?: PurchasePayment;
   cancelledAt?: string;
   stockApplied?: boolean;
   id: string;
@@ -208,6 +209,14 @@ export interface Purchase {
   totalAmount: number;
   notes?: string;
   createdAt: string;
+}
+
+export interface PurchasePayment {
+  paidNow: boolean;
+  dueDate: string;
+  account: string;
+  cardId?: string;
+  installments?: number;
 }
 
 export type DiscountType = 'percentage' | 'fixed';
@@ -526,6 +535,9 @@ export interface FinanceEntry {
   legacy?: boolean;
 }
 export interface FinanceBill {
+  cardId?: string;
+  installmentNumber?: number;
+  installmentCount?: number;
   includedInRecipeCosts?: boolean;
   id: string;
   name: string;
@@ -537,7 +549,21 @@ export interface FinanceBill {
   cancelledAt?: string;
   purchaseId?: string;
 }
-export interface FinanceData { version: 1; entries: FinanceEntry[]; bills: FinanceBill[]; }
+export interface FinancialAccount { id: string; name: string; }
+export interface CreditCard {
+  id: string;
+  name: string;
+  closingDay: number;
+  dueDay: number;
+  paymentAccount: string;
+}
+export interface FinanceData {
+  version: 1;
+  entries: FinanceEntry[];
+  bills: FinanceBill[];
+  accounts?: FinancialAccount[];
+  cards?: CreditCard[];
+}
 export interface StockMovement {
   id: string;
   date: string;

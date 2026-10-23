@@ -18,6 +18,17 @@
 - Trabalho de componentes feitos no ateliê separado dos materiais na precificação; multiplicador visível na receita.
 - Snapshot local integral, exportação/importação e sincronização incluem o financeiro; primeiro movimento guarda recuperação local.
 
+## Contas bancárias, cartões e parcelas — 23/10/2026
+
+- Em **Financeiro → Contas e cartões**, cadastrar nomes das contas e saldo inicial; cadastrar o cartão com dia de fechamento, vencimento e conta usada para pagar a fatura. Nomes antigos dos lançamentos continuam disponíveis; renomear uma conta registrada conserva seu identificador e histórico.
+- Em **Registrar compra**, escolher **Já paguei à vista**, **Pagar depois / boleto** ou **Cartão de crédito**. Nas compras a pagar, informar 1–36 parcelas e o primeiro vencimento; a prévia mostra datas e valores.
+- O total, incluindo frete, é distribuído em centavos sem perda. Parcelas mensais preservam o dia original e ajustam meses curtos; cartão usa seu dia de vencimento. Compras no fechamento entram na próxima fatura. O primeiro vencimento pode ser conferido/ajustado antes de salvar.
+- Estoque e custo entram uma vez pela compra completa. Cada parcela gera uma conta a pagar; comprar no crédito não desconta a conta bancária. A conta é movimentada quando o usuário registra o pagamento da fatura ou de uma parcela.
+- Faturas são agrupadas por cartão e mês de vencimento. **Registrar pagamento da fatura** quita as parcelas abertas exibidas e desconta sua soma da conta escolhida. Não há pagamento bancário automático. Alterações posteriores dos dias do cartão não mudam vencimentos já registrados.
+- Saldos vêm dos movimentos cadastrados, incluindo saldo inicial, recebimentos, compras pagas, estornos e transferências. O saldo inicial deve representar o valor anterior aos lançamentos que serão cadastrados; não é sincronização automática com o banco.
+- Cadastro, compra e pagamento usam as transações existentes. O fluxo não adiciona consultas periódicas nem gravações em repouso. Contas/cartões são preservados na mesclagem e no protocolo por registros; parcelas são contas individuais. Atualizar os aparelhos antes de usar a funcionalidade nova.
+- Validação: `test:accounts` (datas, centavos, estoque único, saldos, estornos, concorrência, UI e reabertura), serviço SDK com pagamentos simultâneos, parser real de escrita para contas/cartões/parcelas, suites anteriores de financeiro/cota/formulários, tipagem e build. Testes simulados; nenhuma conta, compra ou pagamento fictício criado na base real.
+
 ## Conferência prática — use seus próximos movimentos reais
 
 1. Recarregue o app nos aparelhos que usa. Abra **Financeiro** pelo cabeçalho.
