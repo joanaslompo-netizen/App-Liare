@@ -3,7 +3,7 @@
 O leitor aceita o formato 4 publicado anteriormente. Novas alterações usam o
 formato 5 com manifesto compacto e diferenças sobre registros imutáveis, sem
 reenviar imagens inalteradas. A profundidade máxima é 4; todas as camadas têm
-integridade SHA-256 conferida. A atualização ocorre junto de uma alteração real,
+integridade SHA-256 conferida. As linhas compactas de `recordRows` são strings JSON: o Firestore não aceita arrays diretamente dentro de arrays. A leitura também aceita as tuplas anteriores. A atualização ocorre junto de uma alteração real,
 sem migração em massa ao abrir. Ver `auditoria-cota-2026-10-22.md`.
 
 O app e a conexão privada usam o mesmo protocolo, mantido byte a byte em
@@ -64,7 +64,7 @@ comparação e recuperação, mas não representa alterações posteriores à mi
 
 - Protocolo: fidelidade, exclusões, ordenação, campos desconhecidos, backup, no-op,
   falha atômica, revisão divergente, corrupção e aba antiga.
-- SDK: fluxo de upload/leitura/recuperação e duas operações concorrentes sobre
+- SDK: validação dos payloads pelo parser real de `WriteBatch.set`, sem commit ou rede; compra, estoque e conta a pagar; manifestos atual/anterior aceitos, enquanto o formato antigo com arrays aninhados é recusado. Também fluxo de upload/leitura/recuperação e duas operações concorrentes sobre
   o mesmo crédito, impedindo gasto duplicado.
 - REST: importação, preview sem escrita, cadastro idempotente, proteção da revisão,
   custos, estoque, financeiro, autenticação e isolamento entre usuários.

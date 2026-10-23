@@ -1,5 +1,25 @@
 # Revisão do consumo de Firestore — 22/10/2026
 
+## Correção de compatibilidade — 23/10/2026
+
+A compactação inicial do manifesto representava `recordRows` como uma lista de
+tuplas (arrays dentro de outro array). O parser real de `Transaction.set` do
+Firebase rejeita esse formato antes do commit, inclusive ao salvar compras.
+Os testes anteriores usavam adaptadores permissivos e não validavam essa regra.
+
+Cada tupla agora é armazenada como string JSON, mantendo os mesmos IDs, hashes,
+ordem e conteúdo lógico. O leitor continua entendendo registros 4, manifestos 5
+já decodificados e tuplas anteriores. Não há migração em massa nem alteração de
+dados do usuário para corrigir o código. App e conexão recebem o mesmo arquivo.
+
+A regressão nova usa o SDK instalado (`WriteBatch.set`, o mesmo parser de escrita),
+recusa explicitamente o payload antigo e aceita cada documento planejado de uma
+compra simulada, estoque, conta a pagar e manifesto atual/anterior. Não faz commit,
+autenticação nem consulta à conta real. O teste REST também valida a restrição
+nas estruturas `Value` de todos os documentos. A suíte de cota passa a incluir a
+validação do SDK real. Na carga sintética de 286 registros, o payload corrigido é
+81.798 bytes contra 110.101 do formato 4; não é medição da quota da conta.
+
 ## Escopo e evidência
 
 Revisados os caminhos de persistência do app e da conexão: autenticação, perfil,

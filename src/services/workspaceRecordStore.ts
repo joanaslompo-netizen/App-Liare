@@ -97,7 +97,11 @@ export function decodeRecordHead(raw:any,uid:string):RecordHead {
   let head=raw;
   if(raw?.storageSchema===5 && Array.isArray(raw.recordRows)) {
     if(!Array.isArray(raw.recordSections)||raw.records!==undefined)throw new Error('Índice de registros inválido.');
-    head={...raw,records:raw.recordRows.map((row:any)=>{
+    head={...raw,records:raw.recordRows.map((encoded:any)=>{
+      let row=encoded;
+      if(typeof row==='string') {
+        try { row=JSON.parse(row); } catch { throw new Error('Referência de registro inválida.'); }
+      }
       if(!Array.isArray(row)||row.length<4||row.length>5||!Number.isSafeInteger(row[0])||typeof raw.recordSections[row[0]]!=='string')throw new Error('Referência de registro inválida.');
       return {section:raw.recordSections[row[0]],id:row[1],documentId:row[2],digest:expandDigest(row[3]),...(row[4]?{depth:row[4]}:{})};
     })};
@@ -115,7 +119,9 @@ export function decodeRecordHead(raw:any,uid:string):RecordHead {
 function encodeRecordHead(head:RecordHead):any {
   if(head.storageSchema===4)return head;
   const {records,...header}=head,recordSections=[...new Set(records.map(ref=>ref.section))];
-  return {...header,recordSections,recordRows:records.map(ref=>[recordSections.indexOf(ref.section),ref.id,ref.documentId,compactDigest(ref.digest),...(ref.depth?[ref.depth]:[])])};
+  // Firestore forbids an array directly inside another array. Keep each compact
+  // tuple as a JSON string; logical IDs/digests and legacy decoding are preserved.
+  return {...header,recordSections,recordRows:records.map(ref=>JSON.stringify([recordSections.indexOf(ref.section),ref.id,ref.documentId,compactDigest(ref.digest),...(ref.depth?[ref.depth]:[])]))};
 }
 async function readRecordValue(context:ReadContext,uid:string,ref:RecordRef,visiting=new Set<string>()):Promise<any> {
   if(visiting.has(ref.documentId)||visiting.size>MAX_DELTA_DEPTH)throw new Error('Cadeia de versões inválida.');
