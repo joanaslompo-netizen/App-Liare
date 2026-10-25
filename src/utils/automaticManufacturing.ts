@@ -45,7 +45,8 @@ export function planAutomaticConsumption(items: RecipeItem[], materials: Materia
     const node: ConsumptionForecastNode = { item, quantityTotal: rounded(quantity), stockQuantity: rounded(Math.min(available, quantity)),
       manufactureQuantity: 0, isVirtualRecipe: false, children: [] };
     if (available + 0.00000001 >= quantity) { add(item, quantity); return { ...node, stockAfter: balances.get(key) }; }
-    const canMake = material ? material.isMadeInAtelier : !!product?.items?.length;
+    // A made-to-order item may intentionally have no material composition yet.
+    const canMake = material ? material.isMadeInAtelier : !!product && (!!product.items?.length || product.isCustomRecipe === true);
     if (!canMake) { add(item, quantity); return { ...node, stockAfter: balances.get(key) }; }
     if (ancestors.includes(key)) { errors.push(`A receita de "${item.name}" contém uma referência circular.`); return; }
     const yieldQty = material?.batchYield ?? product?.batchYield;

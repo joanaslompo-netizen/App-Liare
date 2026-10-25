@@ -59,4 +59,63 @@ assert.throws(()=>applyFinanceCommand(shortage,delivery),/insuficiente/);
 assert.equal(JSON.stringify(shortage),shortageBefore,'Falha não deixa consumo parcial');
 const inProgress={...buildProductionBatch([getProductionPlan(autoProducts[1],1,autoMaterials,autoProducts)],'2026-10-23','',true)[0],status:'in_progress' as const};
 assert.throws(()=>applyFinanceCommand({...applyFinanceCommand(initial(),{type:'save_order',sale}),productions:[inProgress]},delivery),/andamento/);
+
+const customSale: Sale = {
+  ...sale, productId: 'custom_placeholder', productName: 'Personalizado avulso', quantity: 3,
+  totalRevenue: 300, totalCost: 0, unitCost: 0,
+  items: [{ ...sale.items![0], productId: 'custom_placeholder', productName: 'Personalizado avulso',
+    isCustom: true, quantity: 3, unitCost: 0, totalCost: 0 }],
+};
+for (const composition of [undefined, []]) {
+  let custom = applyFinanceCommand(initial(), { type: 'save_order', sale: {
+    ...customSale, items: customSale.items!.map(item => ({ ...item, customRecipeItems: composition })),
+  } });
+  const beforeDelivery = JSON.stringify(custom);
+  const original = custom;
+  custom = applyFinanceCommand(custom, delivery);
+  assert.equal(JSON.stringify(original), beforeDelivery, 'Entrega não modifica a base de origem');
+  const customId = custom.sales[0].items![0].customProductId!;
+  assert(customId);
+  assert.equal(custom.sales[0].deliveryStatus, 'parcial');
+  assert.equal(custom.sales[0].items![0].customProducedQuantity, 1);
+  assert.equal(custom.sales[0].items![0].stockConsumedQuantity, 1);
+  assert.equal(custom.sales[0].items![0].costIncomplete, true, 'Sem composição, custo continua incompleto');
+  assert.equal(custom.products.find(product => product.id === customId)!.currentStock, 0);
+  assert.equal(custom.products.find(product => product.id === customId)!.isCustomRecipe, true);
+  assert.deepEqual(custom.materials, original.materials, 'Sem composição, não desconta materiais');
+  assert.deepEqual(custom.finance, original.finance, 'Entregar não registra pagamento');
+  assert.deepEqual(custom.stockMovements.filter(move => move.targetId === customId).map(move => move.quantity), [1, -1]);
+  assert.equal(applyFinanceCommand(custom, delivery), custom, 'Repetição não fabrica nem entrega duas vezes');
+  custom = applyFinanceCommand(custom, { ...delivery, id: 'custom_final', quantity: 2 });
+  assert.equal(custom.sales[0].deliveryStatus, 'entregue');
+  assert.equal(custom.sales[0].items![0].customProductId, customId);
+  assert.equal(custom.sales[0].items![0].customProducedQuantity, 3);
+  assert.equal(custom.products.filter(product => product.isCustomRecipe).length, 1);
+  assert.throws(() => applyFinanceCommand(custom, { ...delivery, id: 'too_many' }), /saldo/);
+  custom = applyFinanceCommand(custom, { ...delivery, id: 'custom_return', kind: 'return', restock: true });
+  assert.equal(custom.products.find(product => product.id === customId)!.currentStock, 1);
+  custom = applyFinanceCommand(custom, { ...delivery, id: 'custom_redelivery' });
+  assert.equal(custom.sales[0].deliveryStatus, 'entregue');
+  assert.equal(custom.sales[0].items![0].customProducedQuantity, 3, 'Peça devolvida usa estoque sem nova fabricação');
+  assert.equal(custom.products.find(product => product.id === customId)!.currentStock, 0);
+  assert.equal(custom.stockMovements.filter(move => move.targetId === customId).reduce((sum, move) => sum + move.quantity, 0), 0);
+}
+
+// A custom composition gets the same nested manufacturing and stock validation as a catalog recipe.
+const withComposition = applyFinanceCommand(initial(), { type: 'save_order', sale: {
+  ...customSale, items: customSale.items!.map(item => ({ ...item, customRecipeItems: autoProducts[1].items })),
+} });
+const customMade = applyFinanceCommand(withComposition, delivery);
+assert.equal(customMade.materials[0].currentStock, 64);
+assert.equal(customMade.materials[1].currentStock, 96);
+assert.equal(customMade.products.find(product => product.id === customMade.sales[0].items![0].customProductId)!.currentStock, 0);
+const insufficient = { ...withComposition, materials: withComposition.materials.map(material => ({ ...material, currentStock: 0 })) };
+const insufficientBefore = JSON.stringify(insufficient);
+assert.throws(() => applyFinanceCommand(insufficient, delivery), /insuficiente/);
+assert.equal(JSON.stringify(insufficient), insufficientBefore, 'Falha não cria receita avulsa nem baixa parcialmente');
+
+const emptyCatalog = applyFinanceCommand({ ...initial(), products: autoProducts.map(product => ({ ...product, items: [] })) }, { type: 'save_order', sale });
+assert.throws(() => applyFinanceCommand(emptyCatalog, delivery), /insuficiente/, 'A exceção sem composição é restrita aos personalizados');
+const missingCatalog = applyFinanceCommand({ ...initial(), products: [] }, { type: 'save_order', sale });
+assert.throws(() => applyFinanceCommand(missingCatalog, delivery), /não encontrado/);
 console.log('PASS fabricação automática: estoque parcial, receitas aninhadas, lote compartilhado, falta real, ciclos, simulação sem escrita, entrega idempotente, devolução e histórico exato.');

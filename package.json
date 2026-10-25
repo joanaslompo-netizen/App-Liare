@@ -22,7 +22,7 @@
     "test:virtual-fragrance": "node --import tsx src/utils/virtualMaterials.test.ts && node --import tsx scripts/test-virtual-fragrance.tsx",
     "test:production-planning": "node --import tsx scripts/test-production-planning-view.tsx",
     "test:accounts": "node --import tsx src/utils/bankAccounts.test.ts && node --import tsx scripts/test-bank-accounts-app.tsx",
-    "test:auto-manufacturing": "node --import tsx src/utils/automaticManufacturing.test.ts && node --import tsx scripts/test-automatic-manufacturing-app.tsx"
+    "test:auto-manufacturing": "node --import tsx src/utils/automaticManufacturing.test.ts && node --import tsx scripts/test-automatic-manufacturing-app.tsx && node --import tsx scripts/test-custom-delivery-app.tsx"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

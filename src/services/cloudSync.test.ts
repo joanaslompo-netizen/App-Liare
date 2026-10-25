@@ -106,6 +106,27 @@ cloud=await service.fetchWorkspaceFromCloud('test');
 assert.equal(cloud.materials.find((material:any)=>material.id==='wax').currentStock,34);
 assert.equal(cloud.sales.filter((order:any)=>order.id.startsWith('auto-')&&order.deliveryHistory?.length).length,1);
 console.log('PASS fabricação concorrente: entregas revalidam insumos na transação, somente uma usa o saldo disponível e falha não deixa baixa parcial.');
+const customOrder = { ...sale('custom_delivery'), productId: 'custom_placeholder', productName: 'Personalizado',
+  items: [{ id: 'custom_delivery_line', productId: 'custom_placeholder', productName: 'Personalizado',
+    isCustom: true, quantity: 1, unitPrice: 250, unitCost: 0, totalCost: 0 }] };
+cloud = await service.uploadWorkspaceToCloud('test', { ...cloud, sales: [...cloud.sales, customOrder] }, 'Teste de entrega personalizada', cloud.revision);
+const customLocal = structuredClone(cloud), customBase = service.createWorkspaceSyncBase(customLocal);
+const customMaterialsBefore = JSON.stringify(cloud.materials), customEntriesBefore = JSON.stringify(cloud.finance.entries);
+const customRace = await Promise.allSettled(['one', 'two'].map(id => service.executeFinanceInCloud('test', customLocal, customBase,
+  { type: 'deliver', id: `custom_delivery_${id}`, saleId: 'custom_delivery', itemId: 'custom_delivery_line', quantity: 1, date: '2026-10-25', kind: 'delivery' })));
+assert.equal(customRace.filter(result => result.status === 'fulfilled').length, 1);
+cloud = await service.fetchWorkspaceFromCloud('test');
+const deliveredCustom = cloud.sales.find((order: any) => order.id === 'custom_delivery');
+const customProduct = cloud.products.find((product: any) => product.id === deliveredCustom.items[0].customProductId);
+assert(customProduct);
+assert.equal(customProduct.currentStock, 0);
+assert.equal(deliveredCustom.deliveryStatus, 'entregue');
+assert.equal(deliveredCustom.deliveryHistory.length, 1);
+assert.equal(cloud.products.filter((product: any) => product.sourceSaleId === 'custom_delivery').length, 1);
+assert.deepEqual(cloud.stockMovements.filter((move: any) => move.targetId === customProduct.id).map((move: any) => move.quantity), [1, -1]);
+assert.equal(JSON.stringify(cloud.materials), customMaterialsBefore);
+assert.equal(JSON.stringify(cloud.finance.entries), customEntriesBefore);
+console.log('PASS personalizado na nuvem simulada: receita interna, fabricação e entrega atômicas; concorrência não duplica produto nem entrega.');
 const before=serverReadCount;
 const concurrent=await Promise.all([service.fetchWorkspaceFromCloud('test'),service.fetchWorkspaceFromCloud('test')]);
 assert.equal(serverReadCount-before,2,'Buscas simultâneas compartilham a leitura do índice e da proteção antiga.');

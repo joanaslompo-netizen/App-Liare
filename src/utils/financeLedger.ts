@@ -2,7 +2,7 @@ import type { CreditCard, Customer, DeliveryEvent, FinancialAccount, FinanceBill
 import { automaticStockMovements, planAutomaticConsumption, validateAutomaticManufacturing } from './automaticManufacturing';
 import { cardFirstDueDate, financialAccounts, monthlyDueDate } from './bankAccounts';
 import { getUnitConversionMultiplier } from './formatters';
-import { cascadeRecalculateAllProducts } from './storage';
+import { cascadeRecalculateAllProducts, recalculateProductPricing } from './storage';
 import { getProductFinancialSplit } from './financials';
 import { localDateString } from './localDate';
 
@@ -81,6 +81,27 @@ export type FinanceCommand =
 
 const fail = (message: string): never => { throw new Error(message); };
 const requireDate = (date: string) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date+"T12:00:00Z")) || new Date(date+"T12:00:00Z").toISOString().slice(0,10)!==date) fail('Informe uma data válida.'); };
+
+/** Internal stock identity for a one-off order line; stays outside the catalog. */
+function customDeliveryProduct(sale: Sale, item: SaleItem, id: string, date: string, materials: Material[], products: Product[]): Product {
+  const laborCost = item.unitLaborRemuneration ?? 0;
+  const materialsCost = item.unitBusinessCost ?? Math.max(0, item.unitCost - laborCost);
+  const product: Product = {
+    id, name: item.productName, category: 'Personalizadas', imageUrl: item.productImageUrl,
+    isIntermediate: false, items: (item.customRecipeItems || []).map(row => ({ ...row })),
+    materialsCost, productionTimeMinutes: 0, hourlyRate: 0, laborCost,
+    fixedCostPercent: 0, fixedCost: 0, otherCosts: 0, totalCost: materialsCost + laborCost,
+    profitMarginPercent: 0, suggestedPrice: item.unitPrice, actualPrice: item.unitPrice,
+    calculatedMarginPercent: item.unitPrice > 0 ? (item.unitPrice - materialsCost) / item.unitPrice * 100 : 0,
+    netProfit: item.unitPrice - materialsCost, batchYield: 1, unitCostFromBatch: materialsCost + laborCost,
+    currentStock: 0, minStock: 0, standardStock: 0, isCustomRecipe: true,
+    sourceSaleId: sale.id, sourceSaleItemId: item.id,
+    sourceCustomerId: sale.customerId, sourceCustomerName: sale.customerName,
+    createdAt: date, updatedAt: date,
+  };
+  return product.items.length ? recalculateProductPricing(product, materials, products) : product;
+}
+
 export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, command: FinanceCommand): T {
   let next: T = { ...source, finance: { ...(source.finance || emptyFinance()), entries: [...(source.finance?.entries || [])], bills: [...(source.finance?.bills || [])] }, sales: [...source.sales], products: [...source.products], stockMovements: [...(source.stockMovements || [])] };
   const finance = next.finance!;
@@ -296,11 +317,16 @@ export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, comman
     if (!Number.isFinite(command.quantity) || command.quantity <= 0) fail('Informe uma quantidade positiva.');
     const net = (item.deliveredQuantity || 0) - (item.returnedQuantity || 0);
     if (command.quantity > (command.kind === 'delivery' ? item.quantity - net : net)) fail('A quantidade supera o saldo desse item.');
-    const productId = item.isCustom ? item.customProductId : item.productId;
-    const product = next.products.find(p => p.id === productId);
+    let productId = item.isCustom ? item.customProductId : item.productId;
+    let product = next.products.find(p => p.id === productId);
+    if (command.kind === 'delivery' && item.isCustom && !product) {
+      product = customDeliveryProduct(sale, item, `custom_prod_${command.id}`, command.date, next.materials || [], next.products);
+      productId = product.id;
+      next.products.push(product);
+    }
     let manufacturedQuantity = 0;
     if (command.kind === 'delivery') {
-      if (!product) fail('Produza o item antes de entregar.');
+      if (!product) fail('Produto do pedido não encontrado.');
       const protectedStock = new Map<string, number>();
       for (const order of next.sales.filter(order => order.id !== sale.id && isActiveOrder(order))) for (const row of orderItems(order)) {
         const id = row.isCustom ? row.customProductId : row.productId;
@@ -326,7 +352,19 @@ export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, comman
     const event: DeliveryEvent = { ...command, unitBusinessCost: command.kind==='return' ? priorEvent?.unitBusinessCost ?? item.unitBusinessCost ?? estimated.businessCostPerUnit : deliveryBusinessCost, unitLaborRemuneration: command.kind==='return' ? priorEvent?.unitLaborRemuneration ?? item.unitLaborRemuneration ?? estimated.laborRemunerationPerUnit : deliveryLaborCost, unitRevenueCents: command.kind==='return' ? priorEvent?.unitRevenueCents ?? allocated[sale.items!.findIndex(it=>it.id===item.id)]/item.quantity : allocated[sale.items!.findIndex(it=>it.id===item.id)]/item.quantity };
     if(command.kind==='return' && command.restock && product) next.products=next.products.map(p=>p.id===product.id?{...p,inventoryBusinessCost:((product.currentStock||0)*(product.inventoryBusinessCost??estimated.businessCostPerUnit)+command.quantity*(event.unitBusinessCost||0))/((product.currentStock||0)+command.quantity),inventoryLaborCost:((product.currentStock||0)*(product.inventoryLaborCost??estimated.laborRemunerationPerUnit)+command.quantity*(event.unitLaborRemuneration||0))/((product.currentStock||0)+command.quantity)}:p);
     sale.deliveryHistory = [...(sale.deliveryHistory || []), event];
-    sale.items = sale.items!.map(it => it.id === item.id ? { ...it, deliveredQuantity: (it.deliveredQuantity || 0) + (command.kind === 'delivery' ? command.quantity : 0), returnedQuantity: (it.returnedQuantity || 0) + (command.kind === 'return' ? command.quantity : 0), stockConsumedQuantity: net + (command.kind === 'delivery' ? command.quantity : -command.quantity), reservedQuantity: Math.max(0, (it.reservedQuantity || 0) - (command.kind === 'delivery' ? command.quantity : 0)) } : it);
+    sale.items = sale.items!.map(it => it.id === item.id ? {
+      ...it,
+      ...(command.kind === 'delivery' && it.isCustom ? {
+        customProductId: productId,
+        customProducedQuantity: (it.customProducedQuantity || 0) + manufacturedQuantity,
+        customProducedAt: manufacturedQuantity > 0 ? command.date : it.customProducedAt,
+        costIncomplete: it.costIncomplete || !product!.items.length,
+      } : {}),
+      deliveredQuantity: (it.deliveredQuantity || 0) + (command.kind === 'delivery' ? command.quantity : 0),
+      returnedQuantity: (it.returnedQuantity || 0) + (command.kind === 'return' ? command.quantity : 0),
+      stockConsumedQuantity: net + (command.kind === 'delivery' ? command.quantity : -command.quantity),
+      reservedQuantity: Math.max(0, (it.reservedQuantity || 0) - (command.kind === 'delivery' ? command.quantity : 0)),
+    } : it);
     sale.deliveryStatus = deliveryStatus(sale); sale.deliveryActualDate = sale.deliveryStatus === 'entregue' ? command.date : undefined; save(sale);
     next.stockMovements!.push({ id: command.id, date: command.date, targetId: productId || '', type: 'product', quantity: delta, reason: command.kind === 'delivery' ? 'Entrega' : command.restock ? 'Devolução ao estoque' : 'Devolução com perda', referenceId: sale.id });
   }
