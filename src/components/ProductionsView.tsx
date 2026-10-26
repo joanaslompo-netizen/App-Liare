@@ -165,7 +165,6 @@ export function ProductionsView({
               onAdvanceProductionStage(updated, deductions, delta);
               if (updated.status === "completed") setStatus("completed");
               setNotice("Etapa registrada.");
-              back();
             }}
           />
         ) : (

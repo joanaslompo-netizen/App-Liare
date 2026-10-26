@@ -86,6 +86,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
     firstPendingStage?.stageId || sortedStages[0]?.stageId || "",
   );
   const [quantity, setQuantity] = useState<string>("0");
+  const [notice, setNotice] = useState("");
 
   const selectedStageIndex = sortedStages.findIndex(
     (stage) => stage.stageId === selectedStageId,
@@ -231,7 +232,16 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
       completedAt: isCompleted ? localDateString() : undefined,
     };
 
-    try { onAdvance(updatedProduction, recordedDeductions, finishedQuantityDelta); }
+    try {
+      onAdvance(updatedProduction, recordedDeductions, finishedQuantityDelta);
+      setNotice(isCompleted
+        ? "Produção concluída."
+        : `${selectedStage.stageName} registrada: ${formatNumber(parsedQuantity)} un.`);
+      if (nextCompletedQuantity >= selectedStage.plannedQuantity - 0.0001) {
+        const nextPending = nextStageProgress.find(stage => stage.completedQuantity < stage.plannedQuantity);
+        if (nextPending) setSelectedStageId(nextPending.stageId);
+      }
+    }
     catch (failure) { alert(failure instanceof Error ? failure.message : 'Não foi possível registrar a etapa.'); }
   };
 
@@ -258,6 +268,8 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
           </button>
         </div>
 
+        {notice && <p role="status" className="mx-5 mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</p>}
+
         <div className="p-5 grid gap-5 lg:grid-cols-2">
           <div className="space-y-2">
             {sortedStages.map((stage, index) => {
@@ -276,6 +288,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
                 <button
                   key={stage.stageId}
                   type="button"
+                  aria-pressed={selectedStageId === stage.stageId}
                   onClick={() => setSelectedStageId(stage.stageId)}
                   className={`w-full p-3 rounded-xl border text-left transition-colors ${
                     selectedStageId === stage.stageId

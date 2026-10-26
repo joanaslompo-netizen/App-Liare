@@ -173,11 +173,15 @@ const openMother = () =>
   click(`[data-advance-production="${motherProduction}"]`);
 await openMother();
 assert.equal(document.querySelector("dialog"), null);
+const stagePage = document.querySelector('.liare-production-detail');
 await fill(
   document.querySelector('.liare-production-detail input[type="number"]')!,
   "2",
 );
 await button("Registrar etapa");
+assert.equal(document.querySelector('.liare-production-detail'), stagePage, 'Registrar uma etapa parcial mantém a página aberta.');
+assert(document.body.textContent?.includes('Fabricação registrada: 2 un.'));
+assert.equal((document.querySelector('#production-stage-quantity') as HTMLInputElement).value, '2');
 assert.equal(stock("wax"), 980);
 assert.equal(stock("vanilla"), 98);
 assert.equal(
@@ -189,7 +193,6 @@ assert.equal(
     .stageProgress[0].completedQuantity,
   0,
 );
-await openMother();
 const labelStage = [
   ...document.querySelectorAll<HTMLButtonElement>(
     ".liare-production-detail button",
@@ -202,15 +205,19 @@ await fill(
   "1",
 );
 await button("Concluir etapa e adicionar ao estoque");
+assert.equal(document.querySelector('.liare-production-detail'), stagePage, 'Também permanece aberta após registrar unidades da etapa final.');
 assert.equal(
   saved().products.find((p: any) => p.id === "mother").currentStock,
   1,
 );
 assert.equal(stock("label"), 99);
-await openMother();
+const fabricationStage = [...document.querySelectorAll<HTMLButtonElement>('.liare-production-detail button')].find(b => b.textContent?.includes('Fabricação'))!;
+await act(async () => fabricationStage.click());
 await button("Registrar etapa");
 assert.equal(stock("wax"), 960);
-await openMother();
+assert.equal(document.querySelector('.liare-production-detail'), stagePage);
+assert(document.querySelector('.liare-production-detail button[aria-pressed="true"]')?.textContent?.includes('Rotulagem'), 'Concluir a etapa seleciona a próxima na mesma página.');
+assert(document.body.textContent?.includes('Liberadas para registrar agora: 3 un'));
 await fill(
   document.querySelector('.liare-production-detail input[type="number"]')!,
   "4",
@@ -237,6 +244,15 @@ assert.equal(
   4,
 );
 assert.equal(stock("label"), 96);
+assert.equal(document.querySelector('.liare-production-detail'), stagePage, 'Concluir toda a produção também mantém a página aberta.');
+assert(document.body.textContent?.includes('Produção concluída.'));
+const completedButton = [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.trim() === 'Concluir etapa e adicionar ao estoque')!;
+assert(completedButton.disabled, 'A conclusão não permite registrar novamente as mesmas unidades.');
+const completedSnapshot = JSON.stringify(saved());
+await act(async () => completedButton.click());
+assert.equal(JSON.stringify(saved()), completedSnapshot);
+await button('Voltar para produção');
+assert.equal(document.querySelector('.liare-production-detail'), null, 'A página só sai ao voltar explicitamente.');
 
 // A direct batch records all lines once, merging duplicate product/ingredient selections.
 await click("#btn-add-production");
