@@ -1682,6 +1682,7 @@ export default function App() {
           key={workflowSaleId} sale={sales.find(sale => sale.id === workflowSaleId)!}
           finance={finance} products={products} customers={customers} settings={settings}
           onAction={handleFinanceAction} onSave={handleSaveSale} onBack={closeOrderDetail}
+          onProduceCustomItem={handleProduceCustomItem}
           focus={workflowFocus} onProduce={product => {
             setWorkflowSaleId(null);
             if (product) { setHomeNewProductionSignal(0); handleOpenProductionFromProduct(product); }
