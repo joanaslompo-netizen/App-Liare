@@ -5,6 +5,7 @@ import { getUnitConversionMultiplier } from './formatters';
 import { cascadeRecalculateAllProducts, recalculateProductPricing } from './storage';
 import { getProductFinancialSplit } from './financials';
 import { localDateString } from './localDate';
+import { correctPurchaseStock, preservePurchaseUnits, purchaseFingerprint, purchasePaymentState } from './purchaseEditing';
 
 export const emptyFinance = (): FinanceData => ({ version: 1, entries: [], bills: [] });
 export const cents = (value: number) => Math.round((Number.isFinite(value) ? value : 0) * 100);
@@ -76,6 +77,7 @@ export type FinanceCommand =
   | { type: 'confirm_order'; saleId: string }
   | { type: 'refund_order'; saleId: string; amountCents: number; destination: 'credit'|'refund'; date: string; id: string; account: string }
   | ({ type: 'purchase'; purchase: Purchase; updateStock: boolean } & PurchasePayment)
+  | ({ type: 'edit_purchase'; purchase: Purchase; updateStock: boolean; operationId: string; expectedFingerprint: string; originalStockApplied?: boolean; date: string } & PurchasePayment)
   | { type: 'cancel_purchase'; purchaseId: string; date: string }
   | { type: 'stock_adjust'; materialId: string; delta: number; date: string; id: string };
 
@@ -216,8 +218,12 @@ export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, comman
     const firstDue = command.paidNow ? purchase.date : command.dueDate || (card ? cardFirstDueDate(purchase.date, card) : purchase.date);
     requireDate(firstDue);
     if (!command.paidNow && firstDue < purchase.date) fail('O primeiro vencimento não pode ser anterior à compra.');
-    const shipping = allocateCents(cents(purchase.shippingCost), purchase.items.map(it => cents(it.totalPrice)));
-    if (purchase.totalAmount <= 0 || purchase.items.some(it => it.quantity <= 0 || it.totalPrice < 0)) fail('Confira as quantidades e valores da compra.');
+    if (!purchase.items.length || !Number.isFinite(purchase.totalAmount) || purchase.totalAmount <= 0
+      || !Number.isFinite(purchase.shippingCost) || purchase.shippingCost < 0
+      || purchase.items.some(it => !Number.isFinite(it.quantity) || it.quantity <= 0 || !Number.isFinite(it.totalPrice) || it.totalPrice < 0)
+      || cents(purchase.totalAmount) !== purchase.items.reduce((sum, item) => sum + cents(item.totalPrice), cents(purchase.shippingCost))) fail('Confira as quantidades e valores da compra.');
+    const weights = purchase.items.map(it => cents(it.totalPrice));
+    const shipping = allocateCents(cents(purchase.shippingCost), weights.some(value => value > 0) ? weights : purchase.items.map(item => item.quantity));
     const items = purchase.items.map((it,i) => {
       const mat = next.materials?.find(m => m.id === it.materialId) || fail('Material da compra não encontrado.');
       const ratio = getUnitConversionMultiplier(it.unit || mat.packageUnit, mat.unit);
@@ -240,6 +246,66 @@ export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, comman
     finance.bills.push(...bills);
     const bill = bills[0];
     if (command.paidNow) entry(makeEntry('purchase_payment',purchase.totalAmount,{id:`paid_${purchase.id}`,billId:bill.id,purchaseId:purchase.id,date:purchase.date,account:command.account,note:bill.name}));
+  }
+  if (command.type === 'edit_purchase') {
+    const previous = next.purchases?.find(purchase => purchase.id === command.purchase.id) || fail('Compra não encontrada.');
+    if (previous.edits?.some(edit => edit.id === command.operationId)) return source;
+    if (previous.cancelledAt) fail('Compras canceladas permanecem no histórico e não podem ser editadas.');
+    if (!command.operationId || purchaseFingerprint(previous) !== command.expectedFingerprint) fail('Esta compra mudou em outro aparelho. Reabra a compra para conferir a versão atual antes de salvar.');
+    requireDate(command.date);
+    const originalStockApplied = previous.stockApplied ?? command.originalStockApplied;
+    if (originalStockApplied === undefined) fail('Confirme se o estoque da compra original já foi registrado.');
+    const state = purchasePaymentState(previous, finance);
+    // Reuse creation validation and cent allocation in an isolated preview; no original entry is applied again.
+    const prepared = applyFinanceCommand({ ...next, purchases: next.purchases!.filter(purchase => purchase.id !== previous.id),
+      finance: { ...finance, entries: [], bills: [] }, stockMovements: [] }, { ...command,
+      ...(state.legacy ? { paidNow: false, cardId: undefined, installments: 1, dueDate: command.purchase.date } : {}), type: 'purchase', updateStock: false });
+    const draft = prepared.purchases![0];
+    const plan = state.legacy ? undefined : draft.paymentPlan!;
+    const planChanged = purchaseFingerprint({ ...previous, paymentPlan: plan }) !== purchaseFingerprint(previous);
+    if (state.locked && planChanged) fail('Os pagamentos já registrados serão mantidos. Para mudar a forma de pagamento, estorne esses pagamentos no Financeiro primeiro.');
+    const { edits, ...snapshot } = previous;
+    let purchase: Purchase = { ...previous, ...command.purchase, createdAt: previous.createdAt, stockApplied: command.updateStock,
+      items: preservePurchaseUnits(previous, draft.items), paymentPlan: plan,
+      edits: [...(edits || []), { id: command.operationId, date: command.date, previous: snapshot }] };
+    const paymentChanged = !state.legacy && (cents(previous.totalAmount) !== cents(purchase.totalAmount) || previous.date !== purchase.date
+      || planChanged);
+    if (paymentChanged && state.locked) {
+      const paid = state.payments.reduce((sum, payment) => sum + payment.amountCents, 0);
+      if (cents(purchase.totalAmount) < paid) fail('O novo total é menor que o valor já pago. Estorne a diferença no Financeiro antes de reduzir a compra.');
+      if (!state.bills.length) fail('Não foi possível localizar as parcelas da compra. Confira os pagamentos no Financeiro.');
+      const open = state.bills.filter(bill => billBalance(bill, finance) > 0);
+      const adjustable = open.length ? open : [state.bills[state.bills.length - 1]];
+      const outstanding = allocateCents(cents(purchase.totalAmount) - paid, adjustable.map(bill => billBalance(bill, finance) || 1));
+      finance.bills = finance.bills.map(bill => {
+        if (!state.bills.some(row => row.id === bill.id)) return bill;
+        const index = adjustable.findIndex(row => row.id === bill.id);
+        const billPaid = bill.amountCents - billBalance(bill, finance);
+        return { ...bill, amountCents: billPaid + (index >= 0 ? outstanding[index] : 0) };
+      });
+    } else if (paymentChanged) {
+      if (state.automaticPayment) entry(makeEntry('reversal', money(state.automaticPayment.amountCents), {
+        id: `purchase_reversal_${command.operationId}`, referenceId: state.automaticPayment.id, date: state.automaticPayment.date, account: state.automaticPayment.account,
+        note: 'Correção do pagamento após edição da compra' }));
+      finance.bills = finance.bills.map(bill => bill.purchaseId === purchase.id && !bill.cancelledAt ? { ...bill, cancelledAt: command.date } : bill);
+      const bills = prepared.finance!.bills.filter(bill => bill.purchaseId === purchase.id).map((bill, index) => ({ ...bill, id: `purchase_edit_bill_${command.operationId}_${index}` }));
+      finance.bills.push(...bills);
+      if (plan!.paidNow) {
+        const paymentId = `purchase_edit_paid_${command.operationId}`;
+        entry(makeEntry('purchase_payment', purchase.totalAmount, { id: paymentId, billId: bills[0].id, purchaseId: purchase.id,
+          date: purchase.date, account: plan!.account, note: bills[0].name }));
+        purchase = { ...purchase, autoPaymentId: paymentId };
+      } else purchase = { ...purchase, autoPaymentId: undefined };
+    }
+    // Keep supplier/description current without rewriting historical payments.
+    if (!state.legacy) finance.bills = finance.bills.map(bill => bill.purchaseId === purchase.id && !bill.cancelledAt
+      ? { ...bill, name: `Compra · ${purchase.supplierName}${(bill.installmentCount || 1) > 1 ? ` · ${bill.installmentNumber}/${bill.installmentCount}` : ''}` } : bill);
+    next.purchases = next.purchases!.map(row => row.id === purchase.id ? purchase : row);
+    const stock = correctPurchaseStock(next.materials || [], next.stockMovements || [], next.purchases, previous, purchase,
+      originalStockApplied, command.updateStock, command.operationId, command.date);
+    next.materials = stock.materials;
+    next.stockMovements!.push(...stock.movements);
+    if (next.materials.some((material, index) => material !== source.materials?.[index])) next.products = cascadeRecalculateAllProducts(next.materials, next.products);
   }
   if (command.type === 'cancel_purchase') {
     const purchase = next.purchases?.find(p=>p.id===command.purchaseId) || fail('Compra não encontrada.');
