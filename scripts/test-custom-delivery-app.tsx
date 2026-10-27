@@ -44,6 +44,8 @@ async function openOrder() {
 }
 await act(async () => root.render(<App />));
 await openOrder();
+assert(document.body.textContent?.includes('este item pode ser entregue diretamente'));
+assert(!document.querySelector('[aria-label^="Produzir uma unidade"]'), 'Sem composição não há promessa de uma produção manual obrigatória.');
 await button('Registrar entrega');
 await button('Registrar entrega');
 assert.equal(saved().sales[0].deliveryStatus, 'parcial');

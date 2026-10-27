@@ -2278,32 +2278,31 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
                           {item.isCustom && (
                             <div className="flex items-center gap-2 mt-1 flex-wrap">
-                              <button
+                              {!!item.customRecipeItems?.length && <button
                                 type="button"
                                 onClick={() => handleProduceCustomItemNow(item)}
-                                disabled={!existingSale || !item.customRecipeItems?.length}
+                                disabled={!existingSale}
                                 className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-purple-200 bg-purple-50 text-purple-800 text-xs font-bold hover:bg-purple-100 disabled:opacity-45 disabled:cursor-not-allowed transition-colors"
                                 title={
                                   !existingSale
                                     ? 'Salve o pedido primeiro para liberar a produção'
-                                    : !item.customRecipeItems?.length
-                                      ? 'Preencha os insumos antes de produzir'
-                                      : 'Produzir uma unidade, baixar insumos e adicionar ao estoque'
+                                    : 'Produzir uma unidade, baixar insumos e adicionar ao estoque'
                                 }
                               >
                                 <Package className="w-3 h-3" />
                                 Produzir +1
-                              </button>
+                              </button>}
                               {(item.customProducedQuantity || 0) > 0 && (
                                 <span className="text-xs font-semibold text-emerald-700">
                                   Produzido: {item.customProducedQuantity} un
                                 </span>
                               )}
-                              {!existingSale && (
+                              {!existingSale && !!item.customRecipeItems?.length && (
                                 <span className="text-xs text-stone-400">
                                   salve o pedido para produzir
                                 </span>
                               )}
+                              {!item.customRecipeItems?.length && <span className="text-xs text-stone-500">Sem insumos: entrega direta, sem produção manual.</span>}
                             </div>
                           )}
                         </div>

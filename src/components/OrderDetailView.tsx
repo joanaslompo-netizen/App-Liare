@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, FileText, Pencil, MoreHorizontal, Package, CheckCircle2 } from 'lucide-react';
-import type { AtelierSettings, Customer, FinanceData, Product, Sale } from '../types';
+import type { AtelierSettings, Customer, FinanceData, Product, Sale, SaleItem } from '../types';
 import { creditBalance, migrateFinanceOrder, money, orderBalance, orderPaid, orderTotal, projectOrder } from '../utils/financeLedger';
 import { getSaleFinancials } from '../utils/financials';
 import { formatCurrency, formatDate } from '../utils/formatters';
@@ -38,10 +38,11 @@ function OrderDataEditor({ sale, customers, paid, onSave, onCancel }: { sale: Sa
   </form>;
 }
 
-export function OrderDetailView({ sale, finance, products, customers, settings, onAction, onSave, onBack, focus = 'overview', onProduce }: {
+export function OrderDetailView({ sale, finance, products, customers, settings, onAction, onSave, onBack, focus = 'overview', onProduce, onProduceCustomItem }: {
   key?: string; sale: Sale; finance: FinanceData; products: Product[]; customers: Customer[]; settings: AtelierSettings;
   onAction: FinanceAction; onSave: (sale: Sale) => Promise<boolean>; onBack: () => void;
   focus?: OrderFocus; onProduce: (product?: Product) => void;
+  onProduceCustomItem?: (saleId: string, item: SaleItem, customer?: { id?: string; name?: string }) => { productId: string; productionId: string; producedQuantity: number; unitCost: number } | null;
 }) {
   const [action, setAction] = useState<OrderActionMode | 'items' | 'data' | null>(null);
   const [invoice, setInvoice] = useState(false);
@@ -100,7 +101,19 @@ export function OrderDetailView({ sale, finance, products, customers, settings, 
             return <div key={item.id} className="py-4 first:pt-0">
               <div className="flex items-start justify-between gap-4"><div className="min-w-0"><p className="text-sm font-semibold">{item.productName}</p><p className="mt-1 text-sm text-[#75665c]">{item.quantity} unidades × {formatCurrency(item.unitPrice)}</p></div><strong className="shrink-0 text-sm">{formatCurrency(item.quantity * item.unitPrice)}</strong></div>
               <div className="mt-2 flex flex-wrap gap-2 text-xs"><span className="rounded-md bg-[#edf1e5] px-2 py-1 text-[#53613f]">{netDelivered > 0 ? `${netDelivered} entregues · ` : ''}{item.reservedQuantity || 0} separadas{remaining > 0 ? ` · ${remaining} pendentes` : ''}</span>{item.costIncomplete && <span className="rounded-md bg-[#f6f1ec] px-2 py-1 text-[#75665c]">Custo em preparação</span>}</div>
-              {remaining > 0 && !cancelled && !draft && <div className="mt-3 flex flex-wrap gap-3"><button type="button" disabled={busy} className="text-xs font-semibold text-[#a86149] disabled:opacity-40" onClick={async () => { setBusy(true); try { if (await save({ ...sale })) setMessage('Reservas atualizadas conforme o estoque disponível. Confira as quantidades restantes.'); } finally { setBusy(false); } }}>Separar estoque disponível</button>{product && <button type="button" onClick={() => onProduce(product)} className="text-xs font-semibold text-[#a86149]">Organizar produção</button>}</div>}
+              {remaining > 0 && !cancelled && !draft && <div className="mt-3 flex flex-wrap gap-3"><button type="button" disabled={busy} className="text-xs font-semibold text-[#a86149] disabled:opacity-40" onClick={async () => { setBusy(true); try { if (await save({ ...sale })) setMessage('Reservas atualizadas conforme o estoque disponível. Confira as quantidades restantes.'); } finally { setBusy(false); } }}>Separar estoque disponível</button>{!item.isCustom && product && <button type="button" onClick={() => onProduce(product)} className="text-xs font-semibold text-[#a86149]">Organizar produção</button>}
+                {item.isCustom && !!item.customRecipeItems?.length && onProduceCustomItem && <button type="button" disabled={busy}
+                  aria-label={`Produzir uma unidade de ${item.productName}`} className={secondary}
+                  onClick={() => {
+                    setBusy(true);setMessage('');
+                    try {
+                      const result = onProduceCustomItem(sale.id, item, { id: sale.customerId, name: sale.customerName });
+                      if (result) setMessage(`Uma unidade de ${item.productName} foi produzida e separada para este pedido.`);
+                    } catch (error) { alert(error instanceof Error ? error.message : 'Não foi possível produzir o item.'); }
+                    finally { setBusy(false); }
+                  }}><Package className="h-4 w-4" />Produzir +1</button>}
+              </div>}
+              {item.isCustom && !item.customRecipeItems?.length && remaining > 0 && !cancelled && !draft && <p className="mt-3 text-xs text-[#75665c]">Sem insumos cadastrados: este item pode ser entregue diretamente, sem produção manual.</p>}
               {item.isCustom && item.customRecipeItems?.length ? <details className="mt-3 text-xs text-[#75665c]"><summary className="cursor-pointer">Composição personalizada</summary><ul className="mt-2 space-y-1">{item.customRecipeItems.map((recipe, index) => <li key={recipe.id || index}>{recipe.name} · {recipe.quantity} {recipe.unit}</li>)}</ul></details> : null}
             </div>;
           })}</div>
