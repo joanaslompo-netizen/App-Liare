@@ -11,12 +11,13 @@ import {
   Truck, 
   Trash2, 
   Eye, 
+  Pencil,
   X, 
   Check, 
   DollarSign, 
   ArrowUpRight 
 } from 'lucide-react';
-import { Purchase, PurchaseItem, PurchasePayment, FinanceData, Material, Supplier, UnitOfMeasure } from '../types';
+import { Purchase, PurchaseItem, PurchasePayment, PurchaseEditOptions, FinanceData, Material, Supplier, UnitOfMeasure } from '../types';
 import { 
   formatCurrency, 
   formatDate, 
@@ -28,13 +29,14 @@ import { FinancialAccountSelect } from './FinancialAccountSelect';
 import { accountName, cardFirstDueDate, monthlyDueDate } from '../utils/bankAccounts';
 import { allocateCents, cents, money, newId } from '../utils/financeLedger';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
+import { purchaseFingerprint, purchaseItemId, purchasePaymentState } from '../utils/purchaseEditing';
 
 interface PurchasesViewProps {
   finance?: FinanceData;
   purchases: Purchase[];
   materials: Material[];
   suppliers: Supplier[];
-  onSavePurchase: (purchase: Purchase, updateStock: boolean, payment?: PurchasePayment) => void | boolean | Promise<boolean>;
+  onSavePurchase: (purchase: Purchase, updateStock: boolean, payment?: PurchasePayment, edit?: PurchaseEditOptions) => void | boolean | Promise<boolean>;
   onDeletePurchase: (id: string) => void;
   onOpenSuppliers?: () => void;
   openNewPurchaseSignal?: number;
@@ -54,9 +56,17 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
   const [selectedSupplierFilter, setSelectedSupplierFilter] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [viewingPurchase, setViewingPurchase] = useState<Purchase | null>(null);
+  const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null);
+  const [notice, setNotice] = useState('');
+  const editPurchase = (purchase: Purchase) => {
+    setViewingPurchase(null);
+    setEditingPurchase(purchase);
+    setIsModalOpen(true);
+  };
+  const newPurchase = () => { setEditingPurchase(null); setIsModalOpen(true); };
 
   useEffect(() => {
-    if (openNewPurchaseSignal > 0) setIsModalOpen(true);
+    if (openNewPurchaseSignal > 0) { setEditingPurchase(null); setIsModalOpen(true); }
   }, [openNewPurchaseSignal]);
 
   // Filter purchases
@@ -107,7 +117,7 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
 
           <button
             id="btn-add-purchase"
-            onClick={() => setIsModalOpen(true)}
+            onClick={newPurchase}
             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-sm font-medium rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap"
           >
             <Plus className="w-4 h-4 text-amber-400" />
@@ -116,6 +126,7 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
         </div>
       </div>
 
+      {notice && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
       {/* Summary banner */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs">
@@ -198,7 +209,7 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
             Registre compras de tecidos, zíperes e insumos para manter os custos unitários e estoque sempre atualizados.
           </p>
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={newPurchase}
             className="inline-flex items-center gap-2 px-4 py-2 bg-stone-900 text-white text-sm font-medium rounded-xl hover:bg-stone-800 transition-colors"
           >
             <Plus className="w-4 h-4 text-amber-400" />
@@ -265,6 +276,11 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
                         >
                           <Eye className="w-4 h-4" />
                         </button>
+                        {!p.cancelledAt && <button type="button" onClick={() => editPurchase(p)}
+                          aria-label={`Editar compra de ${p.supplierName}`} title="Editar compra"
+                          className="inline-flex items-center gap-1 p-1.5 text-stone-500 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-colors">
+                          <Pencil className="w-4 h-4" /><span className="text-xs">Editar</span>
+                        </button>}
                         <button
                           onClick={() => {
                             if (confirm('Deseja excluir este registro de compra?')) {
@@ -289,14 +305,18 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
       {/* New Purchase Modal */}
       {isModalOpen && (
         <NewPurchaseModal
+          key={editingPurchase?.id || 'new'}
+          original={editingPurchase}
           isOpen={isModalOpen}
           finance={finance}
           materials={materials}
           suppliers={suppliers}
           onClose={() => setIsModalOpen(false)}
-          onSave={async (p, updateStock, payment) => {
-            if (await onSavePurchase(p, updateStock, payment) === false) return false;
+          onSave={async (p, updateStock, payment, edit) => {
+            if (await onSavePurchase(p, updateStock, payment, edit) === false) return false;
             setIsModalOpen(false);
+            setEditingPurchase(null);
+            setNotice(edit ? 'Compra atualizada.' : 'Compra registrada.');
             return true;
           }}
         />
@@ -308,6 +328,7 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
           purchase={viewingPurchase}
           finance={finance}
           onClose={() => setViewingPurchase(null)}
+          onEdit={() => editPurchase(viewingPurchase)}
         />
       )}
     </div>
@@ -319,41 +340,49 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
 // ==========================================
 
 interface NewPurchaseModalProps {
+  original?: Purchase | null;
   finance: FinanceData;
   isOpen: boolean;
   materials: Material[];
   suppliers: Supplier[];
   onClose: () => void;
-  onSave: (p: Purchase, updateStock: boolean, payment?: PurchasePayment) => boolean | Promise<boolean>;
+  onSave: (p: Purchase, updateStock: boolean, payment?: PurchasePayment, edit?: PurchaseEditOptions) => boolean | Promise<boolean>;
 }
 
 const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
+  original,
   finance,
   materials,
   suppliers,
   onClose,
   onSave,
 }) => {
-  const [date, setDate] = useState(localDateString());
-  const [supplierId, setSupplierId] = useState('');
-  const [freeSupplierName, setFreeSupplierName] = useState('');
-  const [invoiceNumber, setInvoiceNumber] = useState('');
-  const [shippingCost, setShippingCost] = useState('0');
-  const [notes, setNotes] = useState('');
-  const [updateStock, setUpdateStock] = useState(true);
-  const [paymentType, setPaymentType] = useState('paid');
-  const [cardId, setCardId] = useState(finance.cards?.[0]?.id || '');
-  const [installments, setInstallments] = useState(1);
+  const [date, setDate] = useState(original?.date || localDateString());
+  const [supplierId, setSupplierId] = useState(original?.supplierId || '');
+  const [freeSupplierName, setFreeSupplierName] = useState(original?.supplierName || '');
+  const [invoiceNumber, setInvoiceNumber] = useState(original?.invoiceNumber || '');
+  const [shippingCost, setShippingCost] = useState(String(original?.shippingCost || 0));
+  const [notes, setNotes] = useState(original?.notes || '');
+  const [updateStock, setUpdateStock] = useState(original?.stockApplied ?? true);
+  const [originalStock, setOriginalStock] = useState(original?.stockApplied === undefined ? '' : String(original.stockApplied));
+  const [paymentType, setPaymentType] = useState(original ? original.paymentPlan?.cardId ? 'card' : original.paymentPlan?.paidNow ? 'paid' : 'later' : 'paid');
+  const [cardId, setCardId] = useState(original?.paymentPlan?.cardId || finance.cards?.[0]?.id || '');
+  const [installments, setInstallments] = useState(original?.paymentPlan?.installments || 1);
   const [busy, setBusy] = useState(false);
-  const [purchaseId] = useState(newId);
+  const [purchaseId] = useState(() => original?.id || newId());
+  const [operationId] = useState(newId);
+  const paymentState = original ? purchasePaymentState(original, finance) : null;
   const selectedCard = finance.cards?.find(card => card.id === cardId);
-  const [dueDate, setDueDate] = useState(localDateString());
+  const [dueDate, setDueDate] = useState(original?.paymentPlan?.dueDate || original?.date || localDateString());
   const closingDay = selectedCard?.closingDay, cardDueDay = selectedCard?.dueDay;
-  useEffect(() => { if (paymentType === 'card' && closingDay && cardDueDay && date) setDueDate(cardFirstDueDate(date, {closingDay, dueDay: cardDueDay})); }, [paymentType, cardId, closingDay, cardDueDay, date]);
-  const [account, setAccount] = useState("Principal");
+  useEffect(() => {
+    if (paymentState?.locked || (original?.date === date && original.paymentPlan?.cardId === cardId)) return;
+    if (paymentType === 'card' && closingDay && cardDueDay && date) setDueDate(cardFirstDueDate(date, {closingDay, dueDay: cardDueDay}));
+  }, [paymentType, cardId, closingDay, cardDueDay, date, original, paymentState?.locked]);
+  const [account, setAccount] = useState(original?.paymentPlan?.account || 'Principal');
 
   // Items in this purchase
-  const [items, setItems] = useState<PurchaseItem[]>([]);
+  const [items, setItems] = useState<PurchaseItem[]>(() => original?.items.map((item, index) => ({ ...item, id: purchaseItemId(original, index) })) || []);
 
   // Item being added
   const [selectedMatId, setSelectedMatId] = useState('');
@@ -385,6 +414,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
     }
 
     const newItem: PurchaseItem = {
+      id: newId(),
       materialId: mat.id,
       materialName: mat.name,
       quantity: parsedQty,
@@ -410,6 +440,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
+    if (original && originalStock === '') { alert('Confirme se o estoque da compra original já foi registrado.'); return; }
     if (paymentType === 'card' && !selectedCard) { alert('Selecione um cartão cadastrado.'); return; }
     if (items.length === 0) {
       alert('Adicione pelo menos um item à compra.');
@@ -420,6 +451,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
     const supplierName = sup ? sup.name : (freeSupplierName.trim() || 'Fornecedor Avulso');
 
     const purchase: Purchase = {
+      ...original,
       id: purchaseId,
       date,
       supplierId: supplierId || undefined,
@@ -429,11 +461,12 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
       shippingCost: parsedShipping,
       totalAmount,
       notes: notes.trim() || undefined,
-      createdAt: localDateString(),
+      createdAt: original?.createdAt || localDateString(),
     };
 
     setBusy(true);
-    try { await onSave(purchase, updateStock, {paidNow: paymentType === 'paid', dueDate, account, ...(paymentType === 'card' ? {cardId} : {}), installments: paymentType === 'paid' ? 1 : installments}); }
+    try { await onSave(purchase, updateStock, {paidNow: paymentType === 'paid', dueDate, account, ...(paymentType === 'card' ? {cardId} : {}), installments: paymentType === 'paid' ? 1 : installments},
+      original ? { operationId, expectedFingerprint: purchaseFingerprint(original), originalStockApplied: originalStock === 'true' } : undefined); }
     catch (failure) { alert(failure instanceof Error ? failure.message : 'Não foi possível salvar a compra.'); }
     finally { setBusy(false); }
   };
@@ -448,7 +481,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
               <ShoppingCart className="w-4 h-4" />
             </div>
             <h3 className="font-bold text-stone-900 text-lg">
-              Registrar Compra de Materiais
+              {original ? 'Editar compra' : 'Registrar Compra de Materiais'}
             </h3>
           </div>
           <button aria-label="Fechar janela" type="button" onClick={onClose} className="p-1 text-stone-400 hover:text-stone-700">
@@ -649,11 +682,16 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
                   {items.map((it, idx) => (
                     <tr key={idx}>
                       <td className="py-2 px-3 font-medium text-stone-900">{it.materialName}</td>
-                      <td className="py-2 px-3 text-right text-stone-600">{formatNumber(it.quantity)} {it.unit}</td>
-                      <td className="py-2 px-3 text-right font-bold text-stone-900">{formatCurrency(it.totalPrice)}</td>
+                      <td className="py-2 px-3 text-right text-stone-600"><input aria-label={`Quantidade do item ${idx + 1}`} type="number" min="0.0001" step="any" value={it.quantity || ''}
+                        onChange={event => setItems(previous => previous.map((item, index) => index === idx ? { ...item, quantity: Number(event.target.value) } : item))}
+                        className="w-20 rounded-lg border border-stone-300 bg-white p-2 text-right" /> {it.unit}</td>
+                      <td className="py-2 px-3 text-right font-bold text-stone-900"><input aria-label={`Valor do item ${idx + 1}`} type="number" min="0" step="0.01" value={it.totalPrice}
+                        onChange={event => setItems(previous => previous.map((item, index) => index === idx ? { ...item, totalPrice: Number(event.target.value), packagePrice: Number(event.target.value) } : item))}
+                        className="w-24 rounded-lg border border-stone-300 bg-white p-2 text-right" /></td>
                       <td className="py-2 px-3 text-center">
                         <button
                           type="button"
+                          aria-label={`Remover item ${idx + 1}`}
                           onClick={() => handleRemoveItem(idx)}
                           className="text-stone-400 hover:text-rose-600 p-1"
                         >
@@ -693,6 +731,12 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
             </div>
           </div>
 
+          {original && original.stockApplied === undefined && <label className="block rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
+            O estoque da compra original já foi registrado?
+            <select required aria-label="Estoque da compra original" value={originalStock} onChange={event => setOriginalStock(event.target.value)} className="mt-2 w-full rounded-lg border bg-white p-2">
+              <option value="">Selecione</option><option value="true">Sim, já entrou no estoque</option><option value="false">Não entrou no estoque</option>
+            </select>
+          </label>}
           {/* Update stock automatically checkbox */}
           <div className="flex items-center gap-2 pt-1">
             <input
@@ -703,20 +747,24 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
               className="w-4 h-4 rounded text-stone-900 focus:ring-stone-900 border-stone-300 cursor-pointer"
             />
             <label htmlFor="chk-update-stock" className="text-xs font-medium text-stone-700 cursor-pointer">
-              Somar automaticamente as quantidades compradas ao estoque atual dos materiais
+              {original ? 'Considerar esta compra no estoque (ajustar apenas a diferença)' : 'Somar automaticamente as quantidades compradas ao estoque atual dos materiais'}
             </label>
           </div>
 
-          <div className="space-y-3 rounded-xl border border-stone-200 bg-stone-50 p-4">
+          {paymentState?.legacy ? <p className="rounded-xl border bg-stone-50 p-4 text-sm">Esta compra antiga não possui um plano de pagamento registrado. A edição atualiza a compra e o estoque; não cria pagamentos ou parcelas.</p> : <div className="space-y-3 rounded-xl border border-stone-200 bg-stone-50 p-4">
+            {paymentState?.locked && <p className="text-sm text-stone-600">Os pagamentos já registrados serão mantidos. Uma diferença no total ajusta o saldo a pagar.</p>}
+            {original && paymentState?.automaticPayment && <p className="text-sm text-stone-600">O pagamento à vista será corrigido junto com o total da compra.</p>}
+            <fieldset disabled={paymentState?.locked} className="space-y-3 disabled:opacity-70">
             <label className="block text-sm font-semibold">Pagamento<select aria-label="Pagamento da compra" className="mt-1 w-full rounded-xl border bg-white p-2.5 text-base" value={paymentType} onChange={event => {setPaymentType(event.target.value); if(event.target.value === 'paid')setInstallments(1);}}><option value="paid">Já paguei à vista</option><option value="later">Pagar depois / boleto</option><option value="card">Cartão de crédito</option></select></label>
             {paymentType === 'paid' ? <label className="block text-sm">Conta de saída<FinancialAccountSelect required finance={finance} className="mt-1 w-full rounded-xl border bg-white p-2.5 text-base" value={account} onChange={setAccount}/></label> : <>
               {paymentType === 'card' && <label className="block text-sm">Cartão<select required aria-label="Cartão da compra" className="mt-1 w-full rounded-xl border bg-white p-2.5 text-base" value={cardId} onChange={event=>setCardId(event.target.value)}><option value="">Selecione o cartão</option>{finance.cards?.map(card=><option key={card.id} value={card.id}>{card.name}</option>)}</select>{!finance.cards?.length && <span className="mt-1 block text-xs text-stone-500">Cadastre em Financeiro → Contas e cartões.</span>}</label>}
               <div className="grid grid-cols-2 gap-3"><label className="text-sm">Número de parcelas<input aria-label="Número de parcelas" required type="number" min="1" max="36" step="1" className="mt-1 w-full rounded-xl border bg-white p-2.5 text-base" value={installments || ''} onChange={event=>setInstallments(Number(event.target.value))}/></label><label className="text-sm">Primeiro vencimento<input aria-label="Primeiro vencimento" required type="date" className="mt-1 w-full rounded-xl border bg-white p-2.5 text-base" value={dueDate} onChange={event=>setDueDate(event.target.value)}/></label></div>
-              {totalAmount > 0 && /^\d{4}-\d{2}-\d{2}$/.test(dueDate) && Number.isInteger(installments) && installments >= 1 && installments <= 36 && <details className="rounded-xl border bg-white p-3" open><summary className="cursor-pointer text-sm font-medium">{installments === 1 ? 'Pagamento à vista no vencimento' : `${installments} parcelas · total ${formatCurrency(totalAmount)}`}</summary><div className="mt-2 space-y-1">{allocateCents(cents(totalAmount), Array(installments).fill(1)).map((value,index)=><div key={index} className="flex justify-between text-sm"><span>{index+1}/{installments} · {formatDate(index === 0 ? dueDate : monthlyDueDate(dueDate,index,paymentType === 'card' ? selectedCard?.dueDay : undefined))}</span><strong>{formatCurrency(money(value))}</strong></div>)}</div></details>}
+              {!paymentState?.locked && totalAmount > 0 && /^\d{4}-\d{2}-\d{2}$/.test(dueDate) && Number.isInteger(installments) && installments >= 1 && installments <= 36 && <details className="rounded-xl border bg-white p-3" open><summary className="cursor-pointer text-sm font-medium">{installments === 1 ? 'Pagamento à vista no vencimento' : `${installments} parcelas · total ${formatCurrency(totalAmount)}`}</summary><div className="mt-2 space-y-1">{allocateCents(cents(totalAmount), Array(installments).fill(1)).map((value,index)=><div key={index} className="flex justify-between text-sm"><span>{index+1}/{installments} · {formatDate(index === 0 ? dueDate : monthlyDueDate(dueDate,index,paymentType === 'card' ? selectedCard?.dueDay : undefined))}</span><strong>{formatCurrency(money(value))}</strong></div>)}</div></details>}
               <p className="text-xs text-stone-500">A compra entra no estoque uma vez. {paymentType === 'card' ? 'As parcelas entram nas faturas; a conta bancária só muda ao registrar o pagamento.' : 'As parcelas ficam em A pagar até você registrar os pagamentos.'}</p>
             </>}
+            </fieldset>
             <p className="text-xs text-stone-500">Custo da última compra usado na receita; custo médio mantido para o estoque.</p>
-          </div>
+          </div>}
           {/* Notes */}
           <div>
             <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
@@ -746,7 +794,7 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
               className="px-5 py-2 text-sm font-medium bg-stone-900 hover:bg-stone-800 text-white rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <Check className="w-4 h-4 text-amber-400" />
-              <span>{busy ? 'Salvando…' : 'Salvar Compra'}</span>
+              <span>{busy ? 'Salvando…' : original ? 'Salvar alterações' : 'Salvar Compra'}</span>
             </button>
           </div>
         </form>
@@ -756,10 +804,11 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
 };
 
 // Details Modal
-const PurchaseDetailsModal: React.FC<{ purchase: Purchase; finance: FinanceData; onClose: () => void }> = ({
+const PurchaseDetailsModal: React.FC<{ purchase: Purchase; finance: FinanceData; onClose: () => void; onEdit: () => void }> = ({
   purchase,
   finance,
   onClose,
+  onEdit,
 }) => {
   return (
     <ModalFrame onClose={onClose} className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -835,6 +884,7 @@ const PurchaseDetailsModal: React.FC<{ purchase: Purchase; finance: FinanceData;
         </div>
 
         <div className="px-6 py-3 bg-stone-50 border-t border-stone-200 text-right">
+          {!purchase.cancelledAt && <button type="button" onClick={onEdit} className="mr-2 rounded-lg border border-stone-300 px-4 py-1.5 text-xs font-medium text-stone-800">Editar compra</button>}
           <button
             onClick={onClose}
             className="px-4 py-1.5 text-xs font-medium bg-stone-900 text-white rounded-lg hover:bg-stone-800"

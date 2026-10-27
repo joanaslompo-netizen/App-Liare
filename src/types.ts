@@ -185,6 +185,7 @@ export interface Product {
 }
 
 export interface PurchaseItem {
+  id?: string;
   baseQuantity?: number;
   landedCost?: number;
   materialId: string;
@@ -196,6 +197,8 @@ export interface PurchaseItem {
 }
 
 export interface Purchase {
+  edits?: { id: string; date: string; previous: Omit<Purchase, 'edits'> }[];
+  autoPaymentId?: string;
   paymentPlan?: PurchasePayment;
   cancelledAt?: string;
   stockApplied?: boolean;
@@ -209,6 +212,12 @@ export interface Purchase {
   totalAmount: number;
   notes?: string;
   createdAt: string;
+}
+
+export interface PurchaseEditOptions {
+  operationId: string;
+  expectedFingerprint: string;
+  originalStockApplied?: boolean;
 }
 
 export interface PurchasePayment {
