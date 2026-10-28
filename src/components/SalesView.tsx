@@ -5,7 +5,7 @@ import { isActiveOrder } from "../utils/financeLedger";
 import { localDateString } from '../utils/localDate';
 import { MoreOptions } from './MoreOptions';
 import { formatOrderNumber } from '../utils/orderNumbers';
-import { getInvoiceTotals } from '../utils/invoice';
+import { getGroupedInvoiceTotals, getInvoiceCustomerKey, getInvoiceSelectionError, getInvoiceTotals } from '../utils/invoice';
 import { InvoiceModal } from './InvoiceModal';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
@@ -106,10 +106,26 @@ export const SalesView: React.FC<SalesViewProps> = ({
   onOpenCustomers,
 }) => {
   const [invoiceSale, setInvoiceSale] = useState<Sale | null>(null);
+  const [selectingInvoice, setSelectingInvoice] = useState(false);
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+  const [invoiceSales, setInvoiceSales] = useState<Sale[] | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTabFilter, setActiveTabFilter] = useState<'all' | 'pending_delivery' | 'pending_payment' | 'completed'>(initialFilter);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
+
+  const selectedInvoiceSales = sales.filter(sale => selectedInvoiceIds.includes(sale.id));
+  const selectedInvoiceCustomerKey = selectedInvoiceSales.length ? getInvoiceCustomerKey(selectedInvoiceSales[0], customers) : null;
+  const invoiceSelectionError = getInvoiceSelectionError(selectedInvoiceSales, customers);
+  const selectedInvoiceTotals = getGroupedInvoiceTotals(selectedInvoiceSales);
+
+  const toggleInvoiceOrder = (sale: Sale) => {
+    setSelectedInvoiceIds(previous => {
+      if (previous.includes(sale.id)) return previous.filter(id => id !== sale.id);
+      const selected = sales.filter(order => previous.includes(order.id));
+      return getInvoiceSelectionError([...selected, sale], customers) ? previous : [...previous, sale.id];
+    });
+  };
 
   useEffect(() => {
     if (initialCustomerForNewOrder) {
@@ -304,6 +320,14 @@ export const SalesView: React.FC<SalesViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setSelectingInvoice(true)}
+            aria-pressed={selectingInvoice}
+            className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 bg-white hover:bg-stone-50 text-stone-700 text-sm font-semibold rounded-xl border border-stone-200"
+          >
+            <FileText className="w-4 h-4 text-[#a86149]" />Fatura conjunta
+          </button>
           {onOpenCustomers && (
             <button
               type="button"
@@ -496,6 +520,25 @@ export const SalesView: React.FC<SalesViewProps> = ({
       </div>
 
       {/* Orders & Sales Table */}
+      {selectingInvoice && <section aria-label="Selecionar pedidos para fatura conjunta" className="rounded-2xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-semibold text-stone-900">Selecione os pedidos da mesma pessoa</h3>
+            <p className="text-sm text-stone-600">Use a busca e marque os pedidos abaixo. Eles continuam separados no histórico.</p>
+          </div>
+          <button type="button" onClick={() => { setSelectingInvoice(false); setSelectedInvoiceIds([]); }} className="text-sm underline text-stone-600">Cancelar seleção</button>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p role="status" className="text-sm text-stone-800">
+            {selectedInvoiceSales.length} {selectedInvoiceSales.length === 1 ? 'pedido selecionado' : 'pedidos selecionados'}
+            {selectedInvoiceSales.length > 0 && <> · {selectedInvoiceSales[0].customerName || customers.find(customer => customer.id === selectedInvoiceSales[0].customerId)?.name} · Saldo a cobrar: <strong>{formatCurrency(selectedInvoiceTotals.balance)}</strong></>}
+          </p>
+          <button type="button" disabled={!!invoiceSelectionError} onClick={() => { if (!invoiceSelectionError) setInvoiceSales(selectedInvoiceSales); }} className="inline-flex items-center gap-2 rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">
+            <FileText className="w-4 h-4" />Gerar fatura única
+          </button>
+        </div>
+        {selectedInvoiceSales.length > 0 && invoiceSelectionError && <p role="alert" className="text-sm text-red-700">{invoiceSelectionError}</p>}
+      </section>}
       {filteredSales.length === 0 ? (
         <div className="bg-white rounded-2xl border border-stone-200 p-12 text-center shadow-xs">
           <div className="w-14 h-14 mx-auto rounded-full bg-stone-100 flex items-center justify-center text-stone-400 mb-4">
@@ -523,6 +566,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
             <table className="w-full text-left text-sm">
               <thead className="bg-stone-50/90 border-b border-stone-200 text-[11px] font-bold text-stone-500 uppercase tracking-wider">
                 <tr>
+                  {selectingInvoice && <th className="py-3 px-4"><span className="sr-only">Selecionar</span></th>}
                   <th className="py-3 px-4">Pedido / Data</th>
                   <th className="py-3 px-4">Peça Solicitada</th>
                   <th className="py-3 px-4">Cliente & Contato</th>
@@ -538,9 +582,15 @@ export const SalesView: React.FC<SalesViewProps> = ({
                   const isPendingDelivery = sale.deliveryStatus === 'pendente_entrega';
                   const isPendingPayment = isActiveOrder(sale) && sale.paymentStatus === 'pendente_pagamento';
                   const saleImageUrl = getSaleImageUrl(sale);
+                  const invoiceCustomerKey = selectingInvoice ? getInvoiceCustomerKey(sale, customers) : null;
+                  const invoiceSelected = selectedInvoiceIds.includes(sale.id);
+                  const canSelectInvoice = isActiveOrder(sale) && !!invoiceCustomerKey && (!selectedInvoiceCustomerKey || invoiceCustomerKey === selectedInvoiceCustomerKey);
 
                   return (
                     <tr key={sale.id} className="hover:bg-stone-50/70 transition-colors">
+                      {selectingInvoice && <td className="py-3 px-4" title={!isActiveOrder(sale) ? 'Pedido cancelado ou ainda não confirmado' : !invoiceCustomerKey ? 'Identifique o cliente no pedido' : !canSelectInvoice ? 'Selecione pedidos do mesmo cliente' : undefined}>
+                        <input type="checkbox" aria-label={`Selecionar pedido ${formatOrderNumber(sale.orderNumber)} para fatura`} checked={invoiceSelected} disabled={!invoiceSelected && !canSelectInvoice} onChange={() => toggleInvoiceOrder(sale)} className="h-5 w-5 accent-stone-900 cursor-pointer disabled:cursor-default" />
+                      </td>}
                       {/* Date & Type */}
                       <td className="py-3 px-4 whitespace-nowrap text-stone-700">
                         <div className="flex flex-col">
@@ -823,6 +873,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
       )}
 
       {invoiceSale && <InvoiceModal sale={invoiceSale} settings={settings} customers={customers} products={products} onClose={() => setInvoiceSale(null)} />}
+      {invoiceSales && <InvoiceModal sales={invoiceSales} settings={settings} customers={customers} products={products} onClose={() => setInvoiceSales(null)} />}
       </div>
       {/* Order / Sale Modal */}
       {isModalOpen && (
