@@ -39,7 +39,10 @@ await button('Editar itens');await button('Trocar produto');await chooseProduct(
 order=saved().sales[0];assert.equal(order.items[0].productId,'p2');assert.equal(order.totalRevenue,48);assert.equal(order.orderNumber,1);assert.equal(JSON.stringify(saved().finance.entries[0]),originalReceipt);assert(saved().finance.entries.some((entry:any)=>entry.kind==='credit_release'&&entry.amountCents===200));assert.equal(saved().products[1].currentStock,10);assert.equal(order.items[0].reservedQuantity,1);
 await button('Editar itens');await chooseProduct();await button('Adicionar item');await button('Salvar itens do pedido');
 order=saved().sales[0];assert.equal(order.items.length,2);assert.equal(order.totalRevenue,96);assert.equal(saved().sales.length,1);assert.equal(JSON.stringify(saved().finance.entries[0]),originalReceipt);
-await button('Registrar entrega');await button('Registrar entrega');
+await button('Registrar entrega');
+const deliveryRows = document.querySelectorAll('[data-delivery-item]');assert.equal(deliveryRows.length,2);
+await act(async () => (deliveryRows[1].querySelector('input[type="checkbox"]') as HTMLInputElement).click());
+await button('Confirmar entrega');
 order=saved().sales[0];assert.equal(order.deliveryStatus,'parcial');assert.equal(saved().products[1].currentStock,9);
 await button('Editar itens');
 const deliveredRow=detail().querySelector(`[data-order-item="${order.items[0].id}"]`)!;

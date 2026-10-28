@@ -56,9 +56,11 @@ assert.equal(saved().products.length, 1);assert.equal(saved().products[0].id, pr
 assert.equal(saved().products[0].currentStock, 2);assert.equal(saved().sales[0].items[0].reservedQuantity, 2);
 assert.equal(produce(), null, 'Produção deixa de ser oferecida quando todas as unidades estão separadas.');
 assert.equal(saved().sales[0].totalRevenue, 150);assert.equal(saved().finance.entries.length, 0);
-await button('Registrar entrega');await button('Registrar entrega');
+await button('Registrar entrega');
+const decrease = document.querySelector<HTMLButtonElement>('[aria-label="Diminuir quantidade de Personalizado de teste"]');assert(decrease);await act(async () => decrease.click());
+await button('Confirmar entrega');
 assert.equal(saved().products[0].currentStock, 1);assert.equal(saved().materials[0].currentStock, 90);
-await button('Registrar entrega');await button('Registrar entrega');
+await button('Registrar entrega');await button('Confirmar entrega');
 assert.equal(saved().sales[0].deliveryStatus, 'entregue');assert.equal(saved().products[0].currentStock, 0);
 assert.equal(saved().productions.length, 2);assert.equal(saved().materials[0].currentStock, 90, 'Entregar uma unidade já produzida não baixa os insumos novamente.');
 assert.equal(saved().sales[0].items[0].customProducedQuantity, 2);

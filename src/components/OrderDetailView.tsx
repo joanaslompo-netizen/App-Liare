@@ -67,7 +67,7 @@ export function OrderDetailView({ sale, finance, products, customers, settings, 
 
   const choose = (next: typeof action) => { setMessage(''); setAction(next); };
   const save = async (updated: Sale) => { const ok = await onSave(updated); if (ok) setMessage('Pedido atualizado. Os recebimentos e o histórico foram preservados.'); return ok; };
-  const complete = () => { setAction(null); setMessage('Registrado. Os saldos e a situação do pedido foram atualizados.'); };
+  const complete = (notice = 'Registrado. Os saldos e a situação do pedido foram atualizados.') => { setAction(null); setMessage(notice); };
 
   const events = [
     ...finance.entries.filter(entry => entry.saleId === sale.id).map(entry => ({ id: entry.id, date: entry.date, text: `${ENTRY_LABEL[entry.kind]} · ${formatCurrency(money(entry.amountCents))}`, detail: [entry.method, entry.note].filter(Boolean).join(' · ') })),
@@ -92,7 +92,7 @@ export function OrderDetailView({ sale, finance, products, customers, settings, 
     {draft && <button type="button" className={primary} disabled={busy} onClick={async () => { setBusy(true); try { if (await onAction({ type: 'confirm_order', saleId: sale.id })) complete(); } finally { setBusy(false); } }}>Confirmar pedido</button>}
     <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(290px,1fr)]">
       <div className="min-w-0 space-y-5">
-        <section hidden={action === 'items'} className={`${panel} ${focus === 'production' ? 'ring-1 ring-[#a86149]' : ''}`}>
+        <section hidden={action === 'items' || action === 'delivery'} className={`${panel} ${focus === 'production' ? 'ring-1 ring-[#a86149]' : ''}`}>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h3 className="text-lg font-semibold">Itens do pedido</h3><button type="button" disabled={cancelled} onClick={() => choose('items')} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-semibold text-[#a86149] disabled:opacity-40"><Pencil className="h-3.5 w-3.5" />Editar itens</button></div>
           <div className="divide-y divide-[#eee5dd]">{items.map(item => {
             const netDelivered = delivered(item);
@@ -123,7 +123,7 @@ export function OrderDetailView({ sale, finance, products, customers, settings, 
         {action && <section ref={actionPanel} className={`${panel} scroll-mt-24`}>
           {action === 'items' ? <OrderItemsEditor sale={sale} products={products} paid={paid} onSave={save} onCancel={() => setAction(null)} />
             : action === 'data' ? <OrderDataEditor sale={sale} customers={customers} paid={paid} onSave={save} onCancel={() => setAction(null)} />
-            : <><div className="mb-4 flex items-start justify-between gap-3"><h3 className="text-lg font-semibold">{actionNames[action]}</h3><button type="button" onClick={() => setAction(null)} className="rounded-lg px-2 py-1 text-sm text-[#75665c]">Fechar</button></div><OrderWorkflowModal key={`${sale.id}:${action}`} sale={sale} finance={finance} onAction={onAction} onClose={() => setAction(null)} embedded initialMode={action} onCompleted={complete} /></>}
+            : <><div className="mb-4 flex items-start justify-between gap-3"><h3 className="text-lg font-semibold">{actionNames[action]}</h3><button type="button" onClick={() => setAction(null)} className="rounded-lg px-2 py-1 text-sm text-[#75665c]">Fechar</button></div><OrderWorkflowModal key={`${sale.id}:${action}`} sale={sale} finance={finance} products={products} onAction={onAction} onClose={() => setAction(null)} embedded initialMode={action} onCompleted={complete} /></>}
         </section>}
 
         <section hidden={action === 'data'} className={panel}><h3 className="mb-2 text-base font-semibold">Combinado com o cliente</h3><p className="whitespace-pre-wrap text-sm text-[#75665c]">{sale.notes || 'Nenhuma observação registrada.'}</p>{sale.customerContact && <p className="mt-3 text-sm text-[#75665c]">Contato: {sale.customerContact}</p>}{sale.channel && <p className="mt-1 text-xs text-[#75665c]">Canal: {sale.channel}</p>}</section>
@@ -137,7 +137,7 @@ export function OrderDetailView({ sale, finance, products, customers, settings, 
           {credit > 0 && <p className="mt-3 rounded-lg bg-[#edf1e5] p-2 text-sm text-[#53613f]">Crédito disponível: {formatCurrency(credit)}</p>}
           {!cancelled && !draft && balance > 0 ? <button type="button" className={`${primary} mt-4 w-full`} onClick={() => choose('payment')}>Receber pagamento</button> : !cancelled && !draft ? <p className="mt-4 flex items-center gap-2 text-sm text-[#53613f]"><CheckCircle2 className="h-4 w-4" />Pedido quitado</p> : null}
         </section>
-        <section className={`${panel} ${focus === 'delivery' ? 'ring-1 ring-[#a86149]' : ''}`}><h3 className="mb-4 text-lg font-semibold">Entrega</h3><dl className="grid grid-cols-[1fr_auto] gap-3 text-sm"><dt className="text-[#75665c]">Prazo combinado</dt><dd className={late ? 'font-medium text-[#a44132]' : ''}>{sale.deliveryScheduledDate ? formatDate(sale.deliveryScheduledDate) : 'Não definido'}</dd><dt className="text-[#75665c]">Já entregue</dt><dd>{totalDelivered} de {quantity} peças</dd></dl>{late && <p className="mt-3 text-sm font-medium text-[#a44132]">Entrega atrasada</p>}{!cancelled && !draft && totalDelivered < quantity && <button type="button" className={`${secondary} mt-4 w-full`} onClick={() => choose('delivery')}><Package className="h-4 w-4" />Registrar entrega</button>}</section>
+        <section className={`${panel} ${focus === 'delivery' ? 'ring-1 ring-[#a86149]' : ''}`}><h3 className="mb-4 text-lg font-semibold">Entrega</h3><dl className="grid grid-cols-[1fr_auto] gap-3 text-sm"><dt className="text-[#75665c]">Prazo combinado</dt><dd className={late ? 'font-medium text-[#a44132]' : ''}>{sale.deliveryScheduledDate ? formatDate(sale.deliveryScheduledDate) : 'Não definido'}</dd><dt className="text-[#75665c]">Já entregue</dt><dd>{totalDelivered} de {quantity} peças</dd></dl>{late && <p className="mt-3 text-sm font-medium text-[#a44132]">Entrega atrasada</p>}{!cancelled && !draft && totalDelivered < quantity && action !== 'delivery' && <button type="button" className={`${secondary} mt-4 w-full`} onClick={() => choose('delivery')}><Package className="h-4 w-4" />Registrar entrega</button>}</section>
         {!cancelled && <details className={panel}><summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold"><MoreHorizontal className="h-4 w-4" />Outras ações</summary><div className="mt-4 grid gap-2">{!draft && <><button type="button" className={secondary} onClick={() => choose('return')}>Devolução de peças</button><button type="button" className={secondary} onClick={() => choose('refund')}>Devolver valor / crédito</button></>}<button type="button" className="rounded-xl px-3 py-2 text-left text-sm text-[#a44132]" onClick={() => choose('cancel')}>Cancelar pedido</button></div></details>}
       </aside>
     </div>

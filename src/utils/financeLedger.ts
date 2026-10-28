@@ -73,6 +73,7 @@ export type FinanceCommand =
   | { type: 'cancel_bill'; billId: string; date: string }
   | { type: 'save_order'; sale: Sale; initialPaymentCents?: number; initialMethod?: string }
   | { type: 'deliver'; saleId: string; itemId: string; quantity: number; date: string; id: string; kind: 'delivery' | 'return'; restock?: boolean; note?: string }
+  | { type: 'deliver_items'; saleId: string; items: { itemId: string; quantity: number }[]; date: string; id: string; note?: string }
   | { type: 'cancel_order'; saleId: string; date: string; id: string; destination: 'credit' | 'refund' }
   | { type: 'confirm_order'; saleId: string }
   | { type: 'refund_order'; saleId: string; amountCents: number; destination: 'credit'|'refund'; date: string; id: string; account: string }
@@ -105,6 +106,26 @@ function customDeliveryProduct(sale: Sale, item: SaleItem, id: string, date: str
 }
 
 export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, command: FinanceCommand): T {
+  if (command.type === 'deliver_items') {
+    const sale = source.sales.find(sale => sale.id === command.saleId) || fail('Pedido não encontrado.');
+    if (!command.id || !command.items.length) fail('Selecione os produtos desta entrega.');
+    if (new Set(command.items.map(item => item.itemId)).size !== command.items.length) fail('Um produto foi repetido na entrega.');
+    const prefix = `delivery_${command.id}:`;
+    const events = command.items.map(item => ({ ...item, id: `${prefix}${item.itemId}` }));
+    const previous = (sale.deliveryHistory || []).filter(event => event.id.startsWith(prefix));
+    if (previous.length) {
+      if (previous.length !== events.length || events.some(item => !previous.some(event => event.id === item.id && event.itemId === item.itemId && event.quantity === item.quantity && event.date === command.date && event.kind === 'delivery' && (event.note || '') === (command.note || '')))) fail('Esta entrega já foi registrada com outros dados. Reabra o pedido para conferir.');
+      return source;
+    }
+    requireDate(command.date);
+    if (events.some(item => !Number.isSafeInteger(item.quantity) || item.quantity <= 0)) fail('Informe quantidades inteiras e positivas para a entrega.');
+    // Apply the whole selection to a candidate workspace. A later failure never
+    // publishes earlier items, either locally or inside the cloud transaction.
+    return events.reduce((candidate, item) => applyFinanceCommand(candidate, {
+      type: 'deliver', saleId: command.saleId, itemId: item.itemId, quantity: item.quantity,
+      date: command.date, id: item.id, kind: 'delivery', note: command.note,
+    }), source);
+  }
   let next: T = { ...source, finance: { ...(source.finance || emptyFinance()), entries: [...(source.finance?.entries || [])], bills: [...(source.finance?.bills || [])] }, sales: [...source.sales], products: [...source.products], stockMovements: [...(source.stockMovements || [])] };
   const finance = next.finance!;
   const save = (sale: Sale) => { next.sales = next.sales.some(s => s.id === sale.id) ? next.sales.map(s => s.id === sale.id ? sale : s) : [sale, ...next.sales]; };

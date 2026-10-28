@@ -128,6 +128,28 @@ assert.deepEqual(cloud.stockMovements.filter((move: any) => move.targetId === cu
 assert.equal(JSON.stringify(cloud.materials), customMaterialsBefore);
 assert.equal(JSON.stringify(cloud.finance.entries), customEntriesBefore);
 console.log('PASS personalizado na nuvem simulada: receita interna, fabricação e entrega atômicas; concorrência não duplica produto nem entrega.');
+const batchProduct = { ...DEFAULT_PRODUCTS[0], id: 'batch-product', currentStock: 6 };
+const batchOrder = { ...sale('batch-order'), productId: batchProduct.id, items: [
+  { id: 'batch-a', productId: batchProduct.id, productName: 'Vela A', quantity: 1, unitPrice: 50, unitCost: 10, totalCost: 10 },
+  { id: 'batch-b', productId: batchProduct.id, productName: 'Vela B', quantity: 2, unitPrice: 50, unitCost: 10, totalCost: 20 },
+] };
+const failingOrder = { ...batchOrder, id: 'failing-batch', items: [batchOrder.items[0], { ...batchOrder.items[1], productId: 'missing-product' }] };
+cloud = await service.uploadWorkspaceToCloud('test', { ...cloud, products: [...cloud.products, batchProduct], sales: [...cloud.sales, batchOrder, failingOrder] }, 'Teste de entrega conjunta', cloud.revision);
+const batchLocal = structuredClone(cloud), batchBase = service.createWorkspaceSyncBase(batchLocal);
+const batchCommands = ['one', 'two'].map(id => ({ type: 'deliver_items', id: `batch-${id}`, saleId: batchOrder.id, date: '2026-10-28', items: [{ itemId: 'batch-a', quantity: 1 }, { itemId: 'batch-b', quantity: 2 }] }));
+const batchRace = await Promise.allSettled(batchCommands.map(command => service.executeFinanceInCloud('test', batchLocal, batchBase, command)));
+assert.equal(batchRace.filter(result => result.status === 'fulfilled').length, 1);
+cloud = await service.fetchWorkspaceFromCloud('test');
+assert.equal(cloud.sales.find((order: any) => order.id === batchOrder.id).deliveryHistory.length, 2);
+assert.equal(cloud.products.find((product: any) => product.id === batchProduct.id).currentStock, 3);
+const batchWinner = batchCommands[batchRace.findIndex(result => result.status === 'fulfilled')];
+const beforeRetry = JSON.stringify([...versions]);
+await service.executeFinanceInCloud('test', cloud, service.createWorkspaceSyncBase(cloud), batchWinner);
+assert.equal(JSON.stringify([...versions]), beforeRetry, 'Repetir a entrega de vários itens não gera nova escrita');
+const beforeFailure = JSON.stringify([...docs]);
+await assert.rejects(service.executeFinanceInCloud('test', cloud, service.createWorkspaceSyncBase(cloud), { ...batchWinner, id: 'failing-batch', saleId: failingOrder.id }));
+assert.equal(JSON.stringify([...docs]), beforeFailure, 'Falha no segundo produto preserva todos os documentos da transação');
+console.log('PASS entrega conjunta na nuvem simulada: concorrência conclui uma vez; repetição sem escrita; falha de um produto não registra os demais.');
 // Two devices editing the same purchase cannot both reapply a stock entry.
 cloud=await service.uploadWorkspaceToCloud('test',{...cloud,materials:[...cloud.materials,{...autoMaterials[0],id:'purchase-race-material',name:'Material de teste',unit:'g',packageUnit:'g',packageQuantity:1,unitCost:2,currentStock:0}]},'Teste de compra',cloud.revision);
 cloud=await service.executeFinanceInCloud('test',cloud,service.createWorkspaceSyncBase(cloud),{type:'purchase',purchase:{id:'purchase-race',date:'2026-10-01',supplierName:'Fornecedor de teste',createdAt:'2026-10-01',shippingCost:0,totalAmount:20,items:[{id:'purchase-race-line',materialId:'purchase-race-material',materialName:'Material de teste',quantity:10,unit:'g',totalPrice:20,packagePrice:20}]},updateStock:true,paidNow:false,dueDate:'2026-11-01',account:'bank-race'});
