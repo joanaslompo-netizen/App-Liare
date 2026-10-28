@@ -35,7 +35,7 @@ import {
   ProductionProject,
   NavTab
 } from './types';
-import { getUnitConversionMultiplier, isBirthdayInMonth } from './utils/formatters';
+import { formatNumber, getUnitConversionMultiplier, isBirthdayInMonth } from './utils/formatters';
 import { AtelierPreset } from './utils/presets';
 import { HomeView } from './components/HomeView';
 import { MaterialsView } from './components/MaterialsView';
@@ -1155,32 +1155,11 @@ export default function App() {
 
     const pending = Array.from(aggregated.values());
 
-    for (const deduction of pending) {
-      if (deduction.type === 'material') {
-        const mat = materials.find((m) => m.id === deduction.targetId);
-        if (!mat || mat.currentStock < deduction.quantityTotal) {
-          alert(
-            `Estoque insuficiente de "${deduction.name}". Necessário: ${Number(deduction.quantityTotal.toFixed(4))} ${deduction.unit}. Disponível: ${Number((mat?.currentStock || 0).toFixed(4))} ${deduction.unit}.`
-          );
-          return null;
-        }
-      } else {
-        const prod = products.find((p) => p.id === deduction.targetId);
-        const stock = prod?.currentStock ?? 0;
-        if (!prod || stock < deduction.quantityTotal) {
-          alert(
-            `Estoque insuficiente do componente "${deduction.name}". Necessário: ${Number(deduction.quantityTotal.toFixed(4))}. Disponível: ${Number(stock.toFixed(4))}.`
-          );
-          return null;
-        }
-      }
-    }
-
     const deductedItems: ProductionIngredientDeduction[] = pending.map((deduction) => {
       const stockBefore = deduction.type === 'material'
         ? (materials.find((m) => m.id === deduction.targetId)?.currentStock ?? 0)
         : (products.find((p) => p.id === deduction.targetId)?.currentStock ?? 0);
-      const stockAfter = Number((stockBefore - deduction.quantityTotal).toFixed(4));
+      const stockAfter = Math.max(0, Number((stockBefore - deduction.quantityTotal).toFixed(4)));
       return {
         id: deduction.id,
         targetId: deduction.targetId,
@@ -1195,6 +1174,14 @@ export default function App() {
         stockAfter,
       };
     });
+
+    const shortages = deductedItems.filter(deduction => deduction.quantityTotal - deduction.stockBefore > 0.0001);
+    const shortageDetails = shortages.map(deduction =>
+      `• ${deduction.name}: necessário ${formatNumber(deduction.quantityTotal, 4)} ${deduction.unit}; disponível ${formatNumber(Math.max(0, deduction.stockBefore), 4)} ${deduction.unit}; faltam ${formatNumber(deduction.quantityTotal - Math.max(0, deduction.stockBefore), 4)} ${deduction.unit}.`
+    ).join('\n');
+    if (shortages.length && !confirm(
+      `Estoque insuficiente para produzir "${item.productName}":\n\n${shortageDetails}\n\nAo continuar, os saldos desses itens serão ajustados para zero e a produção será registrada normalmente. Deseja produzir mesmo assim?`
+    )) return null;
 
     const today = new Date().toISOString().split('T')[0];
     const now = Date.now();
@@ -1265,9 +1252,10 @@ export default function App() {
       costPerUnit: unitCost,
       totalCost: unitCost,
       deductedItems,
-      notes: customer?.name
+      notes: (customer?.name
         ? `Item personalizado do pedido de ${customer.name}.`
-        : 'Item personalizado produzido a partir de pedido.',
+        : 'Item personalizado produzido a partir de pedido.') +
+        (shortages.length ? `\nProdução autorizada com estoque insuficiente:\n${shortageDetails}` : ''),
       createdAt: today,
     };
 
@@ -1307,7 +1295,7 @@ export default function App() {
       return [customProduct, ...next];
     });
 
-    setStockMovements(moves => [...moves, ...deductedItems.map((deduction,index)=>({id:`${productionId}_ingredient_${index}`,date:today,targetId:deduction.targetId,type:deduction.type,quantity:-deduction.quantityTotal,reason:'Produção personalizada',referenceId:productionId})), ...automaticStockMovements(expanded.automaticManufacturing,productionId,today), {id:productionId,date:today,targetId:productId,type:'product' as const,quantity:1,reason:'Produto personalizado finalizado',referenceId:productionId}]);
+    setStockMovements(moves => [...moves, ...deductedItems.map((deduction,index)=>({id:`${productionId}_ingredient_${index}`,date:today,targetId:deduction.targetId,type:deduction.type,quantity:-Math.max(0, Number((deduction.stockBefore-deduction.stockAfter).toFixed(4))),reason:'Produção personalizada',referenceId:productionId})).filter(movement => movement.quantity !== 0), ...automaticStockMovements(expanded.automaticManufacturing,productionId,today), {id:productionId,date:today,targetId:productId,type:'product' as const,quantity:1,reason:'Produto personalizado finalizado',referenceId:productionId}]);
     setProductions((prev) => [production, ...prev]);
 
     const producedQuantity = (item.customProducedQuantity ?? 0) + 1;
