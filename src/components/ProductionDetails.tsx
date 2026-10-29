@@ -1,248 +1,72 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Eye, X, Image as ImageIcon } from "lucide-react";
 import { ModalFrame } from "./ModalFrame";
-import { localDateString } from "../utils/localDate";
 import type {
   Production,
   Product,
   Material,
   ProductionIngredientDeduction,
-  RecipeItem,
 } from "../types";
 import {
   formatCurrency,
   formatDate,
   formatNumber,
 } from "../utils/formatters";
-import { getProductionPlan } from "../utils/productionPlanning";
+import { planGroupedStageAdvance, summarizeProductionGroup, type ProductionStageAdvance } from "../utils/productionFlow";
 import { ProductionMaterialPlan } from './ProductionMaterialPlan';
 import { ProductionIngredientForecast } from './ProductionIngredientForecast';
 
 interface StageProgressModalProps {
   production: Production;
+  groupProductions?: Production[];
+  initialStageKey?: string;
   product: Product | null;
   products: Product[];
   materials: Material[];
   onClose: () => void;
-  onAdvance: (
-    production: Production,
-    deductions: ProductionIngredientDeduction[],
-    finishedQuantityDelta: number,
-  ) => void;
+  onAdvance?: (production: Production, deductions: ProductionIngredientDeduction[], finishedQuantityDelta: number) => void;
+  onAdvanceBatch?: (advances: ProductionStageAdvance[]) => void;
 }
 
-const mergeDeductionLists = (
-  current: ProductionIngredientDeduction[],
-  additions: ProductionIngredientDeduction[],
-): ProductionIngredientDeduction[] => {
-  const merged = current.map((item) => ({ ...item }));
-
-  additions.forEach((addition) => {
-    const existing = merged.find(
-      (item) =>
-        item.type === addition.type && item.targetId === addition.targetId,
-    );
-
-    if (!existing) {
-      merged.push({ ...addition });
-      return;
-    }
-
-    existing.quantityTotal = Number(
-      (existing.quantityTotal + addition.quantityTotal).toFixed(4),
-    );
-    existing.totalCost = Number(
-      (existing.totalCost + addition.totalCost).toFixed(4),
-    );
-    existing.stockAfter = addition.stockAfter;
-    existing.unitCost = addition.unitCost;
-    existing.quantityPerBatch = Math.max(
-      existing.quantityPerBatch,
-      addition.quantityPerBatch,
-    );
-  });
-
-  return merged;
-};
-
 export const StageProgressModal: React.FC<StageProgressModalProps> = ({
-  production,
-  product,
-  products,
-  materials,
-  onClose,
-  onAdvance,
+  production, groupProductions, initialStageKey, product, products, materials, onClose, onAdvance, onAdvanceBatch,
 }) => {
-  const sortedStages = useMemo(
-    () =>
-      [...(production.stageProgress || [])].sort((a, b) => a.order - b.order),
-    [production.stageProgress],
-  );
-
-  const firstPendingStage = sortedStages.find(
-    (stage) => stage.completedQuantity < stage.plannedQuantity,
-  );
-  const [selectedStageId, setSelectedStageId] = useState<string>(
-    firstPendingStage?.stageId || sortedStages[0]?.stageId || "",
-  );
-  const [quantity, setQuantity] = useState<string>("0");
-  const [notice, setNotice] = useState("");
-
-  const selectedStageIndex = sortedStages.findIndex(
-    (stage) => stage.stageId === selectedStageId,
-  );
-  const selectedStage =
-    selectedStageIndex >= 0 ? sortedStages[selectedStageIndex] : null;
-  const targetQuantity =
-    production.targetQuantity || production.batchCount * production.batchYield;
-  const previousCompleted =
-    selectedStageIndex <= 0
-      ? targetQuantity
-      : sortedStages[selectedStageIndex - 1]?.completedQuantity || 0;
-  const availableToAdvance = selectedStage
-    ? Math.max(0, previousCompleted - selectedStage.completedQuantity)
-    : 0;
-  const remainingInStage = selectedStage
-    ? Math.max(0, selectedStage.plannedQuantity - selectedStage.completedQuantity) : 0;
-  const isFinalStage = selectedStageIndex === sortedStages.length - 1;
-  const batchYield = Math.max(0.0001, production.batchYield || 1);
-  const recipeItems: RecipeItem[] =
-    production.recipeItemsSnapshot || product?.items || [];
-  const stageRecipeItems = selectedStage
-    ? recipeItems.filter(
-        (item) => item.productionStageId === selectedStage.stageId,
-      )
-    : [];
-
+  const sources = groupProductions || [production];
+  const summary = summarizeProductionGroup(sources);
+  const sortedStages = summary.stages;
+  const firstPendingStage = sortedStages.find(stage => stage.quantity > 0) || sortedStages.find(stage => stage.pendingQuantity > 0);
+  const [selectedStageId, setSelectedStageId] = useState(initialStageKey || firstPendingStage?.key || sortedStages[0]?.key || '');
+  const [quantity, setQuantity] = useState('0');
+  const [notice, setNotice] = useState('');
+  const selectedStageIndex = sortedStages.findIndex(stage => stage.key === selectedStageId);
+  const selectedStage = sortedStages[selectedStageIndex] || null;
+  const availableToAdvance = selectedStage?.quantity || 0;
+  const remainingInStage = selectedStage?.pendingQuantity || 0;
+  const isFinalStage = !!selectedStage?.isFinal;
   useEffect(() => {
     setQuantity(String(availableToAdvance > 0 ? availableToAdvance : remainingInStage));
   }, [selectedStageId, availableToAdvance, remainingInStage]);
 
-  const buildStageDeductions = (quantityToAdvance: number) => {
-    const plan = getProductionPlan({ ...product, items: stageRecipeItems, batchYield } as Product,
-      quantityToAdvance, materials, products, production.variableSelections);
-    return { deductions: plan.deductions, forecast: plan.forecast, shortage: plan.hasStockShortage,
-      missingVariable: plan.hasMissingVariableSelection, batchFactor: quantityToAdvance / batchYield,
-      preparationCost: plan.virtualPreparationCost, automaticManufacturing: plan.automaticManufacturing, errors: plan.errors };
-  };
-
   const parsedQuantity = Math.max(0, Number(quantity) || 0);
-  const preview = buildStageDeductions(Number.isSafeInteger(parsedQuantity) ? parsedQuantity : 0);
-  const canRegister = Number.isSafeInteger(parsedQuantity) && parsedQuantity > 0
-    && parsedQuantity <= availableToAdvance && parsedQuantity <= remainingInStage;
-
+  const preview = planGroupedStageAdvance(sources, selectedStageId, parsedQuantity, product, materials, products);
+  const canRegister = preview.canRegister;
   const handleAdvance = () => {
-    if (!selectedStage || !product) {
-      alert("Não foi possível localizar a receita desta produção.");
-      return;
-    }
-
-    if (!Number.isSafeInteger(parsedQuantity) || parsedQuantity <= 0) {
-      alert("Informe uma quantidade inteira maior que zero.");
-      return;
-    }
-
-    if (parsedQuantity > Math.min(availableToAdvance, remainingInStage) + 0.0001) {
-      alert(
-        selectedStageIndex === 0
-          ? "A quantidade informada ultrapassa o total planejado desta produção."
-          : "Esta quantidade ainda não concluiu a etapa anterior.",
-      );
-      return;
-    }
-
-    const result = buildStageDeductions(parsedQuantity);
-    if (result.missingVariable) {
-      alert(result.errors[0] || "Falta uma escolha de material variável nesta ordem de produção.");
-      return;
-    }
-
-    const tracksStock = production.stockTrackingEnabled !== false;
-    if (result.shortage && tracksStock) {
-      const proceed = window.confirm(
-        "Alguns insumos desta etapa não possuem saldo suficiente. Ao continuar, o estoque desses itens será ajustado para zero. Deseja registrar a etapa mesmo assim?",
-      );
-      if (!proceed) return;
-    }
-
-    const recordedDeductions = tracksStock
-      ? result.deductions.map((deduction) => ({
-          ...deduction,
-          stockAfter: Math.max(0, Number(deduction.stockAfter.toFixed(4))),
-        }))
-      : result.deductions;
-
-    const nextCompletedQuantity = Number(
-      (selectedStage.completedQuantity + parsedQuantity).toFixed(4),
-    );
-
-    const nextStageProgress = sortedStages.map((stage) => {
-      if (stage.stageId !== selectedStage.stageId) return stage;
-      return {
-        ...stage,
-        completedQuantity: nextCompletedQuantity,
-        deductedItems: mergeDeductionLists(
-          stage.deductedItems || [],
-          recordedDeductions,
-        ),
-      };
-    });
-
-    const ingredientCostDelta = recordedDeductions.reduce(
-      (sum, deduction) => sum + deduction.totalCost,
-      0,
-    );
-    const virtualPreparationDelta =
-      result.preparationCost *
-      result.batchFactor;
-    const laborCostDelta =
-      ((selectedStage.laborMinutes || 0) / 60) *
-      (product.hourlyRate || 0) *
-      result.batchFactor;
-    const finalOverheadDelta = isFinalStage
-      ? ((product.fixedCost || 0) + (product.otherCosts || 0)) *
-        result.batchFactor
-      : 0;
-    const finishedQuantityDelta = isFinalStage ? parsedQuantity : 0;
-    const nextFinishedQuantity = Number(
-      (production.quantityProduced + finishedQuantityDelta).toFixed(4),
-    );
-    const isCompleted =
-      isFinalStage && nextCompletedQuantity >= targetQuantity - 0.0001;
-
-    const updatedProduction: Production = {
-      ...production,
-      status: isCompleted ? "completed" : "in_progress",
-      quantityProduced: nextFinishedQuantity,
-      totalCost: Number(
-        (
-          production.totalCost +
-          ingredientCostDelta +
-          laborCostDelta +
-          virtualPreparationDelta +
-          finalOverheadDelta
-        ).toFixed(4),
-      ),
-      deductedItems: mergeDeductionLists(
-        production.deductedItems || [],
-        recordedDeductions,
-      ),
-      stageProgress: nextStageProgress,
-      automaticManufacturing: tracksStock ? [...(production.automaticManufacturing || []), ...result.automaticManufacturing] : production.automaticManufacturing,
-      completedAt: isCompleted ? localDateString() : undefined,
-    };
-
+    if (!product) { alert('Não foi possível localizar a receita desta produção.'); return; }
+    const result = planGroupedStageAdvance(sources, selectedStageId, parsedQuantity, product, materials, products);
+    if (!result.canRegister) { alert('Informe uma quantidade inteira disponível nesta etapa.'); return; }
+    if (result.errors.length) { alert(result.errors[0]); return; }
+    if (result.shortage && !window.confirm('Alguns insumos desta etapa não possuem saldo suficiente. Ao continuar, o estoque desses itens será ajustado para zero. Deseja registrar a etapa mesmo assim?')) return;
     try {
-      onAdvance(updatedProduction, recordedDeductions, finishedQuantityDelta);
-      setNotice(isCompleted
-        ? "Produção concluída."
-        : `${selectedStage.stageName} registrada: ${formatNumber(parsedQuantity)} un.`);
-      if (nextCompletedQuantity >= selectedStage.plannedQuantity - 0.0001) {
-        const nextPending = nextStageProgress.find(stage => stage.completedQuantity < stage.plannedQuantity);
-        if (nextPending) setSelectedStageId(nextPending.stageId);
+      if (onAdvanceBatch) onAdvanceBatch(result.advances);
+      else result.advances.forEach(advance => onAdvance?.(advance.production, advance.deductions, advance.finishedQuantityDelta));
+      const updated = sources.map(source => result.advances.find(advance => advance.production.id === source.id)?.production || source);
+      const next = summarizeProductionGroup(updated);
+      setNotice(next.remaining === 0 ? 'Produção concluída.' : `${selectedStage.stageName} registrada: ${formatNumber(parsedQuantity)} un.`);
+      if (remainingInStage - parsedQuantity <= 0.0001) {
+        const pending = next.stages.find(stage => stage.quantity > 0) || next.stages.find(stage => stage.pendingQuantity > 0);
+        if (pending) setSelectedStageId(pending.key);
       }
-    }
-    catch (failure) { alert(failure instanceof Error ? failure.message : 'Não foi possível registrar a etapa.'); }
+    } catch (failure) { alert(failure instanceof Error ? failure.message : 'Não foi possível registrar a etapa.'); }
   };
 
   return (
@@ -254,8 +78,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
               Continuar produção
             </h3>
             <p className="text-xs text-stone-500">
-              {production.productName} · {formatNumber(targetQuantity)} un
-              planejadas
+              {production.productName} · {formatNumber(summary.remaining)} un em produção
             </p>
           </div>
           <button
@@ -273,25 +96,16 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
         <div className="p-5 grid gap-5 lg:grid-cols-2">
           <div className="space-y-2">
             {sortedStages.map((stage, index) => {
-              const complete =
-                stage.completedQuantity >= stage.plannedQuantity - 0.0001;
-              const unlocked =
-                index === 0 ||
-                (sortedStages[index - 1]?.completedQuantity || 0) >
-                  stage.completedQuantity;
-              const pct = Math.min(
-                100,
-                (stage.completedQuantity / Math.max(1, stage.plannedQuantity)) *
-                  100,
-              );
+              const complete = stage.pendingQuantity === 0;
+              const unlocked = stage.quantity > 0;
               return (
                 <button
-                  key={stage.stageId}
+                  key={stage.key}
                   type="button"
-                  aria-pressed={selectedStageId === stage.stageId}
-                  onClick={() => setSelectedStageId(stage.stageId)}
+                  aria-pressed={selectedStageId === stage.key}
+                  onClick={() => setSelectedStageId(stage.key)}
                   className={`w-full p-3 rounded-xl border text-left transition-colors ${
-                    selectedStageId === stage.stageId
+                    selectedStageId === stage.key
                       ? "border-amber-400 bg-amber-50/60"
                       : "border-stone-200 bg-white hover:border-stone-300"
                   }`}
@@ -309,23 +123,12 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
                       <span
                         className={`text-xs font-bold ${complete ? "text-emerald-700" : unlocked ? "text-amber-800" : "text-stone-400"}`}
                       >
-                        {formatNumber(stage.completedQuantity)}/
-                        {formatNumber(stage.plannedQuantity)}
+                        {formatNumber(stage.quantity)} un
                       </span>
                       <span className="block text-[9px] text-stone-400">
-                        {complete
-                          ? "concluída"
-                          : unlocked
-                            ? "disponível"
-                            : "aguardando etapa anterior"}
+                        {complete ? 'sem peças pendentes' : unlocked ? 'nesta etapa' : 'aguardando etapa anterior'}
                       </span>
                     </div>
-                  </div>
-                  <div className="h-1.5 mt-2 rounded-full bg-stone-100 overflow-hidden">
-                    <div
-                      className={`h-full ${complete ? "bg-emerald-500" : "bg-amber-500"}`}
-                      style={{ width: `${pct}%` }}
-                    />
                   </div>
                 </button>
               );
@@ -345,9 +148,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
                       : `Há ${formatNumber(availableToAdvance)} un liberadas pela etapa anterior.`}
                   </p>
                 </div>
-                <span className="text-[10px] font-semibold text-stone-500 bg-white border border-stone-200 rounded-md px-2 py-1">
-                  {selectedStage.laborMinutes || 0} min/batelada
-                </span>
+
               </div>
 
               <div>
