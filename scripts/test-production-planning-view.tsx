@@ -106,6 +106,27 @@ assert.deepEqual(forecast(document.querySelector('ul[aria-label="Previsão de in
 assert.equal(advances, 0);
 assert.equal(JSON.stringify(firstDone), firstDoneBefore, 'Inspecting completed-stage inputs preserves quantities, costs and stock.');
 
+// Older batches saved loose wax/fragrance; newer batches saved the same mix
+// as a virtual recipe. The hierarchy stays consistent across the third unit.
+const loose = getProductionPlan({ ...product, items: product.items.filter(item => item.productionStageId === 'base') }, 1, materials, [product]).deductions;
+const older = buildProductionRecord(getProductionPlan(product, 3, materials, [product]), '2026-10-21', '', true);
+older.recipeItemsSnapshot = [...product.items.filter(item => item.productionStageId !== 'base'), ...loose.map(item => ({ ...item, quantity: item.quantityPerBatch, productionStageId: 'base' }))];
+older.stageProgress![0].completedQuantity = 3;
+const newer = buildProductionRecord(getProductionPlan(product, 5, materials, [product]), '2026-10-29', '', true);
+newer.stageProgress![0].completedQuantity = 5;
+const grouped = [older, newer];
+const groupedBefore = JSON.stringify(grouped);
+await render(<StageProgressModal key="consistent-base" production={older} groupProductions={grouped} initialStageKey="base:step" product={product} products={[product]} materials={materials} onClose={() => {}} onAdvance={() => { advances++; }} />);
+for (let units = 1; units <= 5; units++) {
+  await fill(document.querySelector('#production-stage-quantity')!, String(units));
+  assert.deepEqual(forecast(document.querySelector('ul[aria-label="Previsão de insumos"]')!.parentElement!), virtualForecast(72 * units, 4 * units));
+  assert(!document.body.textContent?.includes('usam uma composição anterior'));
+}
+await render(<StageProgressModal key="changed-base" production={older} groupProductions={grouped} initialStageKey="base:step" product={{ ...product, items: product.items.map(item => item.productionStageId === 'base' ? { ...item, quantity: item.quantity * 2 } : item) }} products={[product]} materials={materials} onClose={() => {}} onAdvance={() => { advances++; }} />);
+assert(document.body.textContent?.includes('usam uma composição anterior'), 'Actual formula differences are identified, preserving their saved inputs.');
+assert.equal(JSON.stringify(grouped), groupedBefore);
+assert.equal(advances, 0);
+
 // Physical recipes show the full required item first, then only the missing amount's ingredients.
 const physicalProduct = { ...autoProducts[1], useProductionStages: true,
   productionStages: [{ id: 'make', name: 'Montagem', order: 0, laborMinutes: 0 }],

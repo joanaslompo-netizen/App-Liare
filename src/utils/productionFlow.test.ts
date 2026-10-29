@@ -125,4 +125,42 @@ assert.deepEqual(untrackedSource.materials, fixture.materials);
 assert.equal(groupActiveProductions(untrackedSource.productions).length, 0);
 assert.equal(groupActiveProductions([a, { ...b, productId: 'another-aroma' }]).length, 2, 'Aromas remain distinct products.');
 assert.equal(groupActiveProductions([{ ...a, status: undefined, quantityProduced: 2 }]).length, 0, 'Legacy completed history stays outside active work.');
+
+// Three units started before the same loose inputs became a virtual recipe.
+// Crossing that batch boundary must not change the visible recipe hierarchy.
+const blend = { ...fixture.materials[0], id: 'scented-wax', name: 'Cera aromatizada', currentStock: 0, isVirtualRecipe: true,
+  isMadeInAtelier: false, batchYield: 110, productionTimeMinutes: 0, hourlyRate: 0, recipeFixedCostPercent: 0, recipeOtherCosts: 0,
+  recipeItems: product.items.filter(item => item.productionStageId === 'base') };
+const blendMaterials = [...fixture.materials, blend];
+const currentRecipe = { ...product, items: [
+  { ...product.items[0], id: 'blend-row', targetId: blend.id, name: blend.name, quantity: 110, productionStageId: 'base' },
+  ...product.items.filter(item => item.productionStageId !== 'base'),
+] };
+const oldLoose = make('loose-inputs', 3, '2026-10-28');
+const newBlend = { ...buildProductionRecord(getProductionPlan(currentRecipe, 5, blendMaterials, fixture.products), '2026-10-29', '', true), id: 'virtual-inputs' };
+const mixedRecords = [oldLoose, newBlend];
+const mixedBefore = structuredClone({ mixedRecords, blendMaterials, currentRecipe });
+for (let units = 1; units <= 5; units++) {
+  const preview = previewGroupedStage(mixedRecords, 'base:step', units, currentRecipe, blendMaterials, fixture.products);
+  assert.deepEqual(preview.errors, []);
+  assert.equal(preview.previousRecipeUnits, 0, 'Equivalent inputs do not produce an old-composition warning.');
+  assert.equal(preview.forecast.length, 1, `The same recipe is visible for ${units} units, including the fourth.`);
+  assert.equal(preview.forecast[0].item.targetId, blend.id);
+  assert.equal(preview.forecast[0].quantityTotal, 11 * units);
+  assert.equal(preview.forecast[0].children.find(node => node.item.targetId === 'wax')!.quantityTotal, 10 * units);
+  assert.equal(preview.forecast[0].children.find(node => node.item.targetId === 'vanilla')!.quantityTotal, units);
+}
+assert.deepEqual({ mixedRecords, blendMaterials, currentRecipe }, mixedBefore, 'Canonical presentation does not rewrite recipes, saved batches or balances.');
+const mixedPlan = planGroupedStageAdvance(mixedRecords, 'base:step', 4, currentRecipe, blendMaterials, fixture.products);
+assert(mixedPlan.canRegister);
+assert.deepEqual(mixedPlan.advances.map(advance => advance.production.recipeItemsSnapshot), mixedRecords.map(record => record.recipeItemsSnapshot));
+assert.deepEqual(mixedPlan.advances[0].deductions, getProductionPlan({ ...product, items: product.items.filter(item => item.productionStageId === 'base') }, 3, blendMaterials, fixture.products).deductions);
+const mixedSaved = applyProductionStageAdvances({ ...fixture, productions: mixedRecords, materials: blendMaterials }, mixedPlan.advances);
+assert.equal(mixedSaved.materials.find(item => item.id === 'wax')!.currentStock, 960);
+assert.equal(mixedSaved.materials.find(item => item.id === 'vanilla')!.currentStock, 96);
+assert.equal(mixedSaved.productions[0].totalCost, 38.25, 'Historical stage cost is calculated from the saved inputs.');
+const changedRecipe = { ...currentRecipe, items: currentRecipe.items.map(item => item.targetId === blend.id ? { ...item, quantity: 220 } : item) };
+const differentPreview = previewGroupedStage([oldLoose], 'base:step', 2, changedRecipe, blendMaterials, fixture.products);
+assert.equal(differentPreview.previousRecipeUnits, 2, 'A real formula change is disclosed rather than silently replacing the saved recipe.');
+assert.deepEqual(differentPreview.forecast.map(node => node.item.targetId), ['wax', 'vanilla']);
 console.log('Produção agrupada: filas exclusivas, conclusão parcial, novos registros, baixa conjunta, snapshots, estoque compartilhado, histórico, repetição e conflitos passaram.');

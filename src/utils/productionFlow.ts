@@ -80,6 +80,31 @@ export interface ProductionStageAdvance {
   finishedQuantityDelta: number;
 }
 
+/** The same formula may have been saved as loose inputs in an older batch and
+ * as a virtual recipe in a newer one. Present equivalent consumption using the
+ * current hierarchy; the saved deductions, costs and progress stay authoritative. */
+function getStagePlan(production: Production, stageId: string, quantity: number, product: Product, materials: Material[], products: Product[]) {
+  const items = (production.recipeItemsSnapshot || product.items).filter(item => item.productionStageId === stageId);
+  const saved = getProductionPlan({ ...product, items, batchYield: Math.max(0.0001, production.batchYield || 1) }, quantity, materials, products, production.variableSelections);
+  if (!production.recipeItemsSnapshot) return { ...saved, previousRecipeUnits: 0 };
+  if (!product.productionStages?.some(stage => stage.id === stageId)) return { ...saved, previousRecipeUnits: quantity };
+  const current = getProductionPlan({ ...product, items: product.items.filter(item => item.productionStageId === stageId) }, quantity, materials, products, production.variableSelections);
+  const signature = (plan: typeof saved) => {
+    const quantities = new Map<string, number>();
+    for (const item of plan.deductions) {
+      const key = `used:${item.type}:${item.targetId}`;
+      quantities.set(key, (quantities.get(key) || 0) + item.quantityTotal);
+    }
+    for (const item of plan.automaticManufacturing) {
+      const key = `made:${item.type}:${item.targetId}`;
+      quantities.set(key, (quantities.get(key) || 0) + item.quantity);
+    }
+    return JSON.stringify([...quantities].sort(([a], [b]) => a.localeCompare(b)).map(([key, units]) => [key, Number(units.toFixed(8))]));
+  };
+  const equivalent = !saved.errors.length && !current.errors.length && signature(saved) === signature(current);
+  return { ...saved, forecast: equivalent ? current.forecast : saved.forecast, previousRecipeUnits: equivalent ? 0 : quantity };
+}
+
 /** Allocate the selected phase oldest first, using each record's saved recipe
  * and selections. Shared stock is replanned after every allocation. */
 export function planGroupedStageAdvance(productions: Production[], key: string, quantity: number, product: Product | null, materials: Material[], products: Product[]) {
@@ -91,6 +116,7 @@ export function planGroupedStageAdvance(productions: Production[], key: string, 
   let forecast: ConsumptionForecastNode[] = [];
   const advances: ProductionStageAdvance[] = [], errors: string[] = [];
   let shortage = false;
+  let previousRecipeUnits = 0;
   for (const previous of [...productions].sort(oldestFirst)) {
     if (!remaining || productionRemaining(previous) <= 0) continue;
     const stages = sortedStages(previous);
@@ -103,9 +129,9 @@ export function planGroupedStageAdvance(productions: Production[], key: string, 
     if (!allocated) continue;
     if (!product) { errors.push('Não foi possível localizar a receita desta produção.'); break; }
     const batchYield = Math.max(0.0001, previous.batchYield || 1);
-    const items = (previous.recipeItemsSnapshot || product.items).filter(item => item.productionStageId === stage.stageId);
-    const plan = getProductionPlan({ ...product, items, batchYield }, allocated, balances, productBalances, previous.variableSelections);
+    const plan = getStagePlan(previous, stage.stageId, allocated, product, balances, productBalances);
     errors.push(...plan.errors);
+    previousRecipeUnits += plan.previousRecipeUnits;
     const tracksStock = previous.stockTrackingEnabled !== false;
     shortage ||= tracksStock && plan.hasStockShortage;
     forecast = mergeForecast(forecast, plan.forecast);
@@ -130,7 +156,7 @@ export function planGroupedStageAdvance(productions: Production[], key: string, 
     }
     remaining -= allocated;
   }
-  return { advances, forecast, shortage, errors: [...new Set(errors)],
+  return { advances, forecast, shortage, previousRecipeUnits, errors: [...new Set(errors)],
     canRegister: !!selected && Number.isSafeInteger(quantity) && quantity > 0 && quantity <= selected.quantity && remaining === 0 };
 }
 
@@ -138,10 +164,10 @@ export function planGroupedStageAdvance(productions: Production[], key: string, 
  * Use the actual allocation when available; otherwise simulate the requested
  * units from the saved compositions, without constructing progress updates. */
 export function previewGroupedStage(productions: Production[], key: string, quantity: number, product: Product | null, materials: Material[], products: Product[]) {
-  if (!Number.isSafeInteger(quantity) || quantity <= 0) return { forecast: [], errors: [] };
-  if (!product) return { forecast: [], errors: ['Não foi possível localizar a receita desta produção.'] };
+  if (!Number.isSafeInteger(quantity) || quantity <= 0) return { forecast: [], errors: [], previousRecipeUnits: 0 };
+  if (!product) return { forecast: [], errors: ['Não foi possível localizar a receita desta produção.'], previousRecipeUnits: 0 };
   const registration = planGroupedStageAdvance(productions, key, quantity, product, materials, products);
-  if (registration.canRegister) return { forecast: registration.forecast, errors: registration.errors };
+  if (registration.canRegister) return { forecast: registration.forecast, errors: registration.errors, previousRecipeUnits: registration.previousRecipeUnits };
   const matching = [...productions].sort(oldestFirst).flatMap(production => {
     const stages = sortedStages(production);
     const stage = stages.find((stage, index) => stageKey(stage.stageId, index === stages.length - 1) === key);
@@ -151,21 +177,22 @@ export function previewGroupedStage(productions: Production[], key: string, quan
   const sources = active.length ? active : matching;
   let remaining = quantity, balances = materials, productBalances = products;
   let forecast: ConsumptionForecastNode[] = [];
+  let previousRecipeUnits = 0;
   const errors: string[] = [];
   sources.forEach(({ production, stage }, index) => {
     const units = index === sources.length - 1 ? remaining : Math.min(remaining, productionRemaining(production) || productionTarget(production));
     if (units <= 0) return;
-    const items = (production.recipeItemsSnapshot || product.items).filter(item => item.productionStageId === stage.stageId);
-    const plan = getProductionPlan({ ...product, items, batchYield: production.batchYield }, units, balances, productBalances, production.variableSelections);
+    const plan = getStagePlan(production, stage.stageId, units, product, balances, productBalances);
     forecast = mergeForecast(forecast, plan.forecast);
     errors.push(...plan.errors);
+    previousRecipeUnits += plan.previousRecipeUnits;
     if (production.stockTrackingEnabled !== false) {
       balances = balances.map(material => ({ ...material, currentStock: Math.max(0, material.currentStock - (plan.deductions.find(item => item.type === 'material' && item.targetId === material.id)?.quantityTotal || 0)) }));
       productBalances = productBalances.map(current => ({ ...current, currentStock: Math.max(0, (current.currentStock || 0) - (plan.deductions.find(item => item.type === 'product' && item.targetId === current.id)?.quantityTotal || 0)) }));
     }
     remaining -= units;
   });
-  return { forecast, errors: [...new Set(errors)] };
+  return { forecast, errors: [...new Set(errors)], previousRecipeUnits };
 }
 
 interface ProductionWorkspace { productions: Production[]; products: Product[]; materials: Material[]; stockMovements?: StockMovement[] }
