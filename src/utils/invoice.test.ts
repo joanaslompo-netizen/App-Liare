@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import { JSDOM } from 'jsdom';
 import { buildInvoiceHtml, getInvoiceDocumentTitle, getInvoiceTotals } from './invoice';
 import { DEFAULT_SETTINGS } from './storage';
 import type { Sale } from '../types';
+import { formatCurrency } from './formatters';
 const sale = { id: 'test', orderNumber: 42, date: '2026-01-01', productId: '', productName: 'Peça de teste', quantity: 2, unitPrice: 50, totalRevenue: 90, discountAmount: 10, amountPaid: 30, paymentStatus: 'pendente_pagamento', customerName: 'Cliente Teste' } as Sale;
 assert.deepEqual(getInvoiceTotals(sale), { total: 90, paid: 30, balance: 60, discount: 10, subtotal: 100 });
 assert.equal(getInvoiceTotals({ ...sale, amountPaid: 100 }).balance, 0);
@@ -17,4 +19,18 @@ assert.equal(getInvoiceDocumentTitle({ orderNumber: 1234567 }), 'Liare - Pedido 
 assert.equal(getInvoiceDocumentTitle({}), 'Liare - Pedido A definir');
 assert(html.includes('<title>Liare - Pedido 042</title>'));
 for (const text of ['chave-de-teste', 'Ateliê Teste', 'Peça de teste', 'Saldo devedor', 'cartão', 'WhatsApp', 'Desconto', '42']) assert(html.includes(text));
-console.log('Fatura: identificação, PIX, cartão/WhatsApp, desconto e saldo parcial preservados.');
+// The original value includes shipping, with returns and payments kept separate
+// from the granted discount. This avoids overstating the customer's savings.
+const withShipping = { ...sale, totalRevenue: 105, shippingCharged: 15, returnAdjustmentCents: 500 };
+const summary = new JSDOM(buildInvoiceHtml(withShipping, DEFAULT_SETTINGS, [], [])).window.document.querySelector('.summary')!;
+assert(summary.querySelector('.original')!.textContent!.includes(formatCurrency(115)));
+assert(summary.querySelector('.discount')!.textContent!.includes(formatCurrency(10)));
+assert(summary.querySelector('.total')!.textContent!.includes(formatCurrency(100)));
+assert(summary.querySelector('.balance')!.textContent!.includes(formatCurrency(70)));
+assert([...summary.children].indexOf(summary.querySelector('.original')!) < [...summary.children].indexOf(summary.querySelector('.discount')!));
+const gift = new JSDOM(buildInvoiceHtml({ ...sale, totalRevenue: 0, discountAmount: 100, amountPaid: 0 }, DEFAULT_SETTINGS, [], [])).window.document;
+assert(gift.querySelector('.original')!.textContent!.includes(formatCurrency(100)));
+assert(gift.querySelector('.discount')!.textContent!.includes(formatCurrency(100)));
+assert(gift.querySelector('.total')!.textContent!.includes(formatCurrency(0)));
+assert(!new JSDOM(buildInvoiceHtml({ ...sale, discountAmount: 0 }, DEFAULT_SETTINGS, [], [])).window.document.querySelector('.discount'));
+console.log('Fatura: valor original antes do desconto, frete/devoluções/pagamentos separados, presente integral, PIX e saldo parcial preservados.');
