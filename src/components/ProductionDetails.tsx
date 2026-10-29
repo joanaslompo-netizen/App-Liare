@@ -12,7 +12,7 @@ import {
   formatDate,
   formatNumber,
 } from "../utils/formatters";
-import { planGroupedStageAdvance, summarizeProductionGroup, type ProductionStageAdvance } from "../utils/productionFlow";
+import { planGroupedStageAdvance, previewGroupedStage, summarizeProductionGroup, type ProductionStageAdvance } from "../utils/productionFlow";
 import { ProductionMaterialPlan } from './ProductionMaterialPlan';
 import { ProductionIngredientForecast } from './ProductionIngredientForecast';
 
@@ -44,12 +44,12 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
   const remainingInStage = selectedStage?.pendingQuantity || 0;
   const isFinalStage = !!selectedStage?.isFinal;
   useEffect(() => {
-    setQuantity(String(availableToAdvance > 0 ? availableToAdvance : remainingInStage));
-  }, [selectedStageId, availableToAdvance, remainingInStage]);
+    setQuantity(String(availableToAdvance || remainingInStage || summary.remaining));
+  }, [selectedStageId, availableToAdvance, remainingInStage, summary.remaining]);
 
   const parsedQuantity = Math.max(0, Number(quantity) || 0);
-  const preview = planGroupedStageAdvance(sources, selectedStageId, parsedQuantity, product, materials, products);
-  const canRegister = preview.canRegister;
+  const preview = previewGroupedStage(sources, selectedStageId, parsedQuantity, product, materials, products);
+  const canRegister = Number.isSafeInteger(parsedQuantity) && parsedQuantity > 0 && parsedQuantity <= availableToAdvance && parsedQuantity <= remainingInStage;
   const handleAdvance = () => {
     if (!product) { alert('Não foi possível localizar a receita desta produção.'); return; }
     const result = planGroupedStageAdvance(sources, selectedStageId, parsedQuantity, product, materials, products);
@@ -93,8 +93,8 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
 
         {notice && <p role="status" className="mx-5 mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</p>}
 
-        <div className="p-5 grid gap-5 lg:grid-cols-2">
-          <div className="space-y-2">
+        <div className="p-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <div className="min-w-0 space-y-2">
             {sortedStages.map((stage, index) => {
               const complete = stage.pendingQuantity === 0;
               const unlocked = stage.quantity > 0;
@@ -136,14 +136,16 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
           </div>
 
           {selectedStage && (
-            <div className="rounded-xl border border-stone-200 bg-stone-50 p-4 space-y-4">
+            <div className="min-w-0 rounded-xl border border-stone-200 bg-stone-50 p-4 space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h4 className="text-sm font-bold text-stone-900">
                     {selectedStage.stageName}
                   </h4>
                   <p className="text-[11px] text-stone-500 mt-0.5">
-                    {selectedStageIndex === 0
+                    {remainingInStage === 0
+                      ? 'Esta etapa já foi registrada. Você pode consultar os insumos e simular quantidades, sem registrar novamente.'
+                      : selectedStageIndex === 0
                       ? "Registre quantas unidades tiveram esta etapa concluída agora."
                       : `Há ${formatNumber(availableToAdvance)} un liberadas pela etapa anterior.`}
                   </p>
@@ -164,7 +166,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
                     onClick={() =>
                       setQuantity(String(Math.max(0, parsedQuantity - 1)))
                     }
-                    className="w-9 h-9 rounded-lg bg-white border border-stone-300 font-bold text-stone-700"
+                    className="w-9 h-9 shrink-0 rounded-lg bg-white border border-stone-300 font-bold text-stone-700"
                   >
                     −
                   </button>
@@ -176,7 +178,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
                     step="1"
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
-                    className="flex-1 px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-center font-bold text-stone-900 focus:ring-2 focus:ring-amber-500"
+                    className="min-w-0 w-full flex-1 px-3 py-2 text-sm bg-white border border-stone-300 rounded-lg text-center font-bold text-stone-900 focus:ring-2 focus:ring-amber-500"
                   />
                   <button
                     type="button"
@@ -187,7 +189,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
                         ),
                       )
                     }
-                    className="w-9 h-9 rounded-lg bg-white border border-stone-300 font-bold text-stone-700"
+                    className="w-9 h-9 shrink-0 rounded-lg bg-white border border-stone-300 font-bold text-stone-700"
                   >
                     +
                   </button>
@@ -197,7 +199,9 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
                   {' '}Você pode simular outras quantidades para organizar a bancada.
                 </p>
                 {parsedQuantity > availableToAdvance && <p role="status" className="mt-2 text-xs text-amber-800">
-                  Apenas planejamento: esta quantidade ainda não está liberada para registro.
+                  {remainingInStage === 0
+                    ? 'Somente consulta: esta etapa já foi registrada.'
+                    : 'Apenas planejamento: esta quantidade ainda não está liberada para registro.'}
                 </p>}
               </div>
 
@@ -205,7 +209,10 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
                 <h5 className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-2">
                   Previsão de insumos desta etapa
                 </h5>
-                {preview.forecast.length === 0 ? (
+                {preview.errors.length > 0 && <p role="status" className="mb-2 text-xs text-amber-800">Não foi possível calcular todos os insumos: {preview.errors.join(' ')}</p>}
+                {parsedQuantity <= 0 ? (
+                  <p className="text-[11px] text-stone-500">Informe uma quantidade para consultar os insumos desta etapa.</p>
+                ) : preview.forecast.length === 0 ? (
                   <p className="text-[11px] text-stone-500 bg-white border border-stone-200 rounded-lg p-3">
                     Esta etapa não possui insumos consumíveis. Apenas o
                     progresso e a mão de obra serão registrados.

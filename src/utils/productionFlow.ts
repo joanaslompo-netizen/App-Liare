@@ -134,6 +134,40 @@ export function planGroupedStageAdvance(productions: Production[], key: string, 
     canRegister: !!selected && Number.isSafeInteger(quantity) && quantity > 0 && quantity <= selected.quantity && remaining === 0 };
 }
 
+/** Reading a recipe is independent of whether its phase can still be saved.
+ * Use the actual allocation when available; otherwise simulate the requested
+ * units from the saved compositions, without constructing progress updates. */
+export function previewGroupedStage(productions: Production[], key: string, quantity: number, product: Product | null, materials: Material[], products: Product[]) {
+  if (!Number.isSafeInteger(quantity) || quantity <= 0) return { forecast: [], errors: [] };
+  if (!product) return { forecast: [], errors: ['Não foi possível localizar a receita desta produção.'] };
+  const registration = planGroupedStageAdvance(productions, key, quantity, product, materials, products);
+  if (registration.canRegister) return { forecast: registration.forecast, errors: registration.errors };
+  const matching = [...productions].sort(oldestFirst).flatMap(production => {
+    const stages = sortedStages(production);
+    const stage = stages.find((stage, index) => stageKey(stage.stageId, index === stages.length - 1) === key);
+    return stage ? [{ production, stage }] : [];
+  });
+  const active = matching.filter(({ production }) => productionRemaining(production) > 0);
+  const sources = active.length ? active : matching;
+  let remaining = quantity, balances = materials, productBalances = products;
+  let forecast: ConsumptionForecastNode[] = [];
+  const errors: string[] = [];
+  sources.forEach(({ production, stage }, index) => {
+    const units = index === sources.length - 1 ? remaining : Math.min(remaining, productionRemaining(production) || productionTarget(production));
+    if (units <= 0) return;
+    const items = (production.recipeItemsSnapshot || product.items).filter(item => item.productionStageId === stage.stageId);
+    const plan = getProductionPlan({ ...product, items, batchYield: production.batchYield }, units, balances, productBalances, production.variableSelections);
+    forecast = mergeForecast(forecast, plan.forecast);
+    errors.push(...plan.errors);
+    if (production.stockTrackingEnabled !== false) {
+      balances = balances.map(material => ({ ...material, currentStock: Math.max(0, material.currentStock - (plan.deductions.find(item => item.type === 'material' && item.targetId === material.id)?.quantityTotal || 0)) }));
+      productBalances = productBalances.map(current => ({ ...current, currentStock: Math.max(0, (current.currentStock || 0) - (plan.deductions.find(item => item.type === 'product' && item.targetId === current.id)?.quantityTotal || 0)) }));
+    }
+    remaining -= units;
+  });
+  return { forecast, errors: [...new Set(errors)] };
+}
+
 interface ProductionWorkspace { productions: Production[]; products: Product[]; materials: Material[]; stockMovements?: StockMovement[] }
 
 /** Commit the whole phase together or leave everything unchanged. Repeating

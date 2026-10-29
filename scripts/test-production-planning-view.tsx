@@ -90,6 +90,22 @@ await fill(stageQuantity, '3');
 assert(([...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === 'Registrar etapa')!).disabled);
 assert.equal(advances, 0);
 
+// The first phase remains readable after all units have moved to the next one.
+const firstDone = { ...production, stageProgress: production.stageProgress!.map(stage => ({ ...stage, completedQuantity: stage.stageId === 'cup' ? 5 : 0 })) };
+const firstDoneBefore = JSON.stringify(firstDone);
+await render(<StageProgressModal key="first-done" production={firstDone} initialStageKey="cup:step" product={{ ...product, items: [] }} products={[product]} materials={materials} onClose={() => {}} onAdvance={() => { advances++; }} />);
+assert.equal(document.querySelector('button[aria-pressed="true"] p')!.textContent, 'Mesclado e preparo do copo');
+assert.equal((document.querySelector('#production-stage-quantity') as HTMLInputElement).value, '5');
+assert.deepEqual(forecast(document.querySelector('ul[aria-label="Previsão de insumos"]')!.parentElement!), [leaf('Cera de coco', '75 g')]);
+assert(document.body.textContent?.includes('Esta etapa já foi registrada.'));
+assert([...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === 'Registrar etapa')!.disabled);
+await fill(document.querySelector('#production-stage-quantity')!, '3');
+assert.deepEqual(forecast(document.querySelector('ul[aria-label="Previsão de insumos"]')!.parentElement!), [leaf('Cera de coco', '45 g')]);
+await fill(document.querySelector('#production-stage-quantity')!, '8');
+assert.deepEqual(forecast(document.querySelector('ul[aria-label="Previsão de insumos"]')!.parentElement!), [leaf('Cera de coco', '120 g')]);
+assert.equal(advances, 0);
+assert.equal(JSON.stringify(firstDone), firstDoneBefore, 'Inspecting completed-stage inputs preserves quantities, costs and stock.');
+
 // Physical recipes show the full required item first, then only the missing amount's ingredients.
 const physicalProduct = { ...autoProducts[1], useProductionStages: true,
   productionStages: [{ id: 'make', name: 'Montagem', order: 0, laborMinutes: 0 }],
