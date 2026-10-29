@@ -1,3 +1,4 @@
+import { applyProductionStageAdvances, type ProductionStageAdvance } from './utils/productionFlow';
 import { planAutomaticConsumption, automaticStockMovements, validateAutomaticManufacturing } from './utils/automaticManufacturing';
 import {syncFailureKind,retryDelay} from './services/syncRetryPolicy';
 import { cloudQuotaGuard } from './services/cloudQuotaGuard';
@@ -955,66 +956,14 @@ export default function App() {
     }
   }, []);
 
-  const handleAdvanceProductionStage = useCallback((
-    production: Production,
-    deductions: ProductionIngredientDeduction[],
-    finishedQuantityDelta: number
-  ) => {
-    const previous = workspaceRef.current.productions?.find(item => item.id === production.id);
-    if (previous && canonicalJSON(previous.stageProgress) === canonicalJSON(production.stageProgress) && previous.quantityProduced === production.quantityProduced) return;
-    const newAutomatic = (production.automaticManufacturing || []).slice(previous?.automaticManufacturing?.length || 0);
-    if (production.stockTrackingEnabled !== false) validateAutomaticManufacturing(newAutomatic, workspaceRef.current.productions);
-    setProductions((prev) => prev.map((item) => (
-      item.id === production.id ? production : item
-    )));
-
-    if (production.stockTrackingEnabled === false) return;
-    setStockMovements(prev=>[...prev,...automaticStockMovements(newAutomatic, `${production.id}_${canonicalJSON(production.stageProgress).length}_${production.stageProgress?.reduce((sum,stage)=>sum+stage.completedQuantity,0)}`, production.date, production.id),...deductions.map(d=>({id:crypto.randomUUID(),date:production.date,targetId:d.targetId,type:d.type,quantity:-d.quantityTotal,reason:'Etapa de produção',referenceId:production.id})),...(finishedQuantityDelta>0?[{id:crypto.randomUUID(),date:production.date,targetId:production.productId,type:'product' as const,quantity:finishedQuantityDelta,reason:'Produto finalizado',referenceId:production.id}]:[])]);
-
-    if (finishedQuantityDelta > 0) {
-      setProducts((prevProducts) => prevProducts.map((product) => {
-        if (product.id !== production.productId) return product;
-        return {
-          ...product,
-          currentStock: Number(((product.currentStock ?? 0) + finishedQuantityDelta).toFixed(4)),
-          inventoryBusinessCost: ((product.currentStock||0)*(product.inventoryBusinessCost ?? getProductFinancialSplit(product).businessCostPerUnit)+finishedQuantityDelta*Math.max(0,(production.targetQuantity?(production.plannedTotalCost ?? production.totalCost)/production.targetQuantity:production.costPerUnit)-getProductFinancialSplit(product).laborRemunerationPerUnit))/((product.currentStock||0)+finishedQuantityDelta),
-          inventoryLaborCost: ((product.currentStock||0)*(product.inventoryLaborCost ?? getProductFinancialSplit(product).laborRemunerationPerUnit)+finishedQuantityDelta*getProductFinancialSplit(product).laborRemunerationPerUnit)/((product.currentStock||0)+finishedQuantityDelta),
-          updatedAt: new Date().toISOString().split('T')[0],
-        };
-      }));
-    }
-
-    const materialDeductions = deductions.filter((item) => item.type === 'material');
-    if (materialDeductions.length > 0) {
-      setMaterials((prevMaterials) => prevMaterials.map((material) => {
-        const deduction = materialDeductions.find((item) => item.targetId === material.id);
-        if (!deduction || material.usageType === 'durable') return material;
-        return {
-          ...material,
-          currentStock: Math.max(
-            0,
-            Number((material.currentStock - deduction.quantityTotal).toFixed(4))
-          ),
-          updatedAt: new Date().toISOString().split('T')[0],
-        };
-      }));
-    }
-
-    const productDeductions = deductions.filter((item) => item.type === 'product');
-    if (productDeductions.length > 0) {
-      setProducts((prevProducts) => prevProducts.map((product) => {
-        const deduction = productDeductions.find((item) => item.targetId === product.id);
-        if (!deduction || product.id === production.productId) return product;
-        return {
-          ...product,
-          currentStock: Math.max(
-            0,
-            Number(((product.currentStock ?? 0) - deduction.quantityTotal).toFixed(4))
-          ),
-          updatedAt: new Date().toISOString().split('T')[0],
-        };
-      }));
-    }
+  const handleAdvanceProductionStages = useCallback((advances: ProductionStageAdvance[]) => {
+    const updated = applyProductionStageAdvances(workspaceRef.current, advances);
+    if (updated === workspaceRef.current) return;
+    workspaceRef.current = updated;
+    setProductions(updated.productions);
+    setProducts(updated.products);
+    setMaterials(updated.materials);
+    setStockMovements(updated.stockMovements || []);
   }, []);
 
   const handleDeleteProduction = useCallback((id: string, revertStock: boolean) => {
@@ -1795,7 +1744,7 @@ export default function App() {
                 production, production.stockTrackingEnabled !== false && production.status !== 'in_progress'
               ));
             }}
-            onAdvanceProductionStage={handleAdvanceProductionStage}
+            onAdvanceProductionStages={handleAdvanceProductionStages}
             onDeleteProduction={handleDeleteProduction}
             onNavigateToProducts={() => setActiveTab('products')}
             initialSelectedProduct={productionInitialProduct}

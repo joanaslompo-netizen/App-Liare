@@ -4,7 +4,6 @@ import type {
   Material,
   Product,
   Production,
-  ProductionIngredientDeduction,
 } from "../types";
 import {
   formatCurrency,
@@ -12,6 +11,7 @@ import {
   formatNumber,
   matchesSearchText,
 } from "../utils/formatters";
+import { groupActiveProductions, type ProductionStageAdvance } from "../utils/productionFlow";
 import { NewProductionPage } from "./NewProductionPage";
 import { StageProgressModal, ViewProductionModal } from "./ProductionDetails";
 export { NewProductionPage as NewProductionModal } from "./NewProductionPage";
@@ -23,11 +23,7 @@ interface ProductionsViewProps {
   materials: Material[];
   onSaveProduction?: (production: Production, updateStock: boolean) => void;
   onSaveProductions?: (productions: Production[]) => void;
-  onAdvanceProductionStage: (
-    production: Production,
-    deductions: ProductionIngredientDeduction[],
-    finishedQuantityDelta: number,
-  ) => void;
+  onAdvanceProductionStages: (advances: ProductionStageAdvance[]) => void;
   onDeleteProduction: (id: string, revertStock: boolean) => void;
   onNavigateToProducts?: () => void;
   initialProductToProduce?: Product | null;
@@ -42,7 +38,7 @@ export function ProductionsView({
   materials,
   onSaveProduction,
   onSaveProductions,
-  onAdvanceProductionStage,
+  onAdvanceProductionStages,
   onDeleteProduction,
   initialProductToProduce = null,
   initialSelectedProduct = null,
@@ -60,7 +56,7 @@ export function ProductionsView({
   );
   const [query, setQuery] = useState("");
   const [type, setType] = useState("all");
-  const [advancingId, setAdvancingId] = useState<string | null>(null);
+  const [advancing, setAdvancing] = useState<{ key: string; ids: string[]; stageKey?: string } | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   useEffect(() => {
@@ -81,33 +77,16 @@ export function ProductionsView({
     setPreset(null);
     onClearInitialProduct?.();
   };
-  const inProgress = productions.filter(
-    (p) => p.status === "in_progress",
-  ).length;
-  const completed = productions.length - inProgress;
-  const filtered = useMemo(
-    () =>
-      productions
-        .filter(
-          (p) =>
-            (p.status || "completed") === status &&
-            (type === "all" ||
-              (type === "intermediate"
-                ? !!p.isIntermediate
-                : !p.isIntermediate)) &&
-            (!query ||
-              [
-                p.productName,
-                p.productCategory || "",
-                p.notes || "",
-                p.id,
-                ...(p.deductedItems || []).map((d) => d.name),
-              ].some((v) => matchesSearchText(v, query))),
-        )
-        .sort((a, b) => b.date.localeCompare(a.date)),
-    [productions, status, type, query],
-  );
-  const advance = productions.find((p) => p.id === advancingId);
+  const groups = useMemo(() => groupActiveProductions(productions), [productions]);
+  const inProgress = groups.length;
+  const completed = productions.filter(p => (p.status || 'completed') === 'completed').length;
+  const matches = (p: Production) => (type === 'all' || (type === 'intermediate' ? !!p.isIntermediate : !p.isIntermediate)) &&
+    (!query || [p.productName, p.productCategory || '', p.notes || '', p.id, ...(p.deductedItems || []).map(d => d.name)].some(value => matchesSearchText(value, query)));
+  const filteredGroups = groups.filter(group => group.productions.some(matches));
+  const filtered = productions.filter(p => (p.status || 'completed') === 'completed' && matches(p)).sort((a, b) => b.date.localeCompare(a.date));
+  const advancingProductions = advancing ? productions.filter(p => advancing.ids.includes(p.id) ||
+    ((p.productId || p.id) === advancing.key && p.status === 'in_progress')) : [];
+  const advance = advancingProductions[0];
   const viewing = productions.find((p) => p.id === viewingId);
   if (creating)
     return (
@@ -140,7 +119,7 @@ export function ProductionsView({
       />
     );
   const back = () => {
-    setAdvancingId(null);
+    setAdvancing(null);
     setViewingId(null);
   };
   if (advance || viewing)
@@ -156,15 +135,17 @@ export function ProductionsView({
         </button>
         {advance ? (
           <StageProgressModal
+            key={advancing.key}
             production={advance}
+            groupProductions={advancingProductions}
+            initialStageKey={advancing.stageKey}
             product={products.find((p) => p.id === advance.productId) || null}
             products={products}
             materials={materials}
             onClose={back}
-            onAdvance={(updated, deductions, delta) => {
-              onAdvanceProductionStage(updated, deductions, delta);
-              if (updated.status === "completed") setStatus("completed");
-              setNotice("Etapa registrada.");
+            onAdvanceBatch={(advances) => {
+              onAdvanceProductionStages(advances);
+              setNotice('Etapa registrada.');
             }}
           />
         ) : (
@@ -277,7 +258,7 @@ export function ProductionsView({
         aria-labelledby={`production-tab-${status}`}
         className="space-y-4"
       >
-        {!filtered.length && (
+        {!(status === 'in_progress' ? filteredGroups.length : filtered.length) && (
           <div className="rounded-2xl border border-[#e5dad1] bg-white p-8 text-center">
             <h3 className="font-semibold">
               {query || type !== "all"
@@ -293,15 +274,49 @@ export function ProductionsView({
             </p>
           </div>
         )}
-        {filtered.map((p) => {
+        {status === 'in_progress' && filteredGroups.map(group => {
+          const first = group.productions[0];
+          const open = (stageKey?: string) => setAdvancing({ key: group.key, ids: group.productions.map(p => p.id), stageKey });
+          return <article key={group.key} id={`production-item-${first.id}`} data-production-group={group.key}
+            className="rounded-2xl border border-[#e5dad1] bg-white p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="break-words text-base font-semibold">{first.productName}</h3>
+                <p className="mt-1 text-sm font-semibold text-[#a86149]" data-production-remaining>{formatNumber(group.remaining)} un em produção</p>
+              </div>
+              {!!group.stages.length && <button type="button" data-advance-production={first.id} onClick={() => open()}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#352f2b] px-4 py-2.5 text-sm font-semibold text-white">
+                Continuar produção <ArrowRight className="h-4 w-4" />
+              </button>}
+            </div>
+            {!!group.stages.length && <div className="my-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {group.stages.map(stage => <button key={stage.key} type="button" data-production-stage={stage.key}
+                onClick={() => open(stage.key)} className={`min-w-0 rounded-xl border p-3 text-left ${stage.quantity > 0 ? 'border-[#e4c4b2] bg-[#fcf5ef]' : 'border-[#eee6de] bg-[#faf8f5]'}`}>
+                <span className="block break-words text-xs text-[#75665c]">{stage.stageName}</span>
+                <span className="mt-1 block text-lg font-semibold tabular-nums" data-stage-quantity>{formatNumber(stage.quantity)} un</span>
+                <span className="text-xs text-[#75665c]">{stage.quantity > 0 ? 'nesta etapa' : stage.pendingQuantity > 0 ? 'aguardando etapa anterior' : 'sem peças pendentes'}</span>
+              </button>)}
+            </div>}
+            <details className="mt-4 border-t border-[#eee6de] pt-3">
+              <summary className="text-xs text-[#75665c]">Registros, materiais e observações</summary>
+              <div className="mt-3 space-y-3">{group.productions.map(p => <div key={p.id} className="rounded-xl border border-[#eee6de] p-3 text-sm text-[#75665c]">
+                <p>{formatDate(p.date)} · {formatNumber((p.targetQuantity ?? p.batchCount * p.batchYield) - p.quantityProduced)} un em produção{p.stockTrackingEnabled === false ? ' · Sem movimentação de estoque' : ''}</p>
+                {p.notes && <p className="mt-1 whitespace-pre-wrap break-words">{p.notes}</p>}
+                <div className="mt-2 flex flex-wrap gap-4">
+                  <button type="button" onClick={() => setViewingId(p.id)} className="text-[#a86149] underline">Ver registro completo</button>
+                  <button type="button" onClick={() => {
+                    if (window.confirm(`Excluir a produção de "${p.productName}" e reverter as movimentações de estoque registradas?`)) onDeleteProduction(p.id, true);
+                  }} className="text-rose-700 underline">Excluir e estornar</button>
+                </div>
+              </div>)}</div>
+            </details>
+          </article>;
+        })}
+        {status === 'completed' && filtered.map((p) => {
           const stages = [...(p.stageProgress || [])].sort(
             (a, b) => a.order - b.order,
           );
-          const current = stages.find(
-            (s) => s.completedQuantity < s.plannedQuantity,
-          );
           const target = p.targetQuantity || p.batchCount * p.batchYield;
-          const active = p.status === "in_progress";
           return (
             <article
               key={p.id}
@@ -321,7 +336,7 @@ export function ProductionsView({
                   </p>
                 </div>
                 <span className="rounded-lg bg-[#f7e8df] px-2.5 py-1 text-xs text-[#a86149]">
-                  {active ? current?.stageName || "Em andamento" : "Concluída"}
+                  Concluída
                 </span>
               </div>
               {stages.length > 0 && (
@@ -334,7 +349,7 @@ export function ProductionsView({
                   {stages.map((s) => (
                     <div key={s.stageId} className="min-w-0">
                       <div
-                        className={`mb-1.5 flex flex-wrap justify-between gap-1 text-xs ${s.stageId === current?.stageId ? "font-semibold text-[#a86149]" : "text-[#75665c]"}`}
+                        className="mb-1.5 flex flex-wrap justify-between gap-1 text-xs text-[#75665c]"
                       >
                         <span className="break-words">{s.stageName}</span>
                         <span className="tabular-nums">
@@ -363,29 +378,11 @@ export function ProductionsView({
               )}
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                 <span className="text-xs text-[#75665c]">
-                  {active
-                    ? `${formatNumber(p.quantityProduced)} de ${formatNumber(target)} unidades prontas`
-                    : `${formatNumber(p.quantityProduced)} unidades finalizadas`}
+                  {formatNumber(p.quantityProduced)} unidades finalizadas
                 </span>
-                {active && current ? (
-                  <button
-                    type="button"
-                    data-advance-production={p.id}
-                    onClick={() => setAdvancingId(p.id)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#352f2b] px-4 py-2.5 text-sm font-semibold text-white"
-                  >
-                    Registrar {current.stageName.toLocaleLowerCase("pt-BR")}
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setViewingId(p.id)}
-                    className="rounded-xl border border-[#e5dad1] px-4 py-2.5 text-sm"
-                  >
-                    Ver detalhes
-                  </button>
-                )}
+                <button type="button" onClick={() => setViewingId(p.id)} className="rounded-xl border border-[#e5dad1] px-4 py-2.5 text-sm">
+                  Ver detalhes
+                </button>
               </div>
               <details className="mt-4 border-t border-[#eee6de] pt-3">
                 <summary className="text-xs text-[#75665c]">
