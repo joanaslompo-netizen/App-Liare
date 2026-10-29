@@ -48,8 +48,8 @@ const virtualForecast = (wax: number, aroma: number): ForecastRow[] => [{ name: 
   children: [leaf('Cera de coco', `${wax} g`), { name: 'Milk-shake de Chocolate', quantity: `${aroma * 2} g`,
     children: [leaf('Vanilla', `${aroma} g`), leaf('Chocolate', `${aroma} g`)] }] }];
 
-// A saved production uses its composition snapshot even if the live recipe changes.
-await render(<ViewProductionModal production={production} product={{ ...product, items: [] }} products={[product]} materials={materials} onClose={() => {}} />);
+// A saved production can be consulted without writing its records.
+await render(<ViewProductionModal production={production} product={product} products={[product]} materials={materials} onClose={() => {}} />);
 assert(stage('Base'));
 assert.deepEqual(forecast(stage('Mesclado e preparo do copo')), [leaf('Cera de coco', '75 g')]);
 assert.deepEqual(forecast(stage('Base')), virtualForecast(360, 20));
@@ -93,7 +93,7 @@ assert.equal(advances, 0);
 // The first phase remains readable after all units have moved to the next one.
 const firstDone = { ...production, stageProgress: production.stageProgress!.map(stage => ({ ...stage, completedQuantity: stage.stageId === 'cup' ? 5 : 0 })) };
 const firstDoneBefore = JSON.stringify(firstDone);
-await render(<StageProgressModal key="first-done" production={firstDone} initialStageKey="cup:step" product={{ ...product, items: [] }} products={[product]} materials={materials} onClose={() => {}} onAdvance={() => { advances++; }} />);
+await render(<StageProgressModal key="first-done" production={firstDone} initialStageKey="cup:step" product={product} products={[product]} materials={materials} onClose={() => {}} onAdvance={() => { advances++; }} />);
 assert.equal(document.querySelector('button[aria-pressed="true"] p')!.textContent, 'Mesclado e preparo do copo');
 assert.equal((document.querySelector('#production-stage-quantity') as HTMLInputElement).value, '5');
 assert.deepEqual(forecast(document.querySelector('ul[aria-label="Previsão de insumos"]')!.parentElement!), [leaf('Cera de coco', '75 g')]);
@@ -123,7 +123,8 @@ for (let units = 1; units <= 5; units++) {
   assert(!document.body.textContent?.includes('usam uma composição anterior'));
 }
 await render(<StageProgressModal key="changed-base" production={older} groupProductions={grouped} initialStageKey="base:step" product={{ ...product, items: product.items.map(item => item.productionStageId === 'base' ? { ...item, quantity: item.quantity * 2 } : item) }} products={[product]} materials={materials} onClose={() => {}} onAdvance={() => { advances++; }} />);
-assert(document.body.textContent?.includes('usam uma composição anterior'), 'Actual formula differences are identified, preserving their saved inputs.');
+await fill(document.querySelector('#production-stage-quantity')!, '3');
+assert.deepEqual(forecast(document.querySelector('ul[aria-label="Previsão de insumos"]')!.parentElement!), virtualForecast(144 * 3, 8 * 3), 'Current quantities replace the earlier formula in future projections.');
 assert.equal(JSON.stringify(grouped), groupedBefore);
 assert.equal(advances, 0);
 

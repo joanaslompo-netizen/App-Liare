@@ -12,7 +12,7 @@ import {
   formatDate,
   formatNumber,
 } from "../utils/formatters";
-import { planGroupedStageAdvance, previewGroupedStage, summarizeProductionGroup, type ProductionStageAdvance } from "../utils/productionFlow";
+import { planGroupedStageAdvance, previewGroupedStage, summarizeProductionGroup, projectProductionCost, type ProductionStageAdvance } from "../utils/productionFlow";
 import { ProductionMaterialPlan } from './ProductionMaterialPlan';
 import { ProductionIngredientForecast } from './ProductionIngredientForecast';
 
@@ -32,10 +32,13 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
   production, groupProductions, initialStageKey, product, products, materials, onClose, onAdvance, onAdvanceBatch,
 }) => {
   const sources = groupProductions || [production];
-  const summary = summarizeProductionGroup(sources);
+  const summary = summarizeProductionGroup(sources, product);
   const sortedStages = summary.stages;
   const firstPendingStage = sortedStages.find(stage => stage.quantity > 0) || sortedStages.find(stage => stage.pendingQuantity > 0);
   const [selectedStageId, setSelectedStageId] = useState(initialStageKey || firstPendingStage?.key || sortedStages[0]?.key || '');
+  useEffect(() => {
+    if (!sortedStages.some(stage => stage.key === selectedStageId)) setSelectedStageId(firstPendingStage?.key || sortedStages[0]?.key || '');
+  }, [selectedStageId, sortedStages.map(stage => stage.key).join('|'), firstPendingStage?.key]);
   const [quantity, setQuantity] = useState('0');
   const [notice, setNotice] = useState('');
   const selectedStageIndex = sortedStages.findIndex(stage => stage.key === selectedStageId);
@@ -60,7 +63,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
       if (onAdvanceBatch) onAdvanceBatch(result.advances);
       else result.advances.forEach(advance => onAdvance?.(advance.production, advance.deductions, advance.finishedQuantityDelta));
       const updated = sources.map(source => result.advances.find(advance => advance.production.id === source.id)?.production || source);
-      const next = summarizeProductionGroup(updated);
+      const next = summarizeProductionGroup(updated, product);
       setNotice(next.remaining === 0 ? 'Produção concluída.' : `${selectedStage.stageName} registrada: ${formatNumber(parsedQuantity)} un.`);
       if (remainingInStage - parsedQuantity <= 0.0001) {
         const pending = next.stages.find(stage => stage.quantity > 0) || next.stages.find(stage => stage.pendingQuantity > 0);
@@ -78,7 +81,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
               Continuar produção
             </h3>
             <p className="text-xs text-stone-500">
-              {production.productName} · {formatNumber(summary.remaining)} un em produção
+              {product?.name || production.productName} · {formatNumber(summary.remaining)} un em produção
             </p>
           </div>
           <button
@@ -91,6 +94,7 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
           </button>
         </div>
 
+        <p className="mx-5 mt-4 text-xs text-stone-500">As próximas etapas acompanham a receita atual. O que já foi registrado permanece no histórico.</p>
         {notice && <p role="status" className="mx-5 mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</p>}
 
         <div className="p-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -209,9 +213,6 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
                 <h5 className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-2">
                   Previsão de insumos desta etapa
                 </h5>
-                {preview.previousRecipeUnits > 0 && <p role="status" className="mb-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                  {formatNumber(preview.previousRecipeUnits)} un desta simulação usam uma composição anterior, salva ao iniciar a produção. Os insumos dessas peças seguem esse registro.
-                </p>}
                 {preview.errors.length > 0 && <p role="status" className="mb-2 text-xs text-amber-800">Não foi possível calcular todos os insumos: {preview.errors.join(' ')}</p>}
                 {parsedQuantity <= 0 ? (
                   <p className="text-[11px] text-stone-500">Informe uma quantidade para consultar os insumos desta etapa.</p>
@@ -366,6 +367,17 @@ export const ViewProductionModal: React.FC<ViewProductionModalProps> = ({
           </div>
 
           {/* Deducted items */}
+          {production.status === 'in_progress' && product && <div className="rounded-xl border border-stone-200 bg-stone-50 p-3.5">
+            <span className="block text-[11px] uppercase font-medium text-stone-500">Projeção com a receita atual</span>
+            <strong className="text-lg text-stone-900">{formatCurrency(projectProductionCost(production, product, materials, products))}</strong>
+            <p className="mt-1 text-xs text-stone-500">Soma o custo já registrado ao que falta produzir com a receita atual.</p>
+          </div>}
+          {!!production.recipeHistory?.length && <details className="rounded-xl border border-stone-200 p-3 text-xs text-stone-600">
+            <summary>Atualizações da receita nesta produção</summary>
+            <ul className="mt-2 space-y-2">{production.recipeHistory.map(version => <li key={version.id}>
+              {formatDate(version.date)} · Composição anterior preservada: {version.items.length} itens · {version.stages.map(stage => stage.stageName).join(', ')}.
+            </li>)}</ul>
+          </details>}
           <div>
             <h5 className="font-bold text-stone-800 text-xs uppercase tracking-wider mb-2">
               Insumos Baixados ({production.deductedItems.length}):

@@ -415,9 +415,19 @@ export interface Production {
   deductedItems: ProductionIngredientDeduction[]; // Insumos e sub-produtos consumidos
   /** Progresso das etapas, quando esta ordem usa produção em etapas. */
   stageProgress?: ProductionStageProgress[];
-  /** Snapshot das etapas e composição para a ordem não mudar se a receita for editada depois. */
+  /** Última composição adotada em um registro; as próximas etapas seguem a receita atual. */
   productionStagesSnapshot?: ProductionStageDefinition[];
   recipeItemsSnapshot?: RecipeItem[];
+  /** Frontiers of already executed work; future work follows the catalog. */
+  recipeProgress?: { items: Record<string, number>; labor: Record<string, number> };
+  /** Prior definitions retained when the next step adopts an updated recipe. */
+  recipeHistory?: Array<{
+    id: string;
+    date: string;
+    batchYield: number;
+    items: RecipeItem[];
+    stages: ProductionStageProgress[];
+  }>;
   /** Escolhas de ingredientes variáveis feitas no início desta ordem. */
   variableSelections?: Record<string, string>;
   /** Se false, a ordem é apenas registro e não movimenta estoque. */

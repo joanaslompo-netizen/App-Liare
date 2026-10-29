@@ -54,23 +54,23 @@ assert.deepEqual(quantities(), [0, 0]);
 assert.equal(workspace.productions.length, 3, 'Grouping does not merge or erase history.');
 assert.equal(workspace.materials[0].currentStock, 880);
 
-// Each part of a combined phase consumes its own saved recipe, while sharing
+// Each part of a combined phase follows the current recipe, while sharing
 // the real stock (including automatic preparation of missing components).
 const a = make('a', 2), b = make('b', 2);
 b.recipeItemsSnapshot = b.recipeItemsSnapshot!.map(item => item.targetId === 'vanilla' ? { ...item, targetId: 'tea', name: 'Chá Branco' } : item);
-const different = planGroupedStageAdvance([a, b], 'base:step', 4, { ...product, items: [] }, fixture.materials, fixture.products);
+const different = planGroupedStageAdvance([a, b], 'base:step', 4, product, fixture.materials, fixture.products);
 assert(different.canRegister);
 assert.equal(different.advances[0].deductions.find(item => item.targetId === 'vanilla')!.quantityTotal, 2);
-assert.equal(different.advances[1].deductions.find(item => item.targetId === 'tea')!.quantityTotal, 2);
+assert.equal(different.advances[1].deductions.find(item => item.targetId === 'vanilla')!.quantityTotal, 2);
 assert.equal(different.advances[1].deductions.find(item => item.targetId === 'wax')!.stockBefore, 980);
 const firstStageDone = [a, b].map(production => ({ ...production,
   stageProgress: production.stageProgress!.map(stage => ({ ...stage, completedQuantity: stage.stageId === 'base' ? 2 : 0 })) }));
 const firstStageBefore = structuredClone({ firstStageDone, materials: fixture.materials, products: fixture.products });
-const firstStagePreview = previewGroupedStage(firstStageDone, 'base:step', 4, { ...product, items: [] }, fixture.materials, fixture.products);
+const firstStagePreview = previewGroupedStage(firstStageDone, 'base:step', 4, product, fixture.materials, fixture.products);
 assert.deepEqual(firstStagePreview.errors, []);
 assert.equal(firstStagePreview.forecast.find(node => node.item.targetId === 'wax')!.quantityTotal, 40);
-assert.equal(firstStagePreview.forecast.find(node => node.item.targetId === 'vanilla')!.quantityTotal, 2);
-assert.equal(firstStagePreview.forecast.find(node => node.item.targetId === 'tea')!.quantityTotal, 2, 'Completed phases retain each batch snapshot in their previews.');
+assert.equal(firstStagePreview.forecast.find(node => node.item.targetId === 'vanilla')!.quantityTotal, 4);
+assert(!firstStagePreview.forecast.some(node => node.item.targetId === 'tea'), 'Planning follows the current recipe.');
 assert(!('advances' in firstStagePreview), 'A consultation cannot construct progress updates.');
 assert(!planGroupedStageAdvance(firstStageDone, 'base:step', 4, product, fixture.materials, fixture.products).canRegister, 'Consulting inputs never reopens a completed phase.');
 const expandedPreview = previewGroupedStage(firstStageDone, 'base:step', 7, product, fixture.materials, fixture.products);
@@ -106,7 +106,7 @@ assert(physicalPlan.canRegister);
 const decoration = physicalPlan.forecast.find(node => node.item.targetId === 'decoration')!;
 assert.equal(decoration.stockQuantity, 1);
 assert.equal(decoration.manufactureQuantity, 3, 'Both batches share ready component stock, preparing only the combined deficit.');
-const physicalSource = { productions: physicalRecords, products: autoProducts, materials: autoMaterials };
+const physicalSource = { productions: physicalRecords, products: autoProducts.map(item => item.id === physicalProduct.id ? physicalProduct : item), materials: autoMaterials };
 const physicalResult = applyProductionStageAdvances(physicalSource, physicalPlan.advances);
 assert.equal(physicalResult.products.find(item => item.id === 'decoration')!.currentStock, 0);
 assert.equal(physicalResult.products.find(item => item.id === physicalProduct.id)!.currentStock, (physicalProduct.currentStock || 0) + 2);
@@ -143,7 +143,6 @@ const mixedBefore = structuredClone({ mixedRecords, blendMaterials, currentRecip
 for (let units = 1; units <= 5; units++) {
   const preview = previewGroupedStage(mixedRecords, 'base:step', units, currentRecipe, blendMaterials, fixture.products);
   assert.deepEqual(preview.errors, []);
-  assert.equal(preview.previousRecipeUnits, 0, 'Equivalent inputs do not produce an old-composition warning.');
   assert.equal(preview.forecast.length, 1, `The same recipe is visible for ${units} units, including the fourth.`);
   assert.equal(preview.forecast[0].item.targetId, blend.id);
   assert.equal(preview.forecast[0].quantityTotal, 11 * units);
@@ -153,14 +152,14 @@ for (let units = 1; units <= 5; units++) {
 assert.deepEqual({ mixedRecords, blendMaterials, currentRecipe }, mixedBefore, 'Canonical presentation does not rewrite recipes, saved batches or balances.');
 const mixedPlan = planGroupedStageAdvance(mixedRecords, 'base:step', 4, currentRecipe, blendMaterials, fixture.products);
 assert(mixedPlan.canRegister);
-assert.deepEqual(mixedPlan.advances.map(advance => advance.production.recipeItemsSnapshot), mixedRecords.map(record => record.recipeItemsSnapshot));
+assert.deepEqual(mixedPlan.advances[0].production.recipeHistory!.at(-1)!.items, oldLoose.recipeItemsSnapshot, 'Adopting the current recipe archives the previous one.');
 assert.deepEqual(mixedPlan.advances[0].deductions, getProductionPlan({ ...product, items: product.items.filter(item => item.productionStageId === 'base') }, 3, blendMaterials, fixture.products).deductions);
-const mixedSaved = applyProductionStageAdvances({ ...fixture, productions: mixedRecords, materials: blendMaterials }, mixedPlan.advances);
+const mixedSaved = applyProductionStageAdvances({ ...fixture, productions: mixedRecords, materials: blendMaterials, products: fixture.products.map(item => item.id === currentRecipe.id ? currentRecipe : item) }, mixedPlan.advances);
 assert.equal(mixedSaved.materials.find(item => item.id === 'wax')!.currentStock, 960);
 assert.equal(mixedSaved.materials.find(item => item.id === 'vanilla')!.currentStock, 96);
 assert.equal(mixedSaved.productions[0].totalCost, 38.25, 'Historical stage cost is calculated from the saved inputs.');
 const changedRecipe = { ...currentRecipe, items: currentRecipe.items.map(item => item.targetId === blend.id ? { ...item, quantity: 220 } : item) };
 const differentPreview = previewGroupedStage([oldLoose], 'base:step', 2, changedRecipe, blendMaterials, fixture.products);
-assert.equal(differentPreview.previousRecipeUnits, 2, 'A real formula change is disclosed rather than silently replacing the saved recipe.');
-assert.deepEqual(differentPreview.forecast.map(node => node.item.targetId), ['wax', 'vanilla']);
+assert.equal(differentPreview.forecast[0].item.targetId, blend.id);
+assert.equal(differentPreview.forecast[0].quantityTotal, 44, 'A real recipe change applies automatically to future work.');
 console.log('Produção agrupada: filas exclusivas, conclusão parcial, novos registros, baixa conjunta, snapshots, estoque compartilhado, histórico, repetição e conflitos passaram.');
