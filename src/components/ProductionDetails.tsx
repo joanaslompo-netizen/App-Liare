@@ -209,6 +209,9 @@ export const StageProgressModal: React.FC<StageProgressModalProps> = ({
                 <h5 className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-2">
                   Previsão de insumos desta etapa
                 </h5>
+                {preview.previousRecipeUnits > 0 && <p role="status" className="mb-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  {formatNumber(preview.previousRecipeUnits)} un desta simulação usam uma composição anterior, salva ao iniciar a produção. Os insumos dessas peças seguem esse registro.
+                </p>}
                 {preview.errors.length > 0 && <p role="status" className="mb-2 text-xs text-amber-800">Não foi possível calcular todos os insumos: {preview.errors.join(' ')}</p>}
                 {parsedQuantity <= 0 ? (
                   <p className="text-[11px] text-stone-500">Informe uma quantidade para consultar os insumos desta etapa.</p>
