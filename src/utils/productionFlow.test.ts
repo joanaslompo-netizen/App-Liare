@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { productionWorkspace } from '../../scripts/productionFixtures';
 import { buildProductionRecord, getProductionPlan } from './productionPlanning';
-import { applyProductionStageAdvances, groupActiveProductions, planGroupedStageAdvance, summarizeProductionGroup } from './productionFlow';
+import { applyProductionStageAdvances, groupActiveProductions, planGroupedStageAdvance, previewGroupedStage, summarizeProductionGroup } from './productionFlow';
 import { autoMaterials, autoProducts } from '../../scripts/automaticManufacturingFixtures';
 
 const fixture = productionWorkspace();
@@ -63,6 +63,21 @@ assert(different.canRegister);
 assert.equal(different.advances[0].deductions.find(item => item.targetId === 'vanilla')!.quantityTotal, 2);
 assert.equal(different.advances[1].deductions.find(item => item.targetId === 'tea')!.quantityTotal, 2);
 assert.equal(different.advances[1].deductions.find(item => item.targetId === 'wax')!.stockBefore, 980);
+const firstStageDone = [a, b].map(production => ({ ...production,
+  stageProgress: production.stageProgress!.map(stage => ({ ...stage, completedQuantity: stage.stageId === 'base' ? 2 : 0 })) }));
+const firstStageBefore = structuredClone({ firstStageDone, materials: fixture.materials, products: fixture.products });
+const firstStagePreview = previewGroupedStage(firstStageDone, 'base:step', 4, { ...product, items: [] }, fixture.materials, fixture.products);
+assert.deepEqual(firstStagePreview.errors, []);
+assert.equal(firstStagePreview.forecast.find(node => node.item.targetId === 'wax')!.quantityTotal, 40);
+assert.equal(firstStagePreview.forecast.find(node => node.item.targetId === 'vanilla')!.quantityTotal, 2);
+assert.equal(firstStagePreview.forecast.find(node => node.item.targetId === 'tea')!.quantityTotal, 2, 'Completed phases retain each batch snapshot in their previews.');
+assert(!('advances' in firstStagePreview), 'A consultation cannot construct progress updates.');
+assert(!planGroupedStageAdvance(firstStageDone, 'base:step', 4, product, fixture.materials, fixture.products).canRegister, 'Consulting inputs never reopens a completed phase.');
+const expandedPreview = previewGroupedStage(firstStageDone, 'base:step', 7, product, fixture.materials, fixture.products);
+assert.equal(expandedPreview.forecast.find(node => node.item.targetId === 'wax')!.quantityTotal, 70, 'Simulation includes all requested units, even above the remaining batch quantity.');
+assert.deepEqual({ firstStageDone, materials: fixture.materials, products: fixture.products }, firstStageBefore);
+const completedRecords = firstStageDone.map(production => ({ ...production, status: 'completed' as const, quantityProduced: 2 }));
+assert.equal(previewGroupedStage(completedRecords, 'base:step', 3, product, fixture.materials, fixture.products).forecast.find(node => node.item.targetId === 'wax')!.quantityTotal, 30);
 const source = { ...fixture, productions: [a, b] };
 const stale = structuredClone(source);
 stale.productions[1].notes = 'Changed elsewhere';
