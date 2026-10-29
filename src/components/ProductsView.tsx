@@ -807,8 +807,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                                 Pausado
                               </span>
                             ) : hasNoMinimum ? (
-                              <span className="text-[11px] font-medium text-stone-600 bg-stone-100 border border-stone-200 px-2 py-0.5 rounded-full">
-                                Sem estoque mínimo
+                              <span className="text-[11px] font-semibold text-stone-600 bg-stone-100 border border-stone-200 px-2 py-0.5 rounded-full">
+                                {formatNumber(currentStock, 4)} un em estoque
                               </span>
                             ) : isOutOfStock ? (
                               <span className="text-[11px] font-bold text-rose-700 bg-rose-100 border border-rose-200 px-2 py-0.5 rounded-full flex items-center gap-1">
