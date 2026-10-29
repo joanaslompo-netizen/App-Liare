@@ -19,6 +19,13 @@ const document = new JSDOM(buildGroupedInvoiceHtml(orders, { ...DEFAULT_SETTINGS
 assert.equal(document.querySelectorAll('.order').length, 2);
 assert.deepEqual([...document.querySelectorAll('.order h2')].map(node => node.textContent), ['Pedido nº 000011', 'Pedido nº 000012']);
 assert(document.querySelector('.summary .balance')?.textContent?.includes(formatCurrency(140)));
+assert(document.querySelector('.summary .original')?.textContent?.includes(formatCurrency(190)));
+assert(document.querySelector('.summary .discount')?.textContent?.includes(formatCurrency(10)));
+const firstOrderSummary = document.querySelector('.order-summary')!;
+assert(firstOrderSummary.querySelector('.order-original')?.textContent?.includes(formatCurrency(110)));
+assert(firstOrderSummary.querySelector('.order-discount')?.textContent?.includes(formatCurrency(10)));
+assert([...firstOrderSummary.children].indexOf(firstOrderSummary.querySelector('.order-original')!) < [...firstOrderSummary.children].indexOf(firstOrderSummary.querySelector('.order-discount')!));
+assert.equal(document.querySelectorAll('.order-discount').length, 1, 'O pedido sem desconto não recebe um desconto inventado.');
 assert(document.body.textContent?.includes('Vela personalizada'));
 assert(document.body.textContent?.includes('Difusor'));
 assert(document.body.textContent?.includes('pix-ficticio'));
