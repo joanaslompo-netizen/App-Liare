@@ -72,6 +72,7 @@ export function OrderDetailView({ sale, finance, products, customers, settings, 
   const events = [
     ...finance.entries.filter(entry => entry.saleId === sale.id).map(entry => ({ id: entry.id, date: entry.date, text: `${ENTRY_LABEL[entry.kind]} · ${formatCurrency(money(entry.amountCents))}`, detail: [entry.method, entry.note].filter(Boolean).join(' · ') })),
     ...(sale.deliveryHistory || []).map(event => ({ id: event.id, date: event.date, text: `${event.kind === 'delivery' ? 'Entrega' : 'Devolução'} · ${event.quantity} un`, detail: items.find(item => item.id === event.itemId)?.productName || 'Item anterior' })),
+    ...(sale.quantityCorrections || []).map(correction => ({ id: correction.id, date: correction.date, text: 'Correção de quantidade registrada', detail: correction.items.map(item => `${item.productName}: ${item.quantityBefore} → ${item.quantityAfter} no pedido; ${item.deliveredBefore} → ${item.deliveredAfter} entregues${item.stockRestored ? `; ${item.stockRestored} repostas no estoque` : ''}`).join(' · ') })),
   ].sort((a, b) => b.date.localeCompare(a.date));
 
   return <div className="space-y-5 pb-8 text-[#352f2b]" data-testid="order-detail">
@@ -121,7 +122,7 @@ export function OrderDetailView({ sale, finance, products, customers, settings, 
         </section>
 
         {action && <section ref={actionPanel} className={`${panel} scroll-mt-24`}>
-          {action === 'items' ? <OrderItemsEditor sale={sale} products={products} paid={paid} onSave={save} onCancel={() => setAction(null)} />
+          {action === 'items' ? <OrderItemsEditor sale={sale} products={products} paid={paid} onSave={save} onCorrect={async (updated, options) => { const ok = await onAction({ type: 'correct_order_quantity', sale: updated, ...options }); if (ok) setMessage('Quantidade e entrega corrigidas. Os recebimentos e o histórico foram preservados.'); return ok; }} onCancel={() => setAction(null)} />
             : action === 'data' ? <OrderDataEditor sale={sale} customers={customers} paid={paid} onSave={save} onCancel={() => setAction(null)} />
             : <><div className="mb-4 flex items-start justify-between gap-3"><h3 className="text-lg font-semibold">{actionNames[action]}</h3><button type="button" onClick={() => setAction(null)} className="rounded-lg px-2 py-1 text-sm text-[#75665c]">Fechar</button></div><OrderWorkflowModal key={`${sale.id}:${action}`} sale={sale} finance={finance} products={products} onAction={onAction} onClose={() => setAction(null)} embedded initialMode={action} onCompleted={complete} /></>}
         </section>}

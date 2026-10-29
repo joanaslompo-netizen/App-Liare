@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test:order-corrections": "node --import tsx src/utils/orderQuantityCorrection.test.ts && node --import tsx scripts/test-order-quantity-correction.tsx",
     "test:delivery": "node --import tsx src/utils/orderDelivery.test.ts && node --import tsx scripts/test-order-delivery.tsx",
     "test:invoices": "node --import tsx src/utils/invoice.test.ts && node --import tsx src/utils/groupedInvoice.test.ts && node --import tsx scripts/test-grouped-invoice.tsx",
     "test:purchases": "node --import tsx src/utils/purchaseEditing.test.ts && node --import tsx scripts/test-purchase-edit.tsx",

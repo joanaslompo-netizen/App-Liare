@@ -3,7 +3,8 @@ import { automaticStockMovements, planAutomaticConsumption, validateAutomaticMan
 import { cardFirstDueDate, financialAccounts, monthlyDueDate } from './bankAccounts';
 import { getUnitConversionMultiplier } from './formatters';
 import { cascadeRecalculateAllProducts, recalculateProductPricing } from './storage';
-import { getProductFinancialSplit } from './financials';
+import { getProductFinancialSplit, getSaleItemFinancialSplit } from './financials';
+import { orderQuantityFingerprint, quantityCorrections, type OrderQuantityCorrectionOptions } from './orderQuantityCorrection';
 import { localDateString } from './localDate';
 import { correctPurchaseStock, preservePurchaseUnits, purchaseFingerprint, purchasePaymentState } from './purchaseEditing';
 
@@ -72,6 +73,7 @@ export type FinanceCommand =
   | { type: 'bill'; bill: FinanceBill }
   | { type: 'cancel_bill'; billId: string; date: string }
   | { type: 'save_order'; sale: Sale; initialPaymentCents?: number; initialMethod?: string }
+  | ({ type: 'correct_order_quantity'; sale: Sale } & OrderQuantityCorrectionOptions)
   | { type: 'deliver'; saleId: string; itemId: string; quantity: number; date: string; id: string; kind: 'delivery' | 'return'; restock?: boolean; note?: string }
   | { type: 'deliver_items'; saleId: string; items: { itemId: string; quantity: number }[]; date: string; id: string; note?: string }
   | { type: 'cancel_order'; saleId: string; date: string; id: string; destination: 'credit' | 'refund' }
@@ -106,6 +108,70 @@ function customDeliveryProduct(sale: Sale, item: SaleItem, id: string, date: str
 }
 
 export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, command: FinanceCommand): T {
+  if (command.type === 'correct_order_quantity') {
+    const original = source.sales.find(sale => sale.id === command.sale.id) || fail('Pedido não encontrado.');
+    if (original.quantityCorrections?.some(correction => correction.id === command.id)) return source;
+    if (orderQuantityFingerprint(original) !== command.expectedFingerprint) fail('Este pedido recebeu outra alteração. Reabra a edição antes de corrigir a quantidade.');
+    if (!isActiveOrder(original)) fail('Este pedido não aceita correções de entrega.');
+    requireDate(command.date);
+    const previous = migrateFinanceOrder(original);
+    const proposed = migrateFinanceOrder(command.sale);
+    if (!proposed.items!.length || proposed.items!.some(item => !Number.isSafeInteger(item.quantity) || item.quantity < 1 || !Number.isFinite(item.unitPrice) || item.unitPrice < 0) || !Number.isFinite(proposed.totalRevenue) || proposed.totalRevenue < 0) fail('Confira as quantidades e os valores do pedido.');
+    const changes = quantityCorrections(previous, proposed.items!);
+    if (!changes.length) fail('Não há quantidade entregue para corrigir.');
+    let products = [...source.products];
+    const movements = [...(source.stockMovements || [])];
+    let events = (previous.deliveryHistory || []).map(event => ({ ...event }));
+    const auditItems = changes.map(change => {
+      const item = previous.items!.find(item => item.id === change.itemId)!;
+      const product = products.find(product => product.id === change.productId);
+      const split = getSaleItemFinancialSplit(item, source.products);
+      let toRemove = change.difference, cost = 0, labor = 0;
+      // Correct the mistaken delivery at its original date; archive the old
+      // events below instead of inventing a customer return in today's reports.
+      for (let index = events.length - 1; index >= 0 && toRemove > 0; index--) {
+        const event = events[index];
+        if (event.kind !== 'delivery' || event.itemId !== item.id) continue;
+        const removed = Math.min(toRemove, event.quantity);
+        cost += removed * (event.unitBusinessCost ?? split.businessCostPerUnit);
+        labor += removed * (event.unitLaborRemuneration ?? split.laborRemunerationPerUnit);
+        event.quantity -= removed; toRemove -= removed;
+      }
+      cost += toRemove * split.businessCostPerUnit; labor += toRemove * split.laborRemunerationPerUnit;
+      const restored = command.restoreStock && product ? change.restorable : 0;
+      if (restored > 0 && product) {
+        const stock = product.currentStock || 0;
+        const perUnitCost = cost / change.difference, perUnitLabor = labor / change.difference;
+        products = products.map(value => value.id !== product.id ? value : { ...value, currentStock: stock + restored,
+          inventoryBusinessCost: (stock * (product.inventoryBusinessCost ?? getProductFinancialSplit(product).businessCostPerUnit) + restored * perUnitCost) / (stock + restored),
+          inventoryLaborCost: (stock * (product.inventoryLaborCost ?? getProductFinancialSplit(product).laborRemunerationPerUnit) + restored * perUnitLabor) / (stock + restored) });
+        movements.push({ id: `${command.id}_${item.id}`, date: command.date, targetId: product.id, type: 'product', quantity: restored, reason: 'Correção de quantidade entregue', referenceId: original.id });
+      }
+      return { itemId: change.itemId, productName: change.productName, quantityBefore: change.quantityBefore, quantityAfter: change.quantityAfter,
+        deliveredBefore: change.deliveredBefore, deliveredAfter: change.deliveredAfter, stockRestored: restored };
+    });
+    const revenues = allocateCents(cents(proposed.totalRevenue - (proposed.shippingCharged || 0)), proposed.items!.map(item => cents(item.quantity * item.unitPrice)));
+    events = events.filter(event => event.quantity > 0).map(event => {
+      const index = proposed.items!.findIndex(item => item.id === event.itemId);
+      if (index < 0) return event;
+      const item = previous.items!.find(item => item.id === event.itemId)!;
+      const split = getSaleItemFinancialSplit(item, source.products);
+      return { ...event, unitRevenueCents: revenues[index] / proposed.items![index].quantity,
+        unitBusinessCost: event.unitBusinessCost ?? split.businessCostPerUnit,
+        unitLaborRemuneration: event.unitLaborRemuneration ?? split.laborRemunerationPerUnit };
+    });
+    const corrected = { ...previous, deliveryHistory: events, items: previous.items!.map(item => {
+      const change = changes.find(change => change.itemId === item.id);
+      return change ? { ...item, deliveredQuantity: (item.deliveredQuantity || 0) - change.difference,
+        stockConsumedQuantity: Math.max(0, (item.stockConsumedQuantity ?? (item.customStockConsumed || previous.deliveryHistory?.some(event => event.itemId === item.id && event.kind === 'delivery') ? change.deliveredBefore : 0)) - change.difference) } : item;
+    }), quantityCorrections: [...(previous.quantityCorrections || []), { id: command.id, date: command.date,
+      previousTotalRevenue: previous.totalRevenue, previousDeliveryHistory: (previous.deliveryHistory || []).map(event => ({ ...event })), items: auditItems }] };
+    const candidate = { ...source, products, stockMovements: movements, sales: source.sales.map(sale => sale.id === original.id ? corrected : sale) };
+    const saved = applyFinanceCommand(candidate, { type: 'save_order', sale: proposed });
+    saved.sales = saved.sales.map(sale => sale.id === original.id && sale.deliveryStatus === 'entregue' ? { ...sale,
+      deliveryActualDate: previous.deliveryActualDate || events.filter(event => event.kind === 'delivery').map(event => event.date).sort().at(-1) || previous.legacyDeliveryDate || previous.date } : sale);
+    return saved;
+  }
   if (command.type === 'deliver_items') {
     const sale = source.sales.find(sale => sale.id === command.saleId) || fail('Pedido não encontrado.');
     if (!command.id || !command.items.length) fail('Selecione os produtos desta entrega.');
@@ -367,7 +433,7 @@ export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, comman
   if (command.type === 'save_order') {
     const previous = next.sales.find(s => s.id === command.sale.id);
     if (previous?.commercialStatus === 'cancelled') fail('Pedidos cancelados permanecem no histórico.');
-    let sale = migrateFinanceOrder({ ...command.sale, amountPaid: previous?.amountPaid ?? 0, legacyPaidCents: previous ? legacyPaid(previous) : 0, deliveryHistory: previous?.deliveryHistory || [], returnAdjustmentCents: previous?.returnAdjustmentCents || 0 });
+    let sale = migrateFinanceOrder({ ...command.sale, amountPaid: previous?.amountPaid ?? 0, legacyPaidCents: previous ? legacyPaid(previous) : 0, deliveryHistory: previous?.deliveryHistory || [], quantityCorrections: previous?.quantityCorrections, returnAdjustmentCents: previous?.returnAdjustmentCents || 0 });
     sale.commercialStatus = sale.commercialStatus || 'confirmed';
     sale.orderNumber = previous?.orderNumber || Math.max(next.settings.lastOrderNumber || 0, ...next.sales.map(s => s.orderNumber || 0)) + 1;
     if (previous?.customerId && previous.customerId !== sale.customerId && (orderPaid(previous, finance) > 0 || finance.entries.some(e => e.saleId === previous.id))) fail('O cliente não pode mudar depois de um recebimento.');
@@ -387,8 +453,7 @@ export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, comman
     sale.deliveryStatus = deliveryStatus(sale);
     save(sale); next.settings = { ...next.settings, lastOrderNumber: Math.max(next.settings.lastOrderNumber || 0, sale.orderNumber) };
     const excess=previous?Math.max(0,orderPaid(sale,finance)-orderTotal(sale)):0;
-    if(excess>0) {
-      if(!sale.customerId)fail('Selecione um cliente para guardar o excedente do pedido como crédito.');
+    if(excess>0 && sale.customerId) {
       const concessions=activeEntries(finance).filter(e=>e.saleId===sale.id&&e.kind==='credit_use').reduce((n,e)=>n+(e.concessionCents||0),0);
       entry(makeEntry('credit_release',money(excess),{id:`adjust_${sale.id}_${newId()}`,saleId:sale.id,customerId:sale.customerId,concessionCents:Math.min(excess,concessions),date:localDateString(),note:'Excedente após edição do pedido'}));
     }

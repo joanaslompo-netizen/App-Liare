@@ -296,6 +296,13 @@ export interface SaleItem {
 }
 
 export interface Sale {
+  quantityCorrections?: {
+    id: string;
+    date: string;
+    previousTotalRevenue: number;
+    previousDeliveryHistory: DeliveryEvent[];
+    items: { itemId: string; productName: string; quantityBefore: number; quantityAfter: number; deliveredBefore: number; deliveredAfter: number; stockRestored: number }[];
+  }[];
   shippingCharged?: number;
   commercialStatus?: 'draft' | 'confirmed' | 'cancelled';
   cancelledAt?: string;
