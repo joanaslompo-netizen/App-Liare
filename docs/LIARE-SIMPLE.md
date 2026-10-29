@@ -46,3 +46,11 @@ Pausado significa que o material não está em uso no momento; o estoque registr
 - Atalhos: novo pedido, registrar produção, registrar compra e ajustar estoque. Pedido, compra e produção abrem os formulários; ajuste abre a lista de materiais para escolher o item.
 - Validação: tipagem, compilação, regressão do grupo 1 e simulação integrada dos atalhos (abrir/cancelar/voltar sem alterar dados).
 - A conferência visual da publicação será feita com a sessão de exemplo da nuvem; não representa validação da conta real nem sincronização entre aparelhos.
+
+## Receita atual nos projetos e nas próximas etapas — 29/10/2026
+
+- Projetos vinculados a produtos consultam a receita do catálogo por ID; nome, rendimento, custos, escolhas de insumos virtuais e etapas se atualizam sem recriar o projeto. Receitas próprias do projeto permanecem independentes.
+- Produções em andamento projetam e registram os próximos passos com a receita atual, incluindo produções iniciadas antes desta atualização. A consulta não grava migrações nem movimenta estoque.
+- Quantidades, materiais, custos e mão de obra já registrados são preservados. O progresso por ingrediente impede uma segunda baixa quando as etapas mudam de lugar ou são unidas. A definição anterior fica no histórico ao salvar o próximo passo.
+- Inserir, retirar ou reordenar fases preserva a contagem exclusiva das peças ainda em processo. Se a retirada de uma fase deixar peças prontas, a entrada em estoque exige registrar a conferência de finalização.
+- Validação: produção, planejamento, receitas atuais, projetos, fabricação automática, tipagem, build e fluxo no navegador com dados fictícios.

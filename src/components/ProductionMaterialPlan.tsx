@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import type { Material, Product, Production, ProductionIngredientDeduction } from '../types';
 import { aggregateProductionDeductions, getProductionPlan, replanProductionSequence } from '../utils/productionPlanning';
 import { formatNumber } from '../utils/formatters';
+import { resolveProductionRecipe } from '../utils/productionRecipe';
 import { ProductionIngredientForecast } from './ProductionIngredientForecast';
 
 function MaterialList({ items }: { items: ProductionIngredientDeduction[] }) {
@@ -14,12 +15,13 @@ function MaterialList({ items }: { items: ProductionIngredientDeduction[] }) {
   </ul>;
 }
 
-export function ProductionMaterialPlan({ production, product, materials, products }: {
+export function ProductionMaterialPlan({ production: original, product, materials, products }: {
   production: Production;
   product: Product | null;
   materials: Material[];
   products: Product[];
 }) {
+  const production = useMemo(() => resolveProductionRecipe(original, product), [original, product]);
   const target = production.targetQuantity || production.batchCount * production.batchYield;
   const [quantity, setQuantity] = useState(String(target));
   const [remainingOnly, setRemainingOnly] = useState(false);
@@ -31,7 +33,8 @@ export function ProductionMaterialPlan({ production, product, materials, product
     const stagePlans = [...(production.stageProgress || [])].sort((a, b) => a.order - b.order).map(stage => {
       const units = valid ? Math.max(0, parsed - (remainingOnly ? stage.completedQuantity : 0)) : 0;
       const plan = getProductionPlan({ totalCost: 0, materialsCost: 0, ...product, batchYield: production.batchYield,
-        items: items.filter(item => item.productionStageId === stage.stageId) } as Product,
+        items: items.filter(item => item.productionStageId === stage.stageId).map(item => ({ ...item,
+          quantity: remainingOnly && units > 0 ? item.quantity * Math.max(0, parsed - Math.max(stage.completedQuantity, production.recipeProgress?.items[item.id] || 0)) / units : item.quantity })) } as Product,
       units, materials, products, production.variableSelections);
       return { stage, units, plan };
     });
@@ -63,7 +66,7 @@ export function ProductionMaterialPlan({ production, product, materials, product
       </label>
     </div>
     {!valid ? <p role="status" className="text-sm text-[#956350]">Informe uma quantidade inteira maior que zero para simular.</p> : <>
-      <p className="text-xs text-[#75665c]">{remainingOnly ? 'Necessário para o que falta concluir' : 'Total planejado, incluindo etapas já realizadas'} · {formatNumber(parsed)} unidades. Cada receita aparece com seus insumos logo abaixo.</p>
+      <p className="text-xs text-[#75665c]">{remainingOnly ? 'Necessário para o que falta concluir' : 'Simulação completa com a receita atual'} · {formatNumber(parsed)} unidades. Cada receita aparece com seus insumos logo abaixo.</p>
       {errors.length > 0 && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
         Não foi possível calcular todos os insumos: {errors.join(' ')}
       </div>}

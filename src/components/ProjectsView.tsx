@@ -129,9 +129,14 @@ const buildRequirements = (
     map.set(req.key, { ...req });
   };
 
-  const addRecipeItem = (item: RecipeItem, multiplier: number, visitedVirtual = new Set<string>()) => {
+  const addRecipeItem = (item: RecipeItem, multiplier: number, visitedVirtual = new Set<string>(), selections: Record<string, string> = {}) => {
     if (item.type === 'material') {
       if (item.selectionMode === 'category' && item.targetCategory) {
+        const selected = materials.find(material => material.id === selections[item.id] && material.category === item.targetCategory);
+        if (selected) {
+          addRecipeItem({ ...item, selectionMode: 'fixed', targetId: selected.id }, multiplier, visitedVirtual, selections);
+          return;
+        }
         add({
           key: `category:${item.targetCategory}`,
           type: 'category',
@@ -169,7 +174,10 @@ const buildRequirements = (
         const nextVisited = new Set(visitedVirtual);
         nextVisited.add(material.id);
         const virtualMultiplier = multiplier * (item.quantity / material.batchYield);
-        material.recipeItems.forEach((child) => addRecipeItem(child, virtualMultiplier, nextVisited));
+        const prefix = `${item.id}::${material.id}::`;
+        const choices = { ...item.categorySelections, ...Object.fromEntries(Object.entries(selections)
+          .filter(([key]) => key.startsWith(prefix)).map(([key, value]) => [key.slice(prefix.length), value])) };
+        material.recipeItems.forEach((child) => addRecipeItem(child, virtualMultiplier, nextVisited, choices));
         return;
       }
 
@@ -511,7 +519,7 @@ const ProjectDetails = ({
               <div key={line.id} className="bg-white border border-stone-200 rounded-xl p-3 flex items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-stone-900">{line.name}</span>
+                    <span className="text-xs font-bold text-stone-900">{product?.name || line.name}</span>
                     {line.source === 'custom' && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-800 border border-purple-200 font-semibold">
                         Receita do projeto
@@ -521,6 +529,9 @@ const ProjectDetails = ({
                   <div className="text-[11px] text-stone-500 mt-1">
                     {formatNumber(line.quantity)} un planejadas • {formatNumber(line.producedQuantity || 0)} un produzidas • custo est. {formatCurrency(cost)}/un
                   </div>
+                  {product && line.quantity > (line.producedQuantity || 0) && <p className="mt-1 text-[11px] text-stone-500" aria-label={`Etapas atuais de ${product.name}`}>
+                    Receita atual: {product.useProductionStages && product.productionStages?.length ? [...product.productionStages].sort((a, b) => a.order - b.order).map(stage => stage.name).join(' → ') : 'Produção direta'}
+                  </p>}
                   {line.notes && <div className="text-[11px] text-stone-600 mt-1 italic">{line.notes}</div>}
                 </div>
                 <div className="text-xs font-semibold text-stone-700 shrink-0">
@@ -1096,7 +1107,7 @@ const ProjectModal = ({
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-bold text-stone-900">{line.name}</span>
+                            <span className="text-xs font-bold text-stone-900">{product?.name || line.name}</span>
                             {line.source === 'custom' && (
                               <span className="text-[10px] bg-purple-100 text-purple-800 border border-purple-200 rounded-full px-1.5 py-0.5 font-semibold">
                                 Personalizada

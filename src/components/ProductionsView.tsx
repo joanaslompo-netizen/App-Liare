@@ -77,7 +77,7 @@ export function ProductionsView({
     setPreset(null);
     onClearInitialProduct?.();
   };
-  const groups = useMemo(() => groupActiveProductions(productions), [productions]);
+  const groups = useMemo(() => groupActiveProductions(productions, products), [productions, products]);
   const inProgress = groups.length;
   const completed = productions.filter(p => (p.status || 'completed') === 'completed').length;
   const matches = (p: Production) => (type === 'all' || (type === 'intermediate' ? !!p.isIntermediate : !p.isIntermediate)) &&
@@ -281,7 +281,7 @@ export function ProductionsView({
             className="rounded-2xl border border-[#e5dad1] bg-white p-4 sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <h3 className="break-words text-base font-semibold">{first.productName}</h3>
+                <h3 className="break-words text-base font-semibold">{products.find(product => product.id === first.productId)?.name || first.productName}</h3>
                 <p className="mt-1 text-sm font-semibold text-[#a86149]" data-production-remaining>{formatNumber(group.remaining)} un em produção</p>
               </div>
               {!!group.stages.length && <button type="button" data-advance-production={first.id} onClick={() => open()}
