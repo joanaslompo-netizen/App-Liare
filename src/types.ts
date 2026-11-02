@@ -340,6 +340,8 @@ export interface Sale {
   customerContact?: string; // Telefone/WhatsApp do cliente
   channel?: string; // Elo7, Instagram, Feira, WhatsApp, etc.
   paymentMethod?: string; // 'offline', 'site' ou categoria personalizada
+  /** Initial receipt settings, independent of the sale category. */
+  initialReceipt?: { method: string; feeCalculation: 'automatic' | 'manual'; feeCents?: number; feeRatePercent?: number; pendingSettlement?: boolean };
   /** Order subtotal before discount. Kept as a snapshot for historical accuracy. */
   subtotalRevenue?: number;
   discountType?: DiscountType;
@@ -547,6 +549,9 @@ export interface FinanceEntry {
   amountCents: number;
   allocatedCents?: number;
   feeCents?: number;
+  feeCalculation?: 'automatic' | 'manual';
+  /** Percentage saved with the receipt; later configuration changes do not recalculate it. */
+  feeRatePercent?: number;
   concessionCents?: number;
   restoredCreditCents?: number;
   customerId?: string;
@@ -590,6 +595,7 @@ export interface FinanceData {
   bills: FinanceBill[];
   accounts?: FinancialAccount[];
   cards?: CreditCard[];
+  cardReceiptFee?: { creditPercent: number };
 }
 export interface StockMovement {
   id: string;

@@ -1,3 +1,4 @@
+import { receiptFeeText } from './CardReceiptFees';
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, FileText, Pencil, MoreHorizontal, Package, CheckCircle2 } from 'lucide-react';
 import type { AtelierSettings, Customer, FinanceData, Product, Sale, SaleItem } from '../types';
@@ -70,7 +71,7 @@ export function OrderDetailView({ sale, finance, products, customers, settings, 
   const complete = (notice = 'Registrado. Os saldos e a situação do pedido foram atualizados.') => { setAction(null); setMessage(notice); };
 
   const events = [
-    ...finance.entries.filter(entry => entry.saleId === sale.id).map(entry => ({ id: entry.id, date: entry.date, text: `${ENTRY_LABEL[entry.kind]} · ${formatCurrency(money(entry.amountCents))}`, detail: [entry.method, entry.note].filter(Boolean).join(' · ') })),
+    ...finance.entries.filter(entry => entry.saleId === sale.id).map(entry => ({ id: entry.id, date: entry.date, text: `${ENTRY_LABEL[entry.kind]} · ${formatCurrency(money(entry.amountCents))}`, detail: [entry.method, receiptFeeText(entry), entry.note].filter(Boolean).join(' · ') })),
     ...(sale.deliveryHistory || []).map(event => ({ id: event.id, date: event.date, text: `${event.kind === 'delivery' ? 'Entrega' : 'Devolução'} · ${event.quantity} un`, detail: items.find(item => item.id === event.itemId)?.productName || 'Item anterior' })),
     ...(sale.quantityCorrections || []).map(correction => ({ id: correction.id, date: correction.date, text: 'Correção de quantidade registrada', detail: correction.items.map(item => `${item.productName}: ${item.quantityBefore} → ${item.quantityAfter} no pedido; ${item.deliveredBefore} → ${item.deliveredAfter} entregues${item.stockRestored ? `; ${item.stockRestored} repostas no estoque` : ''}`).join(' · ') })),
   ].sort((a, b) => b.date.localeCompare(a.date));

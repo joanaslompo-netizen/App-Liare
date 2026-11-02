@@ -1,6 +1,7 @@
 import type { CreditCard, Customer, DeliveryEvent, FinancialAccount, FinanceBill, FinanceData, FinanceEntry, Material, Product, Production, Purchase, PurchasePayment, Sale, SaleItem, StockMovement } from '../types';
 import { automaticStockMovements, planAutomaticConsumption, validateAutomaticManufacturing } from './automaticManufacturing';
 import { cardFirstDueDate, financialAccounts, monthlyDueDate } from './bankAccounts';
+import { applyReceiptFee } from './receiptFees';
 import { getUnitConversionMultiplier } from './formatters';
 import { cascadeRecalculateAllProducts, recalculateProductPricing } from './storage';
 import { getProductFinancialSplit, getSaleItemFinancialSplit } from './financials';
@@ -66,6 +67,7 @@ export const billBalance = (bill: FinanceBill, finance: FinanceData) => Math.max
 
 export interface LedgerWorkspace { sales: Sale[]; products: Product[]; productions?: Production[]; customers?: Customer[]; materials?: Material[]; purchases?: Purchase[]; finance?: FinanceData; stockMovements?: StockMovement[]; settings: { lastOrderNumber?: number }; }
 export type FinanceCommand =
+  | { type: 'save_receipt_fee'; creditPercent: number; expectedPercent?: number | null }
   | { type: 'save_account'; account: FinancialAccount; openingBalanceCents?: number; date: string }
   | { type: 'save_card'; card: CreditCard }
   | { type: 'pay_card_invoice'; cardId: string; month: string; billIds: string[]; amountCents: number; account: string; date: string; id: string }
@@ -198,10 +200,11 @@ export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, comman
   const findOrder = (id: string) => next.sales.find(s => s.id === id) || fail('Pedido não encontrado.');
   const entry = (e: FinanceEntry) => {
     if (finance.entries.some(x => x.id === e.id)) return;
+    e = applyReceiptFee(e, finance);
     requireDate(e.date);
     if (!Number.isSafeInteger(e.amountCents) || (e.kind === 'cash_opening' ? e.amountCents === 0 : e.amountCents <= 0)) fail('Informe um valor válido.');
     if (e.kind === 'transfer' && (!e.account || !e.targetAccount || e.account === e.targetAccount)) fail('Selecione contas diferentes para a transferência.');
-    if ((e.feeCents || 0) < 0 || (e.feeCents || 0) > Math.max(0, e.amountCents)) fail('A taxa deve ficar entre zero e o valor recebido.');
+    if (e.feeCents != null && (!Number.isSafeInteger(e.feeCents) || e.feeCents < 0 || e.feeCents > Math.max(0, e.amountCents))) fail('A taxa deve ficar entre zero e o valor recebido.');
     if (e.customerId && !next.customers?.some(c => c.id === e.customerId)) fail('Selecione um cliente cadastrado.');
     if (['credit_use','credit_refund','credit_grant','credit_opening','credit_release'].includes(e.kind) && !e.customerId) fail('Selecione o cliente do crédito.');
     if (['credit_use','credit_refund'].includes(e.kind) && creditBalance(finance, e.customerId!) < e.amountCents) fail('O cliente não tem crédito suficiente.');
@@ -243,7 +246,8 @@ export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, comman
     if (e.kind === 'settlement') {
       const original = activeEntries(finance).find(x => x.id === e.referenceId && x.pendingSettlement);
       if (!original || activeEntries(finance).some(x => x.kind === 'settlement' && x.referenceId === e.referenceId)) fail('Este recebimento já foi liquidado ou não está pendente.');
-      e = { ...e, amountCents: original.amountCents, feeCents: e.feeCents ?? original.feeCents };
+      e = { ...e, amountCents: original.amountCents, feeCents: e.feeCents ?? original.feeCents,
+        feeCalculation: original.feeCalculation, feeRatePercent: original.feeRatePercent };
     }
     if (e.kind === 'expense_payment' || e.kind === 'purchase_payment') {
       const bill = finance.bills.find(b => b.id === e.billId);
@@ -265,6 +269,12 @@ export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, comman
   };
 
   if (command.type === 'entry') entry({ ...command.entry });
+  if (command.type === 'save_receipt_fee') {
+    if (!Number.isFinite(command.creditPercent) || command.creditPercent < 0 || command.creditPercent > 100) fail('Informe uma taxa entre 0% e 100%.');
+    if (finance.cardReceiptFee?.creditPercent === command.creditPercent) return source;
+    if (command.expectedPercent !== undefined && command.expectedPercent !== (finance.cardReceiptFee?.creditPercent ?? null)) fail('A taxa foi alterada em outro aparelho. Reabra a configuração antes de salvar.');
+    finance.cardReceiptFee = { creditPercent: command.creditPercent };
+  }
   if (command.type === 'save_account') {
     if (command.openingBalanceCents !== undefined && !Number.isSafeInteger(command.openingBalanceCents)) fail('Informe um saldo inicial válido.');
     const account = { ...command.account, name: command.account.name.trim() };
@@ -433,7 +443,7 @@ export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, comman
   if (command.type === 'save_order') {
     const previous = next.sales.find(s => s.id === command.sale.id);
     if (previous?.commercialStatus === 'cancelled') fail('Pedidos cancelados permanecem no histórico.');
-    let sale = migrateFinanceOrder({ ...command.sale, amountPaid: previous?.amountPaid ?? 0, legacyPaidCents: previous ? legacyPaid(previous) : 0, deliveryHistory: previous?.deliveryHistory || [], quantityCorrections: previous?.quantityCorrections, returnAdjustmentCents: previous?.returnAdjustmentCents || 0 });
+    let sale = migrateFinanceOrder({ ...command.sale, initialReceipt: previous ? previous.initialReceipt : command.sale.initialReceipt, amountPaid: previous?.amountPaid ?? 0, legacyPaidCents: previous ? legacyPaid(previous) : 0, deliveryHistory: previous?.deliveryHistory || [], quantityCorrections: previous?.quantityCorrections, returnAdjustmentCents: previous?.returnAdjustmentCents || 0 });
     sale.commercialStatus = sale.commercialStatus || 'confirmed';
     sale.orderNumber = previous?.orderNumber || Math.max(next.settings.lastOrderNumber || 0, ...next.sales.map(s => s.orderNumber || 0)) + 1;
     if (previous?.customerId && previous.customerId !== sale.customerId && (orderPaid(previous, finance) > 0 || finance.entries.some(e => e.saleId === previous.id))) fail('O cliente não pode mudar depois de um recebimento.');
@@ -457,7 +467,10 @@ export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, comman
       const concessions=activeEntries(finance).filter(e=>e.saleId===sale.id&&e.kind==='credit_use').reduce((n,e)=>n+(e.concessionCents||0),0);
       entry(makeEntry('credit_release',money(excess),{id:`adjust_${sale.id}_${newId()}`,saleId:sale.id,customerId:sale.customerId,concessionCents:Math.min(excess,concessions),date:localDateString(),note:'Excedente após edição do pedido'}));
     }
-    if (!previous && (command.initialPaymentCents || 0) > 0) entry({ id: `initial_${sale.id}`, kind: 'receipt', amountCents: command.initialPaymentCents!, saleId: sale.id, date: sale.date, createdAt: new Date().toISOString(), method: command.initialMethod || 'PIX', account: 'Principal' });
+    if (!previous && (command.initialPaymentCents || 0) > 0) entry({ id: `initial_${sale.id}`, kind: 'receipt', amountCents: command.initialPaymentCents!, saleId: sale.id, date: sale.date, createdAt: new Date().toISOString(),
+      method: sale.initialReceipt?.method || command.initialMethod || 'PIX', account: 'Principal',
+      feeCalculation: sale.initialReceipt?.feeCalculation, feeCents: sale.initialReceipt?.feeCents,
+      feeRatePercent: sale.initialReceipt?.feeRatePercent, pendingSettlement: sale.initialReceipt?.pendingSettlement });
   }
   if (command.type === 'confirm_order') { const s = findOrder(command.saleId); save({ ...s, commercialStatus: 'confirmed' }); return applyFinanceCommand(next, { type: 'save_order', sale: { ...s, commercialStatus: 'confirmed' } }); }
   if (command.type === 'deliver') {

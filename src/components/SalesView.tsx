@@ -1,7 +1,9 @@
+import { ReceiptFeeFields } from './CardReceiptFees';
+import { RECEIPT_METHODS, receiptFeeFields, isCreditCardReceipt, receiptMethodFromCategory } from '../utils/receiptFees';
 import { estimateMaterialUnitCost, expandVirtualRecipeItems, getCategoryMaterialOptions, getVirtualMaterialRequirements } from '../utils/virtualMaterials';
 import { ModalFrame } from './ModalFrame';
 import { CustomerSearch } from './CustomerSearch';
-import { isActiveOrder } from "../utils/financeLedger";
+import { isActiveOrder, cents, emptyFinance } from "../utils/financeLedger";
 import { localDateString } from '../utils/localDate';
 import { MoreOptions } from './MoreOptions';
 import { formatOrderNumber } from '../utils/orderNumbers';
@@ -39,7 +41,7 @@ import {
   Percent,
   FileText
 } from 'lucide-react';
-import { AtelierSettings, Sale, Product, Material, RecipeItem, OrderType, DeliveryStatus, PaymentStatus, SaleItem, Customer, DiscountCode, DiscountType } from '../types';
+import { FinanceData, AtelierSettings, Sale, Product, Material, RecipeItem, OrderType, DeliveryStatus, PaymentStatus, SaleItem, Customer, DiscountCode, DiscountType } from '../types';
 import { 
   formatCurrency, 
   formatPercent, 
@@ -53,6 +55,7 @@ import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
 import { getProductFinancialSplit, getSaleFinancials, getSaleItemFinancialSplit } from '../utils/financials';
 
 interface SalesViewProps {
+  finance?: FinanceData;
   settings: AtelierSettings;
   sales: Sale[];
   products: Product[];
@@ -82,6 +85,7 @@ interface SalesViewProps {
 }
 
 export const SalesView: React.FC<SalesViewProps> = ({
+  finance = emptyFinance(),
   settings,
   sales,
   products,
@@ -878,6 +882,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
       {/* Order / Sale Modal */}
       {isModalOpen && (
         <OrderSaleModal
+          finance={finance}
           isOpen={isModalOpen}
           products={products}
           materials={materials}
@@ -915,6 +920,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 // ==========================================
 
 interface OrderSaleModalProps {
+  finance: FinanceData;
   isOpen: boolean;
   products: Product[];
   materials: Material[];
@@ -938,6 +944,7 @@ interface OrderSaleModalProps {
 }
 
 const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
+  finance,
   products,
   materials,
   customers,
@@ -1389,6 +1396,14 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   const [isDraft, setIsDraft] = useState(existingSale?.commercialStatus === "draft");
   const [shippingCharged, setShippingCharged] = useState(String(existingSale?.shippingCharged || 0));
   const [amountPaid, setAmountPaid] = useState(String(existingSale?.amountPaid || 0));
+  const [initialPaymentMethod, setInitialPaymentMethod] = useState(existingSale?.initialReceipt?.method || 'PIX');
+  const [initialManualFee, setInitialManualFee] = useState<string | null>(null);
+  const [initialPendingSettlement, setInitialPendingSettlement] = useState(false);
+  const [initialMethodTouched, setInitialMethodTouched] = useState(false);
+  useEffect(() => {
+    const known = receiptMethodFromCategory(paymentMethod);
+    if (!existingSale && !initialMethodTouched && known) { setInitialPaymentMethod(known); setInitialManualFee(null); setInitialPendingSettlement(false); }
+  }, [paymentMethod, existingSale, initialMethodTouched]);
 
   // Payment settings
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(
@@ -1606,6 +1621,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       customerName: customerName.trim() || undefined,
       customerContact: customerContact.trim() || undefined,
       paymentMethod: paymentMethod || undefined,
+      initialReceipt: existingSale ? existingSale.initialReceipt : !isDraft && (paymentStatus === 'pago' || Number(amountPaid) > 0) ? { method: initialPaymentMethod, ...receiptFeeFields(finance, initialPaymentMethod, cents(paymentStatus === 'pago' ? totalRevenue : Number(amountPaid)), initialManualFee == null ? null : cents(Number(initialManualFee))), pendingSettlement: initialPendingSettlement } : undefined,
       channel: channel.trim() || undefined,
       notes: notes.trim() || undefined,
 
@@ -2638,6 +2654,13 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
                   className="mt-1 w-full px-3 py-2 text-base border border-stone-300 rounded-lg" />
               </label>
             )}
+            {!existingSale && !isDraft && (paymentStatus === 'pago' || Number(amountPaid) > 0) && <div className="space-y-3">
+              <label className="block text-sm font-semibold text-stone-700">Forma do recebimento inicial
+                <select aria-label="Forma do recebimento inicial" className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-base" value={initialPaymentMethod} onChange={event => { setInitialPaymentMethod(event.target.value); setInitialMethodTouched(true); setInitialManualFee(null); setInitialPendingSettlement(false); }}>{RECEIPT_METHODS.map(method => <option key={method}>{method}</option>)}</select>
+              </label>
+              <ReceiptFeeFields finance={finance} method={initialPaymentMethod} amountCents={cents(paymentStatus === 'pago' ? totalRevenue : Number(amountPaid))} manualFee={initialManualFee} onManualFeeChange={setInitialManualFee} />
+              {isCreditCardReceipt(initialPaymentMethod) && <label className="flex items-center gap-2 text-sm text-stone-700"><input type="checkbox" checked={initialPendingSettlement} onChange={event => setInitialPendingSettlement(event.target.checked)} />Cartão ainda aguardando depósito da operadora</label>}
+            </div>}
             {paymentStatus === 'pendente_pagamento' && (
               <div className="pt-2 border-t border-stone-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                 <label className="text-xs font-semibold text-stone-700 flex items-center gap-1">

@@ -1413,7 +1413,7 @@ export default function App() {
   const handleSaveSale = useCallback(async (sale: Sale): Promise<boolean> => {
     const existing = workspaceRef.current.sales.find(s => s.id === sale.id);
     const initialPaymentCents = !existing ? Math.round((sale.amountPaid || 0) * 100) : undefined;
-    const success = await handleFinanceAction({ type: 'save_order', sale, initialPaymentCents, initialMethod: sale.paymentMethod });
+    const success = await handleFinanceAction({ type: 'save_order', sale, initialPaymentCents, initialMethod: sale.initialReceipt?.method || sale.paymentMethod });
     if (success) { setWorkflowFocus('overview'); setWorkflowSaleId(sale.id); }
     return success;
   }, [handleFinanceAction]);
@@ -1755,6 +1755,7 @@ export default function App() {
 
         {activeTab === 'sales' && (
           <SalesView
+            finance={finance}
             settings={settings}
             sales={displaySales}
             products={products}
