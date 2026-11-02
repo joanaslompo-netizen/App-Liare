@@ -19,8 +19,10 @@ let serverReadCount=0;
 const listeners=new Map<(data:any)=>void,string>();
 const firestore:any={doc:(_:unknown,...path:string[])=>path.join('/'),getDocFromCache:async()=>{throw Error('Cache miss');},getDocFromServer:async(ref:string)=>{serverReadCount++;return snapshot(ref);},onSnapshot:(ref:any,callback:any)=>{listeners.set(callback,ref);return ()=>listeners.delete(callback);},runTransaction:async(_:unknown,callback:any)=>{
  for(let attempt=0;attempt<5;attempt++){
+  // Firestore reads one consistent snapshot throughout each transaction attempt.
+  const transactionDocs=structuredClone(docs),transactionVersions=new Map(versions);
   const reads=new Map<string,number>(),writes=new Map<string,any>();
-  const tx={get:async(ref:string)=>{reads.set(ref,versions.get(ref)||0);await new Promise(r=>setTimeout(r,0));return snapshot(ref);},set:(ref:string,value:any)=>writes.set(ref,value)};
+  const tx={get:async(ref:string)=>{reads.set(ref,transactionVersions.get(ref)||0);await new Promise(r=>setTimeout(r,0));return {exists:()=>transactionDocs.has(ref),data:()=>structuredClone(transactionDocs.get(ref)),metadata:{hasPendingWrites:false}};},set:(ref:string,value:any)=>writes.set(ref,value)};
   const result=await callback(tx);
   if([...reads].some(([ref,version])=>(versions.get(ref)||0)!==version))continue;
   for(const [ref,value] of writes){docs.set(ref,structuredClone(value));versions.set(ref,(versions.get(ref)||0)+1);}
@@ -181,6 +183,33 @@ const winner=edits[purchaseRace.findIndex(result=>result.status==='fulfilled')],
 cloud=await service.executeFinanceInCloud('test',cloud,service.createWorkspaceSyncBase(cloud),winner);
 assert.equal(JSON.stringify(cloud),purchaseAfter,'Reenvio da edição não grava uma segunda entrada ou parcela.');
 console.log('PASS edição de compra na nuvem simulada: conflito entre aparelhos, parcelas/estoque atômicos e reenvio sem duplicação.');
+// Fee settings survive stale devices; automatic rates are checked inside the transaction.
+cloud=await service.executeFinanceInCloud('test',cloud,service.createWorkspaceSyncBase(cloud),{type:'save_receipt_fee',creditPercent:3.5,expectedPercent:null});
+const feeDevice=structuredClone(cloud),feeBase=service.createWorkspaceSyncBase(feeDevice);
+cloud=await service.executeFinanceInCloud('test',cloud,service.createWorkspaceSyncBase(cloud),{type:'save_receipt_fee',creditPercent:4,expectedPercent:3.5});
+assert.equal(service.mergeWorkspaceData(feeBase,feeDevice,cloud).finance.cardReceiptFee.creditPercent,4);
+const olderFeeBase={...feeBase};delete olderFeeBase.cardReceiptFee;
+assert.equal(service.mergeWorkspaceData(olderFeeBase,feeDevice,cloud).finance.cardReceiptFee.creditPercent,4,'An old sync checkpoint cannot restore a stale fee.');
+const feeOrder={...sale('fee-order'),quantity:1,unitPrice:100,totalRevenue:100,items:[{id:'fee-line',productId:'p',productName:'Vela',quantity:1,unitPrice:100,unitCost:20,totalCost:20}]};
+cloud=await service.executeFinanceInCloud('test',cloud,service.createWorkspaceSyncBase(cloud),{type:'save_order',sale:feeOrder});
+const feeBeforeFailure=JSON.stringify([...docs]);
+await assert.rejects(service.executeFinanceInCloud('test',feeDevice,feeBase,{type:'entry',entry:ledger.makeEntry('receipt',100,{id:'fee-stale',saleId:'fee-order',method:'Cartão de crédito',feeCalculation:'automatic',feeRatePercent:3.5,date:'2026-11-02'})}),/taxa da maquininha foi atualizada/);
+assert.equal(JSON.stringify([...docs]),feeBeforeFailure);
+const feeCommand={type:'entry',entry:ledger.makeEntry('receipt',100,{id:'fee-retry',saleId:'fee-order',method:'Cartão de crédito',feeCalculation:'automatic',feeRatePercent:4,pendingSettlement:true,date:'2026-11-02'})};
+const feeLocal=structuredClone(cloud),feeLocalBase=service.createWorkspaceSyncBase(feeLocal);
+await Promise.all([service.executeFinanceInCloud('test',feeLocal,feeLocalBase,feeCommand),service.executeFinanceInCloud('test',feeLocal,feeLocalBase,feeCommand)]);
+cloud=await service.fetchWorkspaceFromCloud('test');
+assert.equal(cloud.finance.entries.filter((entry:any)=>entry.id==='fee-retry').length,1);
+assert.equal(cloud.finance.entries.find((entry:any)=>entry.id==='fee-retry').feeCents,400);
+assert.equal(ledger.orderBalance(cloud.sales.find((order:any)=>order.id==='fee-order'),cloud.finance),0);
+cloud=await service.executeFinanceInCloud('test',cloud,service.createWorkspaceSyncBase(cloud),{type:'save_receipt_fee',creditPercent:6,expectedPercent:4});
+cloud=await service.executeFinanceInCloud('test',cloud,service.createWorkspaceSyncBase(cloud),{type:'entry',entry:ledger.makeEntry('settlement',100,{id:'fee-deposit',referenceId:'fee-retry',date:'2026-11-03',account:'Principal'})});
+const deposit=cloud.finance.entries.find((entry:any)=>entry.id==='fee-deposit');
+assert.equal(deposit.feeCents,400);assert.equal(deposit.feeRatePercent,4);assert.equal(ledger.cashEffect(deposit,cloud.finance),9600);
+const feeRetryVersions=JSON.stringify([...versions]);
+await service.executeFinanceInCloud('test',cloud,service.createWorkspaceSyncBase(cloud),feeCommand);
+assert.equal(JSON.stringify([...versions]),feeRetryVersions);
+console.log('PASS taxas na nuvem simulada: configuração atual preservada entre aparelhos, taxa antiga recusada sem escrita, pagamento repetido uma vez e depósito com o desconto original.');
 const before=serverReadCount;
 const concurrent=await Promise.all([service.fetchWorkspaceFromCloud('test'),service.fetchWorkspaceFromCloud('test')]);
 assert.equal(serverReadCount-before,2,'Buscas simultâneas compartilham a leitura do índice e da proteção antiga.');
