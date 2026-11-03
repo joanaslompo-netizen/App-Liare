@@ -99,7 +99,7 @@ export const getSaleFinancials = (sale: Sale, products: Product[]): SaleFinancia
     { businessCost: 0, laborRemuneration: 0 }
   );
 
-  const ownerEarnings = sale.totalRevenue - businessCost;
+  const ownerEarnings = sale.totalRevenue - businessCost - (sale.consignmentCommissionCents || 0) / 100;
   const commercialProfit = ownerEarnings - laborRemuneration;
   const marginPercent = sale.totalRevenue > 0 ? (ownerEarnings / sale.totalRevenue) * 100 : 0;
 

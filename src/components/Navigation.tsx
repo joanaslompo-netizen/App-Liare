@@ -28,6 +28,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   productionsCount = 0,
 }) => {
   const tabs = [
+    { id: 'consignments' as NavTab, label: 'Consignações', icon: Package, badge: null, badgeColor: '' },
     {
       id: 'materials' as NavTab,
       label: 'Materiais & Estoque',

@@ -4,7 +4,7 @@ export const formatOrderNumber = (number?: number) =>
   number ? String(number).padStart(6, '0') : 'A definir';
 
 export const getHighestOrderNumber = (sales: Sale[]) =>
-  sales.reduce((highest, sale) => Math.max(highest, sale.orderNumber || 0), 0);
+  sales.reduce((highest, sale) => sale.consignmentLocationId ? highest : Math.max(highest, sale.orderNumber || 0), 0);
 
 /** Assign legacy orders in chronological order and preserve existing numbers. */
 export const ensureOrderNumbers = (sales: Sale[], lastNumber = 0): Sale[] => {
@@ -14,6 +14,7 @@ export const ensureOrderNumbers = (sales: Sale[], lastNumber = 0): Sale[] => {
   [...sales].sort((a, b) =>
     a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)
   ).forEach((sale) => {
+    if (sale.consignmentLocationId) return;
     const number = sale.orderNumber;
     if (number && Number.isSafeInteger(number) && number > 0 && !used.has(number)) {
       assigned.set(sale.id, number);
@@ -23,6 +24,6 @@ export const ensureOrderNumbers = (sales: Sale[], lastNumber = 0): Sale[] => {
       used.add(next);
     }
   });
-  return sales.map((sale) => sale.orderNumber === assigned.get(sale.id)
+  return sales.map((sale) => sale.consignmentLocationId || sale.orderNumber === assigned.get(sale.id)
     ? sale : { ...sale, orderNumber: assigned.get(sale.id) });
 };

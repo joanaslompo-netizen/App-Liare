@@ -2,6 +2,7 @@ import type { CreditCard, Customer, DeliveryEvent, FinancialAccount, FinanceBill
 import { automaticStockMovements, planAutomaticConsumption, validateAutomaticManufacturing } from './automaticManufacturing';
 import { cardFirstDueDate, financialAccounts, monthlyDueDate } from './bankAccounts';
 import { applyReceiptFee } from './receiptFees';
+import { applyConsignmentStockCommand, consignmentLots, consignmentFingerprint, type ConsignmentStockCommand } from './consignments';
 import { getUnitConversionMultiplier } from './formatters';
 import { cascadeRecalculateAllProducts, recalculateProductPricing } from './storage';
 import { getProductFinancialSplit, getSaleItemFinancialSplit } from './financials';
@@ -31,7 +32,8 @@ export function creditEffect(e: FinanceEntry): number {
 }
 export const creditBalance = (finance: FinanceData, customerId: string) => activeEntries(finance).filter(e => e.customerId === customerId).reduce((sum, e) => sum + creditEffect(e), 0);
 export const grantedCreditBalance = (finance: FinanceData, customerId: string) => activeEntries(finance).filter(e=>e.customerId===customerId).reduce((sum,e)=>sum+(e.kind==='credit_grant'?e.amountCents:e.kind==='credit_release'?e.concessionCents||0:e.kind==='credit_use'?-(e.concessionCents||0):0),0);
-export function validateFinanceData(finance: FinanceData): void {
+export function validateFinanceData(finance: FinanceData, stockMovements: StockMovement[] = []): void {
+  for (const location of finance.consignmentLocations || []) consignmentLots(stockMovements,location.id);
   for(const customerId of new Set(finance.entries.map(e=>e.customerId).filter(Boolean))) {
     if(creditBalance(finance,customerId!)<0)throw new Error('Há uso de crédito conflitante entre aparelhos. O saldo da nuvem foi preservado; confira os movimentos pendentes.');
   }
@@ -39,7 +41,7 @@ export function validateFinanceData(finance: FinanceData): void {
 export function orderPaid(sale: Sale, finance: FinanceData): number {
   return legacyPaid(sale) + activeEntries(finance).filter(e => e.saleId === sale.id).reduce((sum, e) => sum + (e.kind === 'receipt' ? e.allocatedCents || 0 : e.kind === 'credit_use' ? e.amountCents : ['refund', 'credit_release'].includes(e.kind) ? -e.amountCents : 0), 0);
 }
-export const orderTotal = (sale: Sale) => Math.max(0,cents(sale.totalRevenue)-(sale.returnAdjustmentCents||0));
+export const orderTotal = (sale: Sale) => Math.max(0,cents(sale.totalRevenue)-(sale.returnAdjustmentCents||0)-(sale.consignmentCommissionCents||0));
 export const orderBalance = (sale: Sale, finance: FinanceData) => Math.max(0, orderTotal(sale) - orderPaid(sale, finance));
 export function projectOrder(sale: Sale, finance: FinanceData): Sale {
   const paid = orderPaid(sale, finance), due = orderBalance(sale, finance);
@@ -67,6 +69,8 @@ export const billBalance = (bill: FinanceBill, finance: FinanceData) => Math.max
 
 export interface LedgerWorkspace { sales: Sale[]; products: Product[]; productions?: Production[]; customers?: Customer[]; materials?: Material[]; purchases?: Purchase[]; finance?: FinanceData; stockMovements?: StockMovement[]; settings: { lastOrderNumber?: number }; }
 export type FinanceCommand =
+  | ConsignmentStockCommand
+  | { type: 'consignment_payment'; id: string; locationId: string; date: string; amountCents: number; account: string; method: string }
   | { type: 'save_receipt_fee'; creditPercent: number; expectedPercent?: number | null }
   | { type: 'save_account'; account: FinancialAccount; openingBalanceCents?: number; date: string }
   | { type: 'save_card'; card: CreditCard }
@@ -110,6 +114,26 @@ function customDeliveryProduct(sale: Sale, item: SaleItem, id: string, date: str
 }
 
 export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, command: FinanceCommand): T {
+  if (command.type === 'consignment_location' || command.type === 'consignment_send' || command.type === 'consignment_check' || command.type === 'consignment_undo') return applyConsignmentStockCommand(source, command);
+  if (command.type === 'consignment_payment') {
+    const fingerprint = consignmentFingerprint(command);
+    const previous = source.finance?.entries.find(entry => entry.consignmentPaymentId === command.id);
+    if (previous) { if (previous.consignmentPaymentFingerprint !== fingerprint) fail('Este repasse já foi registrado com outros dados.'); return source; }
+    requireDate(command.date);
+    if (!command.id || !Number.isSafeInteger(command.amountCents) || command.amountCents <= 0 || !command.account || !command.method) fail('Informe data, conta e valor do repasse.');
+    const location = source.finance?.consignmentLocations?.find(location => location.id === command.locationId) || fail('Local de consignação não encontrado.');
+    const orders = source.sales.filter(sale => sale.consignmentLocationId === location.id && isActiveOrder(sale) && orderBalance(sale, source.finance!) > 0)
+      .sort((a,b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    if (command.amountCents > orders.reduce((n,sale) => n + orderBalance(sale,source.finance!),0)) fail('O repasse supera o saldo pendente do local. Confira os recebimentos já registrados.');
+    let next = source, remaining = command.amountCents;
+    for (const sale of orders) {
+      const amount = Math.min(remaining,orderBalance(sale,next.finance!)); if (!amount) continue;
+      next = applyFinanceCommand(next,{type:'entry',entry:makeEntry('receipt',money(amount),{id:`${command.id}:${sale.id}`,date:command.date,saleId:sale.id,account:command.account,method:command.method,
+        consignmentPaymentId:command.id,consignmentPaymentFingerprint:fingerprint,note:`Repasse de consignação · ${location.name}`})});
+      remaining -= amount;
+    }
+    return next;
+  }
   if (command.type === 'correct_order_quantity') {
     const original = source.sales.find(sale => sale.id === command.sale.id) || fail('Pedido não encontrado.');
     if (original.quantityCorrections?.some(correction => correction.id === command.id)) return source;

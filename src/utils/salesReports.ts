@@ -2,16 +2,18 @@ import type { FinanceData, Product, Sale } from '../types';
 import { activeEntries, allocateCents, cents, isActiveOrder, money, orderItems } from './financeLedger';
 import { getSaleItemFinancialSplit } from './financials';
 
-export interface ReportLine { productId: string; name: string; family: string; fragrance: string; quantity: number; revenueCents: number; businessCostCents: number; laborCents: number; feeCents: number; concessionCents: number; incomplete: boolean; legacy: boolean; }
+export interface ReportLine { productId: string; name: string; family: string; fragrance: string; quantity: number; revenueCents: number; businessCostCents: number; laborCents: number; feeCents: number; commissionCents: number; concessionCents: number; incomplete: boolean; legacy: boolean; }
 export function salesReportLines(sales: Sale[], products: Product[], finance: FinanceData, month: string, basis: 'orders'|'delivered'): ReportLine[] {
   const result: ReportLine[] = [];
   const matches = (d: string) => month === 'all' || d.startsWith(month);
   for (const sale of sales) {
+    if (sale.consignmentLocationId && sale.commercialStatus === 'cancelled') continue;
     if (sale.commercialStatus === 'draft' || (basis === 'orders' && sale.commercialStatus === 'cancelled')) continue;
     const items = orderItems(sale);
     const revenues = allocateCents(cents(sale.totalRevenue-(sale.shippingCharged||0)), items.map(it => cents(it.quantity * it.unitPrice)));
     const fees = activeEntries(finance).filter(e => e.saleId === sale.id && e.kind === 'receipt').reduce((s,e) => s + (e.feeCents || 0),0);
     const splitFees = allocateCents(fees, revenues);
+    const commissions = allocateCents(sale.consignmentCommissionCents || 0, revenues);
     const concessions = activeEntries(finance).filter(e=>e.saleId===sale.id).reduce((n,e)=>n+(e.kind==='credit_use'?(e.concessionCents||0):0),0);
     const splitConcessions=allocateCents(Math.max(0,concessions),revenues);
     items.forEach((item,i) => {
@@ -35,13 +37,13 @@ export function salesReportLines(sales: Sale[], products: Product[], finance: Fi
       } else if (matches(sale.legacyDeliveryDate || sale.deliveryActualDate || sale.date)) quantity = (item.deliveredQuantity ?? item.stockConsumedQuantity ?? (sale.deliveryStatus === 'entregue' ? item.quantity : 0)) - (item.returnedQuantity || 0);
       if (!quantity && !eventRevenue && !eventCost) return;
       const factor = item.quantity > 0 ? quantity / item.quantity : 0;
-      result.push({ productId: item.productId || `custom_${item.id}`, name: item.productName, family: product?.productFamily || '', fragrance: product?.fragrance || '', quantity, revenueCents: eventRevenue ?? Math.round(revenues[i]*factor), businessCostCents: eventCost ?? cents(split.businessCostPerUnit * quantity), laborCents: eventLabor ?? cents(split.laborRemunerationPerUnit * quantity), feeCents: Math.round(splitFees[i]*(basis==='orders'?factor:(deliveredInPeriod ?? Math.max(0,quantity))/item.quantity)), concessionCents:Math.round(splitConcessions[i]*factor), incomplete: !!item.costIncomplete || !!item.isCustom && !item.customRecipeItems?.length && !item.customProductId, legacy: item.unitBusinessCost == null });
+      result.push({ productId: item.productId || `custom_${item.id}`, name: item.productName, family: product?.productFamily || '', fragrance: product?.fragrance || '', quantity, revenueCents: eventRevenue ?? Math.round(revenues[i]*factor), businessCostCents: eventCost ?? cents(split.businessCostPerUnit * quantity), laborCents: eventLabor ?? cents(split.laborRemunerationPerUnit * quantity), feeCents: Math.round(splitFees[i]*(basis==='orders'?factor:(deliveredInPeriod ?? Math.max(0,quantity))/item.quantity)), commissionCents:Math.round(commissions[i]*factor), concessionCents:Math.round(splitConcessions[i]*factor), incomplete: !!item.costIncomplete || !!item.isCustom && !item.customRecipeItems?.length && !item.customProductId, legacy: item.unitBusinessCost == null });
     });
   }
   return result;
 }
 export const aggregateReportLines = (lines: ReportLine[]) => {
   const map = new Map<string, ReportLine>();
-  for (const line of lines) { const old=map.get(line.productId); map.set(line.productId,old ? {...old, quantity:old.quantity+line.quantity,revenueCents:old.revenueCents+line.revenueCents,businessCostCents:old.businessCostCents+line.businessCostCents,laborCents:old.laborCents+line.laborCents,feeCents:old.feeCents+line.feeCents,concessionCents:old.concessionCents+line.concessionCents,incomplete:old.incomplete||line.incomplete,legacy:old.legacy||line.legacy} : {...line}); }
-  return [...map.values()].sort((a,b)=>(b.revenueCents-b.businessCostCents-b.feeCents)-(a.revenueCents-a.businessCostCents-a.feeCents));
+  for (const line of lines) { const old=map.get(line.productId); map.set(line.productId,old ? {...old, quantity:old.quantity+line.quantity,revenueCents:old.revenueCents+line.revenueCents,businessCostCents:old.businessCostCents+line.businessCostCents,laborCents:old.laborCents+line.laborCents,feeCents:old.feeCents+line.feeCents,concessionCents:old.concessionCents+line.concessionCents,commissionCents:old.commissionCents+line.commissionCents,incomplete:old.incomplete||line.incomplete,legacy:old.legacy||line.legacy} : {...line}); }
+  return [...map.values()].sort((a,b)=>(b.revenueCents-b.businessCostCents-b.feeCents-b.commissionCents)-(a.revenueCents-a.businessCostCents-a.feeCents-a.commissionCents));
 };

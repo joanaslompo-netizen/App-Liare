@@ -7,8 +7,10 @@ import {canonicalJSON} from './services/workspaceRecordStore';
 import { workspaceStorage as localStorage } from './utils/workspaceStorage';
 import { getProductFinancialSplit } from "./utils/financials";
 import { FinanceView } from "./components/FinanceView";
+import { ConsignmentsView } from './components/ConsignmentsView';
+import { consignmentStock } from './utils/consignments';
 import { OrderDetailView, type OrderFocus } from "./components/OrderDetailView";
-import { applyFinanceCommand, emptyFinance, projectOrder, type FinanceCommand } from "./utils/financeLedger";
+import { applyFinanceCommand, emptyFinance, projectOrder, isActiveOrder, orderBalance, type FinanceCommand } from "./utils/financeLedger";
 import { executeFinanceInCloud } from "./services/cloudSync";
 import { saveWorkspaceSnapshot } from "./utils/storage";
 import type { FinanceData, PurchasePayment, PurchaseEditOptions, StockMovement } from "./types";
@@ -140,7 +142,8 @@ export default function App() {
   const [workflowSaleId, setWorkflowSaleId] = useState<string | null>(null);
   const [workflowFocus, setWorkflowFocus] = useState<OrderFocus>('overview');
   const orderReturnScroll = useRef(0);
-  const displaySales = useMemo(() => sales.map(s => projectOrder(s, finance)), [sales, finance]);
+  const displaySales = useMemo(() => sales.filter(s => !s.consignmentLocationId).map(s => projectOrder(s, finance)), [sales, finance]);
+  const [consignmentInitialLocation, setConsignmentInitialLocation] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProductionProject[]>(initialData.projects || []);
 
   // Cloud Sync & Auth State
@@ -1419,6 +1422,8 @@ export default function App() {
   }, [handleFinanceAction]);
 
   const openOrderDetail = useCallback((id: string, focus: OrderFocus = 'overview') => {
+    const consignment = workspaceRef.current.sales.find(sale => sale.id === id)?.consignmentLocationId;
+    if (consignment) { setWorkflowSaleId(null); setConsignmentInitialLocation(consignment); setActiveTab('consignments'); setIsQuickMoreOpen(false); window.scrollTo(0,0); return; }
     orderReturnScroll.current = window.scrollY;
     setWorkflowFocus(focus);
     setWorkflowSaleId(id);
@@ -1629,6 +1634,10 @@ export default function App() {
         <div hidden={!!workflowSaleId}>
         {activeTab === 'home' && (
           <HomeView
+            consignmentSales={sales.filter(sale => !!sale.consignmentLocationId)}
+            consignmentReceivableCents={sales.filter(sale => sale.consignmentLocationId && isActiveOrder(sale)).reduce((sum,sale) => sum + orderBalance(sale,finance),0)}
+            consignmentLocationsCount={finance.consignmentLocations?.length || 0}
+            consignmentPieces={(finance.consignmentLocations || []).reduce((sum,location) => sum + consignmentStock(stockMovements,location.id).reduce((n,row) => n + row.quantity,0),0)}
             artisanName={settings.artisanName}
             atelierName={settings.atelierName}
             materials={materials}
@@ -1638,6 +1647,7 @@ export default function App() {
             todos={todos}
             onUpdateTodos={setTodos}
             onNavigate={(tab, filter) => {
+              if (tab === 'consignments') setConsignmentInitialLocation(null);
               setActiveTab(tab);
               setFilterLowStockInitial(tab === 'materials' && filter === 'low_stock');
               if (tab === 'sales' && (filter === 'pending_delivery' || filter === 'pending_payment' || filter === 'all')) {
@@ -1799,7 +1809,8 @@ export default function App() {
 
         {activeTab === 'reports' && (
           <ReportsView
-            sales={displaySales}
+            sales={sales}
+            stockMovements={stockMovements}
             purchases={purchases}
             products={products}
             materials={materials}
@@ -1808,6 +1819,8 @@ export default function App() {
             onOpenPurchaseHistory={() => setActiveTab('purchases')}
           />
         )}
+
+        {activeTab === 'consignments' && <ConsignmentsView key={consignmentInitialLocation || 'list'} initialLocationId={consignmentInitialLocation} products={products} sales={sales} finance={finance} stockMovements={stockMovements} onAction={handleFinanceAction} />}
 
         {activeTab === 'suppliers' && (
           <SuppliersView
@@ -1838,6 +1851,7 @@ export default function App() {
               <button type="button" aria-label="Fechar ações rápidas" onClick={() => setIsQuickMoreOpen(false)}><X className="h-5 w-5" /></button>
             </header>
             <div className="liare-modal-body grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => { setWorkflowSaleId(null); setConsignmentInitialLocation(null); setActiveTab('consignments'); setIsQuickMoreOpen(false); }} className="flex items-center gap-2.5 rounded-2xl border border-[#eadfd6] bg-[#fbf7f2] px-3 py-3 text-left text-xs font-semibold text-[#4f4640]"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eef1e6] text-[#66704f]"><ShoppingBag className="h-4 w-4" /></span>Consignações</button>
               <button
                 type="button"
                 onClick={() => {
