@@ -4,13 +4,14 @@ import {
   Tag, 
   ShoppingCart, 
   DollarSign, 
-  BarChart3, 
+  LayoutDashboard,
   Truck,
   Users,
   Hammer,
   ClipboardList
 } from 'lucide-react';
 import { NavTab } from '../types';
+import { isManagementTab } from './ManagementView';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -28,7 +29,6 @@ export const Navigation: React.FC<NavigationProps> = ({
   productionsCount = 0,
 }) => {
   const tabs = [
-    { id: 'consignments' as NavTab, label: 'Consignações', icon: Package, badge: null, badgeColor: '' },
     {
       id: 'materials' as NavTab,
       label: 'Materiais & Estoque',
@@ -79,9 +79,9 @@ export const Navigation: React.FC<NavigationProps> = ({
       badgeColor: 'bg-amber-100 text-amber-900 font-semibold',
     },
     {
-      id: 'reports' as NavTab,
-      label: 'Relatórios Mensais',
-      icon: BarChart3,
+      id: 'management' as NavTab,
+      label: 'Gestão',
+      icon: LayoutDashboard,
       badge: null,
       badgeColor: '',
     },
@@ -100,7 +100,7 @@ export const Navigation: React.FC<NavigationProps> = ({
         <div className="flex items-center space-x-1 sm:space-x-2 overflow-x-auto py-2.5 no-scrollbar">
           {tabs.map((tab) => {
             const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
+            const isActive = tab.id === 'management' ? isManagementTab(activeTab) : activeTab === tab.id;
             return (
               <button
                 key={tab.id}

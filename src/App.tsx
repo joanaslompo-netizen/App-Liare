@@ -8,6 +8,7 @@ import { workspaceStorage as localStorage } from './utils/workspaceStorage';
 import { getProductFinancialSplit } from "./utils/financials";
 import { FinanceView } from "./components/FinanceView";
 import { ConsignmentsView } from './components/ConsignmentsView';
+import { ManagementView, isManagementTab } from './components/ManagementView';
 import { consignmentStock } from './utils/consignments';
 import { OrderDetailView, type OrderFocus } from "./components/OrderDetailView";
 import { applyFinanceCommand, emptyFinance, projectOrder, isActiveOrder, orderBalance, type FinanceCommand } from "./utils/financeLedger";
@@ -75,7 +76,7 @@ import {
   CloudSyncConflictError,
   OrderSyncConflictError
 } from './services/cloudSync';
-import { CheckCircle2, X, ShoppingBag, Hammer, Package, Tag, BarChart3, Plus, Settings, AlertTriangle, ClipboardList } from 'lucide-react';
+import { CheckCircle2, X, ShoppingBag, Hammer, Package, Tag, LayoutDashboard, Plus, Settings, AlertTriangle, ClipboardList } from 'lucide-react';
 
 const withDefaultDiscountCodes = (incoming: AtelierSettings): AtelierSettings => ({
   ...incoming,
@@ -1805,6 +1806,10 @@ export default function App() {
           />
         )}
 
+        {isManagementTab(activeTab) && <ManagementView section={activeTab === 'management' ? null : activeTab} onSelect={section => {
+          if (section === 'consignments') setConsignmentInitialLocation(null);
+          setActiveTab(section || 'management');
+        }}>
         {activeTab === 'finance' && <FinanceView onSaveCustomer={handleSaveCustomer} sales={sales} customers={customers} finance={finance} creditOrigins={settings.creditOrigins} onSaveCreditOrigins={origins => setSettings(previous => ({ ...previous, creditOrigins: origins }))} onAction={handleFinanceAction} onOpenOrder={id => openOrderDetail(id, 'payment')} />}
 
         {activeTab === 'reports' && (
@@ -1821,6 +1826,7 @@ export default function App() {
         )}
 
         {activeTab === 'consignments' && <ConsignmentsView key={consignmentInitialLocation || 'list'} initialLocationId={consignmentInitialLocation} products={products} sales={sales} finance={finance} stockMovements={stockMovements} onAction={handleFinanceAction} />}
+        </ManagementView>}
 
         {activeTab === 'suppliers' && (
           <SuppliersView
@@ -1977,13 +1983,14 @@ export default function App() {
           <button
             type="button"
             onClick={() => {
-              setActiveTab('reports');
+              setActiveTab('management');
               setIsQuickMoreOpen(false);
             }}
-            className={`flex min-h-14 flex-col items-center justify-start pt-1 gap-0.5 text-[10px] sm:text-xs font-semibold transition-colors ${activeTab === 'reports' ? 'text-[#b96f55]' : 'text-[#8a817a]'}`}
+            aria-current={isManagementTab(activeTab) ? 'page' : undefined}
+            className={`flex min-h-14 flex-col items-center justify-start pt-1 gap-0.5 text-[10px] sm:text-xs font-semibold transition-colors ${isManagementTab(activeTab) ? 'text-[#b96f55]' : 'text-[#8a817a]'}`}
           >
-            <BarChart3 className="w-5 h-5" />
-            <span>Relatórios</span>
+            <LayoutDashboard className="w-5 h-5" />
+            <span>Gestão</span>
           </button>
         </div>
       </nav>

@@ -507,6 +507,7 @@ export interface AtelierSettings {
 }
 
 export type NavTab = 
+  | 'management'
   | 'consignments'
   | 'home' 
   | 'materials' 

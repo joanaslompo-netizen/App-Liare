@@ -64,3 +64,9 @@ Pausado significa que o material não está em uso no momento; o estoque registr
 - A última conferência pode ser desfeita com histórico preservado, antes de novas movimentações. Recebimentos vinculados precisam ser estornados; peças devolvidas já utilizadas ou reservadas impedem desfazer a devolução. Não há exclusão de histórico.
 - Dados usam os registros existentes de estoque, vendas e financeiro, sem alterar o protocolo compartilhado de armazenamento; backup/restauração preservam os campos. Transações revalidam estoque e repasses e recusam conferências concorrentes ou desatualizadas.
 - Validação com dados fictícios: cálculos, interface integrada, dois aparelhos simulados, armazenamento e Chromium em desktop/tablet/celular, incluindo recarga e correção. Não foram criados locais nem movimentos na conta real durante os testes.
+
+## Gestão — 03/11/2026
+
+- O acesso Relatórios do menu principal passa a ser Gestão, com uma visão geral para Relatórios, Financeiro e Consignações. As três áreas compartilham navegação interna e mantêm Gestão selecionado no menu principal.
+- Atalhos existentes da Home, do cabeçalho e dos acertos abrem a seção correspondente dentro de Gestão; abrir um pedido e voltar preserva o caminho. A navegação não cria nem altera lançamentos, estoques, créditos ou acertos.
+- Validação: tipagem/build, regressões de financeiro e consignações e navegação no Chromium em desktop/tablet/celular, incluindo teclado, atalhos, recebimento de pedido e recarga com dados fictícios.
