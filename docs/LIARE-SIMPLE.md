@@ -54,3 +54,13 @@ Pausado significa que o material não está em uso no momento; o estoque registr
 - Quantidades, materiais, custos e mão de obra já registrados são preservados. O progresso por ingrediente impede uma segunda baixa quando as etapas mudam de lugar ou são unidas. A definição anterior fica no histórico ao salvar o próximo passo.
 - Inserir, retirar ou reordenar fases preserva a contagem exclusiva das peças ainda em processo. Se a retirada de uma fase deixar peças prontas, a entrada em estoque exige registrar a conferência de finalização.
 - Validação: produção, planejamento, receitas atuais, projetos, fabricação automática, tipagem, build e fluxo no navegador com dados fictícios.
+
+## Consignações — 03/11/2026
+
+- Locais com contato, comissão e combinados próprios; acesso pelo botão +, Home e repasses no Financeiro. Acertos ficam separados dos pedidos comuns e não consomem sua numeração.
+- Envio transfere peças disponíveis do ateliê, preservando reservas. Saldo inicial já no parceiro pode ser registrado separadamente, sem descontar novamente do ateliê. Lotes guardam o preço e o custo do envio; os mais antigos são utilizados primeiro.
+- Conferência registra o restante, a devolução física e as perdas. A diferença só vira venda após confirmação explícita. A venda baixa o estoque do parceiro uma vez, gera repasse após a comissão e não inventa recebimento de dinheiro.
+- Repasses parciais abatem acertos mais antigos; caixa registra apenas o valor recebido. Vendas, comissões, custos e perdas aparecem separadamente nos relatórios. Mudanças de comissão valem para os próximos acertos.
+- A última conferência pode ser desfeita com histórico preservado, antes de novas movimentações. Recebimentos vinculados precisam ser estornados; peças devolvidas já utilizadas ou reservadas impedem desfazer a devolução. Não há exclusão de histórico.
+- Dados usam os registros existentes de estoque, vendas e financeiro, sem alterar o protocolo compartilhado de armazenamento; backup/restauração preservam os campos. Transações revalidam estoque e repasses e recusam conferências concorrentes ou desatualizadas.
+- Validação com dados fictícios: cálculos, interface integrada, dois aparelhos simulados, armazenamento e Chromium em desktop/tablet/celular, incluindo recarga e correção. Não foram criados locais nem movimentos na conta real durante os testes.

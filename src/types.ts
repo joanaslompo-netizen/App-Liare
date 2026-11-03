@@ -296,6 +296,10 @@ export interface SaleItem {
 }
 
 export interface Sale {
+  consignmentLocationId?: string;
+  consignmentCommissionPercent?: number;
+  consignmentCommissionCents?: number;
+  consignmentPeriodStart?: string;
   quantityCorrections?: {
     id: string;
     date: string;
@@ -503,6 +507,7 @@ export interface AtelierSettings {
 }
 
 export type NavTab = 
+  | 'consignments'
   | 'home' 
   | 'materials' 
   | 'products' 
@@ -541,6 +546,8 @@ export type FinanceEntryKind = 'receipt' | 'credit_use' | 'credit_grant' | 'cred
 export type CreditMovementKind = 'receipt' | 'credit_opening' | 'credit_grant' | 'credit_refund';
 export interface CreditOrigin { id: string; name: string; kind: CreditMovementKind; }
 export interface FinanceEntry {
+  consignmentPaymentId?: string;
+  consignmentPaymentFingerprint?: string;
   origin?: string;
   id: string;
   kind: FinanceEntryKind;
@@ -590,6 +597,7 @@ export interface CreditCard {
   paymentAccount: string;
 }
 export interface FinanceData {
+  consignmentLocations?: ConsignmentLocation[];
   version: 1;
   entries: FinanceEntry[];
   bills: FinanceBill[];
@@ -598,6 +606,24 @@ export interface FinanceData {
   cardReceiptFee?: { creditPercent: number };
 }
 export interface StockMovement {
+  note?: string;
+  /** Absent means the atelier. Local movements never change atelier stock twice. */
+  consignment?: {
+    locationId: string;
+    kind: 'send' | 'opening' | 'sale' | 'return' | 'loss' | 'check' | 'undo';
+    lotId?: string;
+    productName?: string;
+    unitPriceCents?: number;
+    laborUnitCost?: number;
+    operationId: string;
+    fingerprint: string;
+    periodStart?: string;
+    commissionPercent?: number;
+    checkRows?: ConsignmentCountRow[];
+    originalOperationId?: string;
+  };
+  /** Local ID for a partner's stock; absent for the atelier. */
+  locationId?: string;
   id: string;
   date: string;
   targetId: string;
@@ -606,6 +632,22 @@ export interface StockMovement {
   reason: string;
   referenceId?: string;
   businessUnitCost?: number;
+}
+
+export interface ConsignmentLocation {
+  id: string;
+  name: string;
+  contact: string;
+  commissionPercent: number;
+  notes: string;
+  archived?: boolean;
+  updatedAt: string;
+}
+export interface ConsignmentCountRow {
+  productId: string;
+  remaining: number;
+  returned: number;
+  lost: number;
 }
 
 export interface AutomaticManufacture {

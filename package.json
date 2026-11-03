@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test:consignments": "node --import tsx src/utils/consignments.test.ts && node --import tsx scripts/test-consignments-app.tsx",
     "test:receipt-fees": "node --import tsx src/utils/receiptFees.test.ts && node --import tsx scripts/test-card-receipt-fees.tsx",
     "test:live-recipes": "node --import tsx src/utils/productionRecipe.test.ts && node --import tsx scripts/test-live-recipes.tsx",
     "test:order-corrections": "node --import tsx src/utils/orderQuantityCorrection.test.ts && node --import tsx scripts/test-order-quantity-correction.tsx",

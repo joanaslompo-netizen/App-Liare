@@ -12,6 +12,10 @@ import { formatCurrency, formatPercent, formatDate } from '../utils/formatters';
 import { getSaleFinancials } from '../utils/financials';
 
 interface HomeViewProps {
+  consignmentSales?: Sale[];
+  consignmentReceivableCents?: number;
+  consignmentPieces?: number;
+  consignmentLocationsCount?: number;
   artisanName: string;
   atelierName: string;
   materials: Material[];
@@ -67,6 +71,7 @@ function MoreRows({ expanded, count, onClick }: { expanded: boolean; count: numb
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
+  consignmentSales = [], consignmentReceivableCents = 0, consignmentPieces = 0, consignmentLocationsCount = 0,
   artisanName, materials, products, sales, todos, onUpdateTodos,
   onNavigate, onOpenNewSale, onOpenNewPurchase, onOpenProduction, onOpenSale,
 }) => {
@@ -90,10 +95,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
     .sort((a, b) => (a.deliveryScheduledDate || '9999-12-31').localeCompare(b.deliveryScheduledDate || '9999-12-31')), [sales]);
   const pendingPayments = useMemo(() => sales.filter(s => isActiveOrder(s) && s.paymentStatus === 'pendente_pagamento' && getInvoiceTotals(s).balance > 0)
     .sort((a, b) => (a.paymentScheduledDate || '9999-12-31').localeCompare(b.paymentScheduledDate || '9999-12-31')), [sales]);
-  const totalPendingPaymentAmount = pendingPayments.reduce((sum, sale) => sum + getInvoiceTotals(sale).balance, 0);
+  const totalPendingPaymentAmount = pendingPayments.reduce((sum, sale) => sum + getInvoiceTotals(sale).balance, 0) + consignmentReceivableCents / 100;
   const overdueDeliveries = pendingDeliveries.filter(s => s.deliveryScheduledDate && s.deliveryScheduledDate < today).length;
   const currentMonth = today.slice(0, 7);
-  const monthSales = sales.filter(s => isActiveOrder(s) && s.date.startsWith(currentMonth));
+  const monthSales = [...sales, ...consignmentSales].filter(s => isActiveOrder(s) && s.date.startsWith(currentMonth));
   const monthRevenue = monthSales.reduce((sum, sale) => sum + sale.totalRevenue, 0);
   const monthProfit = monthSales.reduce((sum, sale) => sum + getSaleFinancials(sale, products).ownerEarnings, 0);
   const monthMargin = monthRevenue > 0 ? monthProfit / monthRevenue * 100 : 0;
@@ -147,22 +152,23 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
       <section aria-label="Resumo financeiro" className="grid gap-3 sm:grid-cols-3">
         <button type="button" onClick={() => onNavigate('reports')} className="rounded-2xl border border-[#e5dad1] bg-white px-5 py-4 text-left transition-colors hover:border-[#c98a72]">
-          <span className="block text-xs font-semibold text-[#74675f]">Pedidos de {monthLabel}</span>
+          <span className="block text-xs font-semibold text-[#74675f]">{consignmentSales.length ? 'Vendas e pedidos' : 'Pedidos'} de {monthLabel}</span>
           <strong className="mt-1 block text-2xl font-bold tracking-tight text-[#352f2b]">{formatCurrency(monthRevenue)}</strong>
-          <span className="mt-1 block text-xs text-[#74675f]">Valor contratado no mês</span>
+          <span className="mt-1 block text-xs text-[#74675f]">{consignmentSales.length ? 'Pedidos e vendas consignadas confirmadas' : 'Valor contratado no mês'}</span>
         </button>
         <button type="button" onClick={() => onNavigate('reports')} className="rounded-2xl border border-[#dfc5b8] bg-[#f3e4da] px-5 py-4 text-left transition-colors hover:border-[#b96f55]">
           <span className="block text-xs font-semibold text-[#80503c]">Quanto fica para você · estimado</span>
           <strong className={`mt-1 block text-2xl font-bold tracking-tight ${monthProfit < 0 ? 'text-[#a44132]' : 'text-[#75452f]'}`}>{formatCurrency(monthProfit)}</strong>
           <span className="mt-1 block text-xs text-[#80503c]">Inclui sua remuneração · margem {formatPercent(monthMargin)}</span>
         </button>
-        <button type="button" onClick={() => onNavigate('sales', 'pending_payment')} className="rounded-2xl border border-[#dce1d1] bg-[#f1f3ec] px-5 py-4 text-left transition-colors hover:border-[#94a17e]">
+        <button type="button" onClick={() => consignmentReceivableCents > 0 ? onNavigate('finance') : onNavigate('sales', 'pending_payment')} className="rounded-2xl border border-[#dce1d1] bg-[#f1f3ec] px-5 py-4 text-left transition-colors hover:border-[#94a17e]">
           <span className="block text-xs font-semibold text-[#5d684b]">Total a receber</span>
           <strong className="mt-1 block text-2xl font-bold tracking-tight text-[#52603e]">{formatCurrency(totalPendingPaymentAmount)}</strong>
-          <span className="mt-1 block text-xs text-[#5d684b]">{pendingPayments.length} {pendingPayments.length === 1 ? 'pedido com saldo' : 'pedidos com saldo'} · todos os meses</span>
+          <span className="mt-1 block text-xs text-[#5d684b]">{pendingPayments.length} {pendingPayments.length === 1 ? 'pedido com saldo' : 'pedidos com saldo'}{consignmentReceivableCents > 0 ? ' + repasses de consignação' : ''} · todos os meses</span>
         </button>
       </section>
 
+      {consignmentLocationsCount > 0 && <button type="button" onClick={() => onNavigate('consignments')} className={`${panelClass} flex w-full flex-wrap items-center justify-between gap-3 text-left`}><span><span className="block font-semibold">Consignações · {consignmentLocationsCount} locais</span><span className="mt-1 block text-sm text-stone-500">{consignmentPieces} peças nos parceiros · {formatCurrency(consignmentReceivableCents / 100)} em repasses a receber</span></span><span className={linkClass}>Ver locais<ArrowRight className="h-4 w-4" /></span></button>}
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <div className="min-w-0 space-y-5">
           <section className={panelClass}>

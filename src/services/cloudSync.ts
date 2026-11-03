@@ -41,6 +41,7 @@ export interface WorkspaceSyncBase {
   accounts?: Record<string, string>;
   cards?: Record<string, string>;
   cardReceiptFee?: string;
+  consignmentLocations?: Record<string,string>;
 }
 
 export type CloudSyncStatus = 'offline' | 'idle' | 'pending' | 'syncing' | 'synced' | 'error';
@@ -142,6 +143,7 @@ export function createWorkspaceSyncBase(workspace: WorkspaceData): WorkspaceSync
     accounts: Object.fromEntries((workspace.finance?.accounts || []).map(account => [account.id, fingerprint(account)])),
     cards: Object.fromEntries((workspace.finance?.cards || []).map(card => [card.id, fingerprint(card)])),
     cardReceiptFee: fingerprint(workspace.finance?.cardReceiptFee ?? null),
+    consignmentLocations: Object.fromEntries((workspace.finance?.consignmentLocations || []).map(location => [location.id,fingerprint(location)])),
   };
 }
 
@@ -180,6 +182,7 @@ export function mergeWorkspaceData(
     finance: {
       ...cloud.finance, ...local.finance, version: 1,
       entries: unionRecords(local.finance?.entries, cloud.finance?.entries),
+      ...(local.finance?.consignmentLocations || cloud.finance?.consignmentLocations ? {consignmentLocations: mergeEntityList(base.consignmentLocations || {},local.finance?.consignmentLocations,cloud.finance?.consignmentLocations)} : {}),
       ...(local.finance?.cardReceiptFee || cloud.finance?.cardReceiptFee ? { cardReceiptFee: base.cardReceiptFee === undefined ? cloud.finance?.cardReceiptFee || local.finance?.cardReceiptFee : mergeValue(base.cardReceiptFee, local.finance?.cardReceiptFee ?? null, cloud.finance?.cardReceiptFee ?? null) || undefined } : {}),
       bills: mergeEntityList(base.bills || {}, local.finance?.bills, cloud.finance?.bills),
       ...(local.finance?.accounts || cloud.finance?.accounts ? { accounts: mergeEntityList(base.accounts || {}, local.finance?.accounts, cloud.finance?.accounts) } : {}),
@@ -200,7 +203,7 @@ export function mergeWorkspaceData(
   };
   // Recompute reservations with the latest merged stock and other orders. Local
   // receipts/credit releases keep their IDs and are not registered a second time.
-  for (const sale of editedSales) merged = applyFinanceCommand(merged, { type: 'save_order', sale });
+  for (const sale of editedSales) if (!sale.consignmentLocationId) merged = applyFinanceCommand(merged, { type: 'save_order', sale });
   return merged;
 }
 
@@ -282,7 +285,7 @@ export async function uploadWorkspaceToCloud(
 ):Promise<WorkspaceData> {
   if(!userId)throw new Error('Usuário não autenticado.');
   const compact=compactWorkspaceForCloud(workspace);
-  validateFinanceData(compact.finance||emptyFinance());
+  validateFinanceData(compact.finance||emptyFinance(),compact.stockMovements||[]);
   return mutateRecords(userId,()=>sanitizeForFirestore(compact),expectedRevision,deviceLabel);
 }
 const workspaceReads = new Map<string, Promise<WorkspaceData | null>>();
