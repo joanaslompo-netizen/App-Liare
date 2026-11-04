@@ -3,12 +3,13 @@ import { ChevronDown, Search } from 'lucide-react';
 import type { ProductModel } from '../utils/productModels';
 import { matchesSearchText } from '../utils/formatters';
 
-export function ModelSearch({ id, models, value, onSelect, className }: {
+export function ModelSearch({ id, models, value, onSelect, className, listLabel = 'Modelos de produção' }: {
   id: string;
   models: ProductModel[];
   value: string;
   onSelect: (model: ProductModel | null) => void;
   className: string;
+  listLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -69,7 +70,7 @@ export function ModelSearch({ id, models, value, onSelect, className }: {
         if (open) setOpen(false);
         else { input.current?.focus(); setOpen(true); setQuery(''); setIndex(0); }
       }}><ChevronDown aria-hidden="true" className="h-4 w-4" /></button>
-    {open && <div id={listId} role="listbox" aria-label="Modelos de produção"
+    {open && <div id={listId} role="listbox" aria-label={listLabel}
       className="absolute left-0 right-0 z-30 mt-1 max-h-64 overflow-y-auto rounded-xl border border-[#e5dad1] bg-white py-1 shadow-lg">
       {results.map((model, position) => <button key={model.id} id={`${id}-option-${position}`} type="button"
         role="option" aria-selected={value === model.id} tabIndex={-1} data-model-id={model.id}

@@ -10,12 +10,16 @@ export function ProductModelPicker({
   onSelectProduct,
   id = "product-model-picker",
   mode = "sale",
+  searchable = false,
+  stockAvailable,
 }: {
   products: Product[];
   selectedProductId: string;
   onSelectProduct: (product: Product | null) => void;
   id?: string;
   mode?: "sale" | "production";
+  searchable?: boolean;
+  stockAvailable?: number;
 }) {
   const models = useMemo(
     () => getProductModels(products, mode),
@@ -33,7 +37,8 @@ export function ProductModelPicker({
       <div className="grid min-w-0 gap-3 sm:grid-cols-2">
         <div className="min-w-0 text-xs font-semibold text-[#75665c]">
           <label htmlFor={`${id}-model`}>Modelo</label>
-          {mode === 'production' ? <ModelSearch id={`${id}-model`} models={models}
+          {mode === 'production' || searchable ? <ModelSearch id={`${id}-model`} models={models}
+            listLabel={mode === 'production' ? 'Modelos de produção' : 'Modelos de produtos'}
             value={model?.id || ''} className={field} onSelect={next => {
               setModelId(next?.id || '');
               onSelectProduct(next?.products.length === 1 ? next.products[0] : null);
@@ -100,7 +105,7 @@ export function ProductModelPicker({
       </div>
       {selected && mode === "sale" && (
         <p className="text-xs text-[#75665c]">
-          Estoque: {selected.currentStock || 0} un · Venda:{" "}
+          {stockAvailable == null ? 'Estoque' : 'Disponível no ateliê'}: {stockAvailable ?? selected.currentStock ?? 0} un · Venda:{" "}
           {formatCurrency(selected.actualPrice)}
           {selected.isPaused ? " · Produto pausado" : ""}
         </p>

@@ -70,3 +70,10 @@ Pausado significa que o material não está em uso no momento; o estoque registr
 - O acesso Relatórios do menu principal passa a ser Gestão, com uma visão geral para Relatórios, Financeiro e Consignações. As três áreas compartilham navegação interna e mantêm Gestão selecionado no menu principal.
 - Atalhos existentes da Home, do cabeçalho e dos acertos abrem a seção correspondente dentro de Gestão; abrir um pedido e voltar preserva o caminho. A navegação não cria nem altera lançamentos, estoques, créditos ou acertos.
 - Validação: tipagem/build, regressões de financeiro e consignações e navegação no Chromium em desktop/tablet/celular, incluindo teclado, atalhos, recebimento de pedido e recarga com dados fictícios.
+
+## Busca de produtos nos consignados — 04/11/2026
+
+- O envio de velas usa o seletor compartilhado de Modelo → Aroma, com busca por digitação como na produção. Quantidade e preço são conferidos antes de adicionar; a família permanece selecionada para incluir outro aroma.
+- A seleção informa o estoque disponível após reservas, preserva o ID e o preço do aroma, impede repetir o mesmo produto na lista e pede concluir ou limpar um produto em preenchimento antes de enviar.
+- Pedidos e produção conservam seus modos de seleção existentes. As regras de transferências, saldos iniciais, comissões e repasses permanecem nos mesmos comandos de estoque e financeiro.
+- Validação com dados fictícios: seleção individual e por família, múltiplos aromas, preço e estoque, produto repetido, rascunho incompleto, reabertura, regressões de pedidos/produção e navegador em desktop/tablet/celular.
