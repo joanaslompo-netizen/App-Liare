@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ArrowLeft, Store, Plus, Package, ClipboardCheck, Wallet } from 'lucide-react';
 import type { ConsignmentLocation, ConsignmentCountRow, FinanceData, Product, Sale, StockMovement } from '../types';
 import type { FinanceAction } from './FinanceView';
@@ -7,6 +7,7 @@ import { availableAtelier, consignmentChecks, consignmentFingerprint, consignmen
 import { formatCurrency, formatDate, formatNumber } from '../utils/formatters';
 import { localDateString } from '../utils/localDate';
 import { FinancialAccountSelect } from './FinancialAccountSelect';
+import { ProductModelPicker } from './ProductModelPicker';
 
 const panel = 'min-w-0 rounded-2xl border border-[#e5dad1] bg-white p-4 sm:p-5';
 const input = 'w-full min-w-0 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-base';
@@ -78,14 +79,29 @@ function LocationForm({ location, onAction, onSaved, onCancel }: { key?: string;
 }
 
 function SendForm({ location, products, sales, onAction, onCancel }: { key?: string; location: ConsignmentLocation; products: Product[]; sales: Sale[]; onAction: FinanceAction; onCancel: () => void }) {
-  const [id] = useState(newId), [date, setDate] = useState(localDateString()), [opening, setOpening] = useState(false), [search, setSearch] = useState('');
+  const [id] = useState(newId), [date, setDate] = useState(localDateString()), [opening, setOpening] = useState(false);
   const [items, setItems] = useState<{ productId: string; quantity: string; price: string }[]>([]), [busy, setBusy] = useState(false);
-  const catalog = products.filter(product => !product.isIntermediate && !product.isCustomRecipe && !product.isPaused && product.name.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR'))).sort((a,b) => a.name.localeCompare(b.name,'pt-BR'));
-  return <form aria-label="Envio de velas consignadas" className={`${panel} space-y-4`} onSubmit={async event => { event.preventDefault(); if (busy || !items.length) return; setBusy(true); try { await onAction({ type: 'consignment_send', id, locationId: location.id, date, opening, items: items.map(item => ({ productId: item.productId, quantity: Number(item.quantity), unitPriceCents: cents(Number(item.price)) })) }); } finally { setBusy(false); } }}>
+  const catalog = useMemo(() => products.filter(product => !product.isIntermediate && !product.isCustomRecipe && !product.isPaused), [products]);
+  const [productId, setProductId] = useState(''), [quantity, setQuantity] = useState('1'), [price, setPrice] = useState('');
+  const [draftTouched, setDraftTouched] = useState(false), [pickerReset, setPickerReset] = useState(0), [error, setError] = useState('');
+  const product = catalog.find(product => product.id === productId);
+  const available = product ? availableAtelier(product, sales) : 0;
+  const alreadyAdded = items.some(item => item.productId === productId);
+  const validDraft = !!product && !alreadyAdded && Number.isSafeInteger(Number(quantity)) && Number(quantity) > 0 && cents(Number(price)) > 0 && (opening || Number(quantity) <= available);
+  const clearDraft = () => { setProductId(''); setQuantity('1'); setPrice(''); setDraftTouched(false); setError(''); };
+  return <form aria-label="Envio de velas consignadas" className={`${panel} space-y-4`} onSubmit={async event => { event.preventDefault(); if (busy || !items.length) return; if (draftTouched) { setError('Adicione o produto em preenchimento ao envio ou limpe a seleção antes de confirmar.'); return; } setBusy(true); try { await onAction({ type: 'consignment_send', id, locationId: location.id, date, opening, items: items.map(item => ({ productId: item.productId, quantity: Number(item.quantity), unitPriceCents: cents(Number(item.price)) })) }); } finally { setBusy(false); } }}>
     <h3 className="text-lg font-semibold">Enviar / repor velas</h3><div className="grid gap-3 sm:grid-cols-2"><Field label="Data do envio"><input required type="date" className={input} value={date} onChange={event => setDate(event.target.value)} /></Field><Field label="Origem das peças"><select className={input} value={opening ? 'opening' : 'atelier'} onChange={event => setOpening(event.target.value === 'opening')}><option value="atelier">Transferir do estoque do ateliê</option><option value="opening">Saldo inicial que já está no local</option></select></Field></div>
     <p className="text-xs text-stone-500">{opening ? 'Use apenas para cadastrar peças que já estão no parceiro e não fazem parte do saldo atual do ateliê. Não desconta novamente do ateliê.' : 'Retira somente peças disponíveis no ateliê, preservando as reservas dos pedidos. Não registra venda nem entrada de dinheiro.'}</p>
-    <Field label="Buscar vela para enviar"><input type="search" className={input} value={search} onChange={event => setSearch(event.target.value)} placeholder="Digite o produto ou aroma" /></Field>
-    <Field label="Adicionar produto ao envio"><select className={input} value="" onChange={event => { const product = products.find(product => product.id === event.target.value); if (product && !items.some(item => item.productId === product.id)) setItems([...items, { productId: product.id, quantity: '1', price: String(product.actualPrice || product.suggestedPrice || 0) }]); }}><option value="">Selecione uma vela…</option>{catalog.filter(product => !items.some(item => item.productId === product.id)).map(product => <option key={product.id} value={product.id}>{product.name} · {availableAtelier(product, sales)} disponíveis no ateliê</option>)}</select></Field>
+    <div className="space-y-3 rounded-xl border border-[#e5dad1] bg-[#faf7f2] p-3">
+      <div key={pickerReset}><ProductModelPicker id="consignment-product-picker" products={catalog} selectedProductId={productId} searchable stockAvailable={product ? available : undefined} onSelectProduct={selected => {
+        setProductId(selected?.id || ''); setQuantity('1'); setPrice(selected ? String(selected.actualPrice || selected.suggestedPrice || 0) : ''); setDraftTouched(true); setError('');
+      }} /></div>
+      <div className="grid grid-cols-2 gap-3"><Field label="Quantidade para adicionar"><input type="number" min="1" step="1" max={opening ? undefined : available} disabled={!product} className={input} value={quantity} onChange={event => setQuantity(event.target.value)} /></Field><Field label="Preço de venda (R$)"><input type="number" min="0.01" step="0.01" inputMode="decimal" disabled={!product} className={input} value={price} onChange={event => setPrice(event.target.value)} /></Field></div>
+      {alreadyAdded && <p className="text-sm text-amber-800">Este produto já está no envio. Ajuste a quantidade na lista abaixo.</p>}
+      {product && !opening && Number(quantity) > available && <p className="text-sm text-amber-800">A quantidade supera o estoque disponível no ateliê.</p>}
+      <div className="flex flex-wrap gap-2"><button type="button" className={secondary} disabled={busy || !validDraft} onClick={() => { if (!validDraft) return; setItems([...items, { productId: product!.id, quantity, price }]); clearDraft(); }}>Adicionar ao envio</button>{draftTouched && <button type="button" className="text-sm text-[#92553f] underline" onClick={() => { clearDraft(); setPickerReset(value => value + 1); }}>Limpar seleção</button>}</div>
+    </div>
+    {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
     <div className="space-y-3">{items.map((item, index) => <div key={item.productId} className="rounded-xl border p-3"><div className="mb-3 flex items-start justify-between gap-2"><strong className="text-sm">{products.find(product => product.id === item.productId)?.name}</strong><button type="button" className="text-sm text-[#92553f] underline" onClick={() => setItems(items.filter((_, row) => row !== index))}>Remover</button></div><div className="grid grid-cols-2 gap-3"><Field label={`Quantidade do envio ${index + 1}`}><input required type="number" min="1" step="1" className={input} value={item.quantity} onChange={event => setItems(items.map((item, row) => row === index ? { ...item, quantity: event.target.value } : item))} /></Field><Field label={`Preço de venda ${index + 1} (R$)`}><input required type="number" min="0.01" step="0.01" inputMode="decimal" className={input} value={item.price} onChange={event => setItems(items.map((item, row) => row === index ? { ...item, price: event.target.value } : item))} /></Field></div></div>)}</div>
     <p className="text-xs text-stone-500">O preço fica registrado no envio. Na conferência, as peças dos envios mais antigos são consideradas primeiro.</p><div className="flex flex-wrap gap-2"><button className={primary} disabled={busy || !items.length}>{busy ? 'Salvando…' : opening ? 'Registrar saldo inicial no local' : 'Confirmar envio'}</button><button type="button" className={secondary} onClick={onCancel} disabled={busy}>Cancelar</button></div>
   </form>;
