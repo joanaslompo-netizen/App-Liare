@@ -84,3 +84,10 @@ Pausado significa que o material não está em uso no momento; o estoque registr
 - A retirada transfere o estoque do parceiro para o ateliê com histórico nas duas pontas, preservando os custos originais dos lotes e a média do estoque. Vendas, comissões, repasses e conferências anteriores são preservados.
 - Quantidades inteiras limitadas ao saldo do local; transações revalidam o estoque e impedem retirar duas vezes por repetição ou concorrência entre aparelhos. Cancelar não movimenta peças.
 - Validação com dados fictícios: retiradas parciais e totais, múltiplos aromas/lotes, saldo inicial, custos, histórico, financeiro, persistência, interface integrada e dois aparelhos simulados; tipagem/build e navegador em desktop/tablet/celular. Nenhuma movimentação de teste na conta real.
+
+## Lista de produtos para retirada — 05/11/2026
+
+- Retirada usa a busca compartilhada de Modelo → Aroma, exibindo somente produtos com saldo positivo no local selecionado. O agrupamento mantém a família original mesmo quando a receita-mãe não tem saldo no parceiro.
+- Selecione produto e quantidade e adicione à retirada; somente os itens escolhidos aparecem para ajustar ou remover. Produtos repetidos, quantidades acima do saldo e seleções ainda não adicionadas são sinalizados antes de confirmar. A opção de retirar tudo continua disponível.
+- O estoque mostrado no seletor é o do local, sem preço de venda. A transferência, custos e histórico seguem o comando existente; pedidos, produção e envios conservam a seleção padrão.
+- Validação com dados fictícios: filtro por local/modelo/aroma, produto com saldo apenas no ateliê ou em outro parceiro, produto repetido, seleção pendente, edição/remoção, retorno parcial/total e persistência. Tipagem/build, regressões do seletor e navegador em desktop/tablet/celular.

@@ -3,7 +3,7 @@ import { JSDOM } from 'jsdom';
 import React, { act } from 'react';
 import { workspaceStorage as storage } from '../src/utils/workspaceStorage';
 import { DEFAULT_PRODUCTS, DEFAULT_SETTINGS } from '../src/utils/storage';
-import { cashEffect, orderBalance } from '../src/utils/financeLedger';
+import { applyFinanceCommand, cashEffect, orderBalance } from '../src/utils/financeLedger';
 import { consignmentStock } from '../src/utils/consignments';
 const dom = new JSDOM('<!doctype html><div id="root"></div>',{url:'http://localhost/'});
 for(const key of ['window','document','HTMLElement','HTMLInputElement','HTMLSelectElement','HTMLTextAreaElement','Event','MouseEvent','localStorage']) Object.defineProperty(globalThis,key,{value:dom.window[key],configurable:true});
@@ -12,17 +12,23 @@ const alerts:string[]=[];
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true,alert:(message:string)=>alerts.push(message),confirm:()=>true,requestAnimationFrame:(fn:()=>void)=>setTimeout(fn,0),cancelAnimationFrame:clearTimeout});
 dom.window.HTMLElement.prototype.scrollIntoView=()=>{};dom.window.scrollTo=()=>{};
 storage.setItem('atelie_workspace_finance_v1',JSON.stringify({materials:[],products:[{...DEFAULT_PRODUCTS[0],id:'mother',name:'Latinha — Pera Silvestre',productFamily:'Latinha',fragrance:'Pera Silvestre',isFamilyMother:true,parentRecipeId:undefined,isCustomRecipe:false,isIntermediate:false,isPaused:false,currentStock:4,actualPrice:25},{...DEFAULT_PRODUCTS[0],id:'child',name:'Latinha — Chá Branco',productFamily:'Latinha',fragrance:'Chá Branco',isFamilyMother:false,parentRecipeId:'mother',isCustomRecipe:false,isIntermediate:false,isPaused:false,currentStock:3,actualPrice:30},{...DEFAULT_PRODUCTS[0],id:'paused',name:'Modelo pausado',isPaused:true,isIntermediate:false,isCustomRecipe:false},{...DEFAULT_PRODUCTS[0],id:'p',name:'Vela teste',actualPrice:25,currentStock:20,inventoryBusinessCost:10,inventoryLaborCost:5,isFamilyMother:false,parentRecipeId:undefined,productFamily:undefined,fragrance:undefined,isIntermediate:false,isCustomRecipe:false,isPaused:false}],purchases:[],productions:[],sales:[],customers:[],suppliers:[],paymentMethods:['PIX'],settings:DEFAULT_SETTINGS,todos:[],projects:[],finance:{version:1,entries:[],bills:[]},stockMovements:[]}));
+let fixture=JSON.parse(storage.getItem('atelie_workspace_finance_v1')!);
+fixture.products.push({...fixture.products[3],id:'other-only',name:'Somente no outro ponto',currentStock:9},{...fixture.products[0],id:'empty-aroma',name:'Latinha — Baunilha',fragrance:'Baunilha',isFamilyMother:false,parentRecipeId:'mother',currentStock:8});
+fixture=applyFinanceCommand(fixture,{type:'consignment_location',location:{id:'other',name:'Outro ponto',contact:'',commissionPercent:10,notes:'',updatedAt:'2026-11-05'},expected:null});
+fixture=applyFinanceCommand(fixture,{type:'consignment_send',id:'other-opening',locationId:'other',date:'2026-11-05',opening:true,items:[{productId:'other-only',quantity:5,unitPriceCents:2500}]});
+storage.setItem('atelie_workspace_finance_v1',JSON.stringify(fixture));
 const {createRoot}=await import('react-dom/client');const {default:App}=await import('../src/App');
 let root=createRoot(document.querySelector('#root')!);
 async function mount(){await act(async()=>root.render(<App/>));}
 async function click(text:string){const element=[...document.querySelectorAll('button')].find(element=>element.textContent?.trim()===text);assert(element,`Botão ${text}`);await act(async()=>element.click());}
 async function fill(label:string,value:string){const container=[...document.querySelectorAll('label')].find(element=>element.querySelector('span')?.textContent===label);assert(container,label);const element=container.querySelector('input,select,textarea') as HTMLInputElement;assert(element,label);await act(async()=>{const proto=element.tagName==='SELECT'?dom.window.HTMLSelectElement.prototype:element.tagName==='TEXTAREA'?dom.window.HTMLTextAreaElement.prototype:dom.window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value')!.set!.call(element,value);element.dispatchEvent(new dom.window.Event(element.tagName==='SELECT'?'change':'input',{bubbles:true}));});}
-async function chooseModel(query:string,name:string){const element=document.querySelector('#consignment-product-picker-model') as HTMLInputElement;assert(element,'Busca compartilhada por modelo');await act(async()=>{element.focus();Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value')!.set!.call(element,query);element.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});const option=[...document.querySelectorAll<HTMLButtonElement>('[role=option]')].find(option=>option.textContent?.trim()===name);assert(option,`Modelo ${name}`);await act(async()=>option.click());}
-async function chooseAroma(id:string){const element=document.querySelector('#consignment-product-picker-aroma') as HTMLSelectElement;assert(element,'Seleção por aroma');await act(async()=>{Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype,'value')!.set!.call(element,id);element.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});}
+async function chooseModel(query:string,name:string,picker='consignment-product-picker'){const element=document.querySelector(`#${picker}-model`) as HTMLInputElement;assert(element,'Busca compartilhada por modelo');await act(async()=>{element.focus();Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value')!.set!.call(element,query);element.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});const option=[...document.querySelectorAll<HTMLButtonElement>('[role=option]')].find(option=>option.textContent?.trim()===name);assert(option,`Modelo ${name}`);await act(async()=>option.click());}
+async function chooseAroma(id:string,picker='consignment-product-picker'){const element=document.querySelector(`#${picker}-aroma`) as HTMLSelectElement;assert(element,'Seleção por aroma');await act(async()=>{Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype,'value')!.set!.call(element,id);element.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});}
+async function chooseWithdrawal(query:string,name:string,id?:string){await chooseModel(query,name,'consignment-withdrawal-picker');if(id)await chooseAroma(id,'consignment-withdrawal-picker');}
 async function open(){await act(async()=>(document.querySelector('[aria-label="Abrir atalhos rápidos"]') as HTMLElement).click());await click('Consignações');}
 const saved=()=>JSON.parse(storage.getItem('atelie_workspace_finance_v1')!);
 await mount();await open();await click('Novo local');await fill('Nome do local','Ponto de teste');await fill('Comissão do local (%)','20');await click('Salvar local');
-assert.equal(saved().finance.consignmentLocations[0].commissionPercent,20);
+assert.equal(saved().finance.consignmentLocations.find((value:any)=>value.name==='Ponto de teste').commissionPercent,20);
 await click('Enviar / repor velas');await chooseModel('LATINHA','Latinha');
 assert.equal((document.querySelector('#consignment-product-picker-aroma') as HTMLSelectElement).value,'','Modelo não escolhe aroma sozinho');
 await chooseAroma('child');assert.equal(([...document.querySelectorAll('label')].find(label=>label.querySelector('span')?.textContent==='Preço de venda (R$)')!.querySelector('input') as HTMLInputElement).value,'30');
@@ -35,7 +41,7 @@ assert(document.querySelector('[aria-label="Prévia do acerto"]')?.textContent?.
 assert.equal((([...document.querySelectorAll('button')].find(element=>element.textContent==='Confirmar conferência')) as HTMLButtonElement).disabled,true);
 await act(async()=>{const checkbox=[...document.querySelectorAll('label')].find(label=>label.textContent?.includes('Conferi as quantidades'))!.querySelector('input')!;checkbox.click();});
 await click('Confirmar conferência');
-let data=saved();const locationId=data.finance.consignmentLocations[0].id;
+let data=saved();const locationId=data.finance.consignmentLocations.find((value:any)=>value.name==='Ponto de teste').id;
 assert.equal(data.products.find((product:any)=>product.id==='p').currentStock,11);assert.equal(consignmentStock(data.stockMovements,locationId)[0].quantity,6);assert.equal(data.sales[0].totalRevenue,75);assert.equal(data.sales[0].consignmentCommissionCents,1500);assert.equal(orderBalance(data.sales[0],data.finance),6000);assert.equal(data.finance.entries.length,0);
 await click('Registrar repasse');await fill('Valor do repasse recebido (R$)','20');await click('Confirmar recebimento do repasse');
 data=saved();assert.equal(orderBalance(data.sales[0],data.finance),4000);assert.equal(data.finance.entries.reduce((n:number,entry:any)=>n+cashEffect(entry,data.finance),0),2000);
@@ -52,19 +58,30 @@ assert.equal((document.querySelector('#consignment-product-picker-model') as HTM
 data=saved();assert.equal(data.products.find((product:any)=>product.id==='child').currentStock,2);assert.equal(data.products.find((product:any)=>product.id==='mother').currentStock,3);
 assert(consignmentStock(data.stockMovements,locationId).some(row=>row.productId==='child'&&row.quantity===1));assert(consignmentStock(data.stockMovements,locationId).some(row=>row.productId==='mother'&&row.quantity===1));
 const financialBeforeWithdrawal=JSON.stringify({finance:data.finance,sales:data.sales});
-await click('Retirar produtos');await fill('Retirar · Vela teste','2');await click('Cancelar');
+await click('Retirar produtos');assert.equal(document.querySelectorAll('[aria-label="Retirada de produtos consignados"] input[type=number]').length,1,'Começa sem renderizar todos os produtos.');
+await chooseWithdrawal('vela','Vela teste');assert(document.querySelector('#consignment-withdrawal-picker')?.textContent?.includes('Estoque neste local: 6 un'));assert(!document.querySelector('#consignment-withdrawal-picker')?.textContent?.includes('Venda:'));
+await fill('Quantidade para retirar','2');await click('Adicionar à retirada');await click('Cancelar');
 assert.equal(saved().products.find((product:any)=>product.id==='p').currentStock,11,'Cancelar não movimenta estoque.');
-await click('Retirar produtos');await fill('Retirar · Vela teste','7');
-assert.equal(([...document.querySelectorAll('button')].find(button=>button.textContent==='Confirmar retirada') as HTMLButtonElement).disabled,true);
-await fill('Retirar · Vela teste','2');await fill('Retirar · Latinha — Chá Branco','1');await fill('Retirar · Latinha — Pera Silvestre','1');await fill('Observações da retirada (opcional)','Retorno de teste');await click('Confirmar retirada');
+await click('Retirar produtos');
+const search=document.querySelector('#consignment-withdrawal-picker-model') as HTMLInputElement;await act(async()=>search.focus());
+assert.deepEqual([...document.querySelectorAll('[role=option]')].map(element=>element.textContent?.trim()),['Latinha','Vela teste'],'Lista só mostra modelos com peças no local, sem o produto do outro ponto.');
+await chooseWithdrawal('vela','Vela teste');await fill('Quantidade para retirar','7');assert.equal(([...document.querySelectorAll('button')].find(button=>button.textContent==='Adicionar à retirada') as HTMLButtonElement).disabled,true);
+await fill('Quantidade para retirar','2');await click('Adicionar à retirada');await fill('Retirar · Vela teste','7');assert.equal(([...document.querySelectorAll('button')].find(button=>button.textContent==='Confirmar retirada') as HTMLButtonElement).disabled,true);await fill('Retirar · Vela teste','2');
+await chooseWithdrawal('vela','Vela teste');assert.equal(([...document.querySelectorAll('button')].find(button=>button.textContent==='Adicionar à retirada') as HTMLButtonElement).disabled,true);await click('Limpar seleção');
+await chooseWithdrawal('latinha','Latinha');assert.deepEqual([...document.querySelectorAll('#consignment-withdrawal-picker-aroma option')].map((element:any)=>element.value),['','child','mother'],'Aroma sem estoque local não aparece.');
+await chooseAroma('child','consignment-withdrawal-picker');const beforeIncomplete=storage.getItem('atelie_workspace_finance_v1');await click('Confirmar retirada');assert(document.querySelector('[role=alert]')?.textContent?.includes('produto em preenchimento'));assert.equal(storage.getItem('atelie_workspace_finance_v1'),beforeIncomplete);
+await click('Adicionar à retirada');await chooseWithdrawal('latinha','Latinha','mother');await click('Adicionar à retirada');
+await click('Remover');await chooseWithdrawal('vela','Vela teste');await fill('Quantidade para retirar','2');await click('Adicionar à retirada');
+await fill('Observações da retirada (opcional)','Retorno de teste');await click('Confirmar retirada');
 data=saved();assert.equal(data.products.find((product:any)=>product.id==='p').currentStock,13);assert.equal(data.products.find((product:any)=>product.id==='child').currentStock,3);assert.equal(data.products.find((product:any)=>product.id==='mother').currentStock,4);
 assert.deepEqual(consignmentStock(data.stockMovements,locationId).map(row=>({productId:row.productId,quantity:row.quantity})),[{productId:'p',quantity:4}]);
 assert.equal(JSON.stringify({finance:data.finance,sales:data.sales}),financialBeforeWithdrawal);assert(document.body.textContent?.includes('Retirada registrada. As peças voltaram'));assert(document.body.textContent?.includes('Retorno de teste'));
 await act(async()=>root.unmount());root=createRoot(document.querySelector('#root')!);await mount();await open();
 await act(async()=>[...document.querySelectorAll('button')].find(element=>element.textContent?.includes('Ponto de teste'))!.click());
-await click('Retirar produtos');await click('Retirar todos os produtos');await click('Confirmar retirada');
+await click('Retirar produtos');await act(async()=>(document.querySelector('#consignment-withdrawal-picker-model') as HTMLInputElement).focus());assert.deepEqual([...document.querySelectorAll('[role=option]')].map(element=>element.textContent?.trim()),['Vela teste'],'Modelos sem saldo deixam de aparecer depois de retirar.');await click('Retirar todos os produtos');await click('Confirmar retirada');
 data=saved();assert.equal(data.products.find((product:any)=>product.id==='p').currentStock,17);assert.deepEqual(consignmentStock(data.stockMovements,locationId),[]);
 assert.equal(([...document.querySelectorAll('button')].find(button=>button.textContent==='Retirar produtos') as HTMLButtonElement).disabled,true);assert.equal(JSON.stringify({finance:data.finance,sales:data.sales}),financialBeforeWithdrawal);
+assert.equal(consignmentStock(data.stockMovements,'other')[0].quantity,5);assert.equal(data.products.find((product:any)=>product.id==='other-only').currentStock,9);
 assert.deepEqual(alerts,[]);
 await act(async()=>root.unmount());
 console.log('App: busca modelo/aroma, cadastro/envio/conferência/repasse; retirada parcial e total, limites, cancelamento, retorno de cada aroma, persistência, histórico e financeiro preservado passaram.');
