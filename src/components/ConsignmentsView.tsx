@@ -45,7 +45,7 @@ export function ConsignmentsView({ products, sales, finance, stockMovements, onA
       </section>
       {!location.archived && <div className="flex flex-wrap gap-2"><button className={primary} onClick={() => open('send')}><Package className="mr-1 inline h-4 w-4" />Enviar / repor velas</button><button className={secondary} disabled={!rows.length} onClick={() => open('withdraw')}><PackageMinus className="mr-1 inline h-4 w-4" />Retirar produtos</button><button className={secondary} disabled={!rows.length} onClick={() => open('check')}><ClipboardCheck className="mr-1 inline h-4 w-4" />Conferir período</button><button className={secondary} disabled={!due} onClick={() => open('payment')}><Wallet className="mr-1 inline h-4 w-4" />Registrar repasse</button></div>}
       {form === 'send' && <SendForm key={location.id} location={location} products={products} sales={sales} onAction={action} onCancel={() => setForm(null)} />}
-      {form === 'withdraw' && <WithdrawForm key={location.id} location={location} moves={stockMovements} onAction={action} onCancel={() => setForm(null)} />}
+      {form === 'withdraw' && <WithdrawForm key={location.id} location={location} products={products} moves={stockMovements} onAction={action} onCancel={() => setForm(null)} />}
       {form === 'check' && <CountForm key={location.id} location={location} moves={stockMovements} onAction={action} onCancel={() => setForm(null)} />}
       {form === 'payment' && <PaymentForm key={location.id} location={location} due={due} finance={finance} onAction={action} onCancel={() => setForm(null)} />}
       {!form && <section className={panel}><h3 className="mb-3 font-semibold">Estoque neste local</h3><div className="divide-y">{rows.map(row => <div key={row.productId} className="flex items-center justify-between gap-3 py-3 text-sm"><span>{row.name}</span><strong className="shrink-0">{row.quantity} un.</strong></div>)}</div>{!rows.length && <p className="text-sm text-stone-500">Registre o primeiro envio ou o saldo que já está neste local.</p>}</section>}
@@ -79,26 +79,46 @@ function LocationForm({ location, onAction, onSaved, onCancel }: { key?: string;
   </form>;
 }
 
-function WithdrawForm({ location, moves, onAction, onCancel }: { key?: string; location: ConsignmentLocation; moves: StockMovement[]; onAction: FinanceAction; onCancel: () => void }) {
+function WithdrawForm({ location, products, moves, onAction, onCancel }: { key?: string; location: ConsignmentLocation; products: Product[]; moves: StockMovement[]; onAction: FinanceAction; onCancel: () => void }) {
   const [snapshot] = useState(() => [...moves]), [id] = useState(newId);
   const [date, setDate] = useState(localDateString()), [note, setNote] = useState(''), [busy, setBusy] = useState(false);
   const stock = useMemo(() => consignmentStock(snapshot, location.id), [snapshot, location.id]);
-  const [quantities, setQuantities] = useState<Record<string, string>>({});
-  const valid = stock.every(row => { const quantity = Number(quantities[row.productId] || 0); return Number.isSafeInteger(quantity) && quantity >= 0 && quantity <= row.quantity; });
-  const items = stock.map(row => ({ productId: row.productId, quantity: Number(quantities[row.productId] || 0) })).filter(item => item.quantity > 0);
+  const availableProductIds = useMemo(() => stock.map(row => row.productId), [stock]);
+  const [selectedItems, setSelectedItems] = useState<{ productId: string; quantity: string }[]>([]);
+  const [productId, setProductId] = useState(''), [quantity, setQuantity] = useState('1');
+  const [draftTouched, setDraftTouched] = useState(false), [pickerReset, setPickerReset] = useState(0), [error, setError] = useState('');
+  const selected = stock.find(row => row.productId === productId);
+  const alreadyAdded = selectedItems.some(item => item.productId === productId);
+  const validQuantity = (value: string, available: number) => Number.isSafeInteger(Number(value)) && Number(value) > 0 && Number(value) <= available;
+  const validDraft = !!selected && !alreadyAdded && validQuantity(quantity, selected.quantity);
+  const valid = selectedItems.every(item => validQuantity(item.quantity, stock.find(row => row.productId === item.productId)?.quantity || 0));
+  const items = selectedItems.map(item => ({ productId: item.productId, quantity: Number(item.quantity) }));
   const total = items.reduce((sum, item) => sum + item.quantity, 0);
+  const clearDraft = () => { setProductId(''); setQuantity('1'); setDraftTouched(false); setError(''); };
   return <form aria-label="Retirada de produtos consignados" className={`${panel} space-y-4`} onSubmit={async event => {
-    event.preventDefault(); if (busy || !valid || !items.length) return; setBusy(true);
+    event.preventDefault(); if (busy || !valid || !items.length) return;
+    if (draftTouched) { setError('Adicione o produto em preenchimento à retirada ou limpe a seleção antes de confirmar.'); return; }
+    setBusy(true);
     try { await onAction({ type: 'consignment_withdraw', id, locationId: location.id, date, expectedStock: consignmentStockFingerprint(snapshot, location.id), items, note }); } finally { setBusy(false); }
   }}>
-    <div><h3 className="text-lg font-semibold">Retirar produtos</h3><p className="mt-1 text-sm text-stone-500">Escolha as quantidades que vão sair de {location.name} e voltar para o estoque do ateliê.</p></div>
+    <div><h3 className="text-lg font-semibold">Retirar produtos</h3><p className="mt-1 text-sm text-stone-500">Selecione os produtos que vão sair de {location.name} e voltar para o estoque do ateliê. A lista mostra somente os que têm estoque neste local.</p></div>
     <Field label="Data da retirada"><input required type="date" className={input} value={date} onChange={event => setDate(event.target.value)} /></Field>
-    <button type="button" className={secondary} disabled={busy || !stock.length} onClick={() => setQuantities(Object.fromEntries(stock.map(row => [row.productId, String(row.quantity)])))}>Retirar todos os produtos</button>
-    <div className="space-y-3">{stock.map(row => {
-      const quantity = Number(quantities[row.productId] || 0), invalid = !Number.isSafeInteger(quantity) || quantity < 0 || quantity > row.quantity;
+    <div className="space-y-3 rounded-xl border border-[#e5dad1] bg-[#faf7f2] p-3">
+      <div key={pickerReset}><ProductModelPicker id="consignment-withdrawal-picker" products={products} availableProductIds={availableProductIds} selectedProductId={productId} searchable stockAvailable={selected?.quantity} stockLabel="Estoque neste local" showPrice={false} onSelectProduct={product => { setProductId(product?.id || ''); setQuantity('1'); setDraftTouched(true); setError(''); }} /></div>
+      <Field label="Quantidade para retirar"><input type="number" min="1" max={selected?.quantity} step="1" inputMode="numeric" disabled={!selected} className={input} value={quantity} onChange={event => setQuantity(event.target.value)} /></Field>
+      {alreadyAdded && <p className="text-sm text-amber-800">Este produto já está na retirada. Ajuste a quantidade na lista abaixo.</p>}
+      {selected && !validQuantity(quantity, selected.quantity) && <p className="text-sm text-amber-800">Use uma quantidade inteira entre 1 e {selected.quantity}.</p>}
+      <div className="flex flex-wrap gap-2"><button type="button" className={secondary} disabled={busy || !validDraft} onClick={() => { if (!validDraft) return; setSelectedItems([...selectedItems, { productId, quantity }]); clearDraft(); }}>Adicionar à retirada</button>{draftTouched && <button type="button" className="text-sm text-[#92553f] underline" onClick={() => { clearDraft(); setPickerReset(value => value + 1); }}>Limpar seleção</button>}</div>
+    </div>
+    {error && <p role="alert" className="text-sm text-amber-800">{error}</p>}
+    <button type="button" className={secondary} disabled={busy || !stock.length} onClick={() => { setSelectedItems(stock.map(row => ({ productId: row.productId, quantity: String(row.quantity) }))); clearDraft(); setPickerReset(value => value + 1); }}>Retirar todos os produtos</button>
+    <div className="space-y-3">{selectedItems.map(item => {
+      const row = stock.find(row => row.productId === item.productId)!;
+      const quantity = Number(item.quantity), invalid = !validQuantity(item.quantity, row.quantity);
       return <div key={row.productId} className="rounded-xl border border-[#e5dad1] p-3">
-        <div className="flex flex-wrap justify-between gap-1 text-sm"><strong>{row.name}</strong><span className="text-stone-500">{row.quantity} un. no local</span></div>
-        <div className="mt-3 grid items-end gap-3 sm:grid-cols-2"><Field label={`Retirar · ${row.name}`}><input type="number" min="0" max={row.quantity} step="1" inputMode="numeric" className={input} value={quantities[row.productId] || ''} placeholder="0" aria-invalid={invalid} onChange={event => setQuantities({ ...quantities, [row.productId]: event.target.value })} /></Field><p className="pb-2 text-sm text-stone-500">{invalid ? 'Use uma quantidade inteira entre 0 e ' + row.quantity + '.' : `${row.quantity - quantity} un. vão continuar no local`}</p></div>
+        <div className="mb-2 flex items-start justify-between gap-2"><strong className="text-sm">{row.name}</strong><button type="button" className="text-sm text-[#92553f] underline" disabled={busy} aria-label={`Remover ${row.name} da retirada`} onClick={() => setSelectedItems(selectedItems.filter(value => value.productId !== row.productId))}>Remover</button></div>
+        <span className="text-sm text-stone-500">{row.quantity} un. no local</span>
+        <div className="mt-3 grid items-end gap-3 sm:grid-cols-2"><Field label={`Retirar · ${row.name}`}><input required type="number" min="1" max={row.quantity} step="1" inputMode="numeric" className={input} value={item.quantity} aria-invalid={invalid} onChange={event => setSelectedItems(selectedItems.map(value => value.productId === row.productId ? { ...value, quantity: event.target.value } : value))} /></Field><p className="pb-2 text-sm text-stone-500">{invalid ? 'Use uma quantidade inteira entre 1 e ' + row.quantity + '.' : `${row.quantity - quantity} un. vão continuar no local`}</p></div>
       </div>;
     })}</div>
     <Field label="Observações da retirada (opcional)"><textarea className={input} value={note} onChange={event => setNote(event.target.value)} /></Field>

@@ -12,6 +12,9 @@ export function ProductModelPicker({
   mode = "sale",
   searchable = false,
   stockAvailable,
+  availableProductIds,
+  stockLabel,
+  showPrice = true,
 }: {
   products: Product[];
   selectedProductId: string;
@@ -20,10 +23,18 @@ export function ProductModelPicker({
   mode?: "sale" | "production";
   searchable?: boolean;
   stockAvailable?: number;
+  availableProductIds?: string[];
+  stockLabel?: string;
+  showPrice?: boolean;
 }) {
   const models = useMemo(
-    () => getProductModels(products, mode),
-    [products, mode],
+    () => {
+      const models = getProductModels(products, mode);
+      if (!availableProductIds) return models;
+      const allowed = new Set(availableProductIds);
+      return models.map(model => ({ ...model, products: model.products.filter(product => allowed.has(product.id)) })).filter(model => model.products.length > 0);
+    },
+    [products, mode, availableProductIds],
   );
   const [modelId, setModelId] = useState("");
   const selected = products.find((p) => p.id === selectedProductId);
@@ -105,8 +116,8 @@ export function ProductModelPicker({
       </div>
       {selected && mode === "sale" && (
         <p className="text-xs text-[#75665c]">
-          {stockAvailable == null ? 'Estoque' : 'Disponível no ateliê'}: {stockAvailable ?? selected.currentStock ?? 0} un · Venda:{" "}
-          {formatCurrency(selected.actualPrice)}
+          {stockLabel || (stockAvailable == null ? 'Estoque' : 'Disponível no ateliê')}: {stockAvailable ?? selected.currentStock ?? 0} un
+          {showPrice && <> · Venda: {formatCurrency(selected.actualPrice)}</>}
           {selected.isPaused ? " · Produto pausado" : ""}
         </p>
       )}
