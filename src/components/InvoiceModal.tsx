@@ -1,9 +1,9 @@
 import { ModalFrame } from './ModalFrame';
 import React, { useEffect, useMemo, useRef } from 'react';
-import { X } from 'lucide-react';
+import { X, Printer, MessageCircle } from 'lucide-react';
 import { AtelierSettings, Customer, Product, Sale } from '../types';
 import { buildGroupedInvoiceHtml, buildInvoiceHtml, getGroupedInvoiceDocumentTitle, getInvoiceDocumentTitle } from '../utils/invoice';
-import { InvoicePdfActions } from './InvoicePdfActions';
+import { getInvoiceWhatsApp } from '../utils/invoiceWhatsApp';
 
 type InvoiceModalProps = {
   settings: AtelierSettings; customers: Customer[]; products: Product[]; onClose: () => void;
@@ -18,7 +18,7 @@ export const InvoiceModal = ({ sale, sales, settings, customers, products, onClo
     return () => { document.title = previousTitle; };
   }, [invoiceTitle]);
   const html = useMemo(() => sales ? buildGroupedInvoiceHtml(sales, settings, customers, products) : buildInvoiceHtml(sale, settings, customers, products), [sale, sales, settings, customers, products]);
-  const orders = useMemo(() => sales || [sale], [sales, sale]);
+  const whatsapp = useMemo(() => getInvoiceWhatsApp(sales || [sale], settings, customers, products), [sale, sales, settings, customers, products]);
   return <ModalFrame onClose={onClose} aria-labelledby="invoice-title" className="bg-stone-900/60">
     <section className="bg-white rounded-2xl w-full max-w-4xl h-[900px] flex flex-col overflow-hidden">
       <header className="liare-modal-header p-4 border-b flex items-center justify-between gap-3">
@@ -27,7 +27,15 @@ export const InvoiceModal = ({ sale, sales, settings, customers, products, onClo
       </header>
       {!settings.pixKey && <p className="px-4 pt-3 text-sm text-amber-800">Cadastre sua chave Pix nas configurações para incluí-la na fatura.</p>}
       <iframe ref={frame} title={invoiceTitle} srcDoc={html} className="liare-modal-body flex-1 min-h-0 w-full border-0" />
-      <InvoicePdfActions orders={orders} grouped={!!sales} settings={settings} customers={customers} products={products} onPrint={() => { frame.current?.contentWindow?.focus(); frame.current?.contentWindow?.print(); }} />
+      <footer className="shrink-0 p-4 border-t space-y-3">
+        {whatsapp.error ? <p role="status" className="text-sm text-amber-800">{whatsapp.error}</p> : <p className="text-sm text-stone-600">WhatsApp do cliente: <strong>{whatsapp.phone}</strong>. A fatura abre como mensagem pronta; você confirma o envio na conversa.</p>}
+        <div className="flex flex-wrap gap-2">
+          {whatsapp.url ? <a href={whatsapp.url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-emerald-700 text-white rounded-xl inline-flex items-center gap-2"><MessageCircle className="w-4 h-4" />Enviar no WhatsApp</a> : <button type="button" disabled className="px-4 py-2 bg-emerald-700 text-white rounded-xl inline-flex items-center gap-2 opacity-50"><MessageCircle className="w-4 h-4" />Enviar no WhatsApp</button>}
+          <button type="button" onClick={() => { frame.current?.contentWindow?.focus(); frame.current?.contentWindow?.print(); }}
+            className="px-4 py-2 bg-stone-900 text-white rounded-xl flex items-center gap-2"><Printer className="w-4 h-4" />Salvar PDF / Imprimir</button>
+        </div>
+        <p className="text-xs text-stone-500">Para enviar em PDF, escolha Salvar PDF / Imprimir e anexe o arquivo na conversa.</p>
+      </footer>
     </section>
   </ModalFrame>;
 };
