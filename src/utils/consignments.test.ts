@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { applyFinanceCommand, cashEffect, emptyFinance, makeEntry, orderBalance, orderPaid, type FinanceCommand } from './financeLedger';
-import { applyConsignmentStockCommand, consignmentFingerprint, consignmentStock, consignmentStockFingerprint, previewConsignmentCheck } from './consignments';
+import { applyConsignmentStockCommand, consignmentChecks, consignmentFingerprint, consignmentLots, consignmentStock, consignmentStockFingerprint, previewConsignmentCheck } from './consignments';
 import { DEFAULT_PRODUCTS, DEFAULT_SETTINGS } from './storage';
 import { salesReportLines } from './salesReports';
 import type { ConsignmentLocation, Sale } from '../types';
@@ -77,4 +77,35 @@ periods=applyFinanceCommand(periods,{...payment,id:'oldest-first',amountCents:65
 assert.equal(orderBalance(periods.sales.find(sale=>sale.id==='consignment:week-one')!,periods.finance),0);
 assert.equal(orderBalance(periods.sales.find(sale=>sale.id==='consignment:aaa-newer')!,periods.finance),1500);
 assert.equal(periods.finance.entries.reduce((n,entry)=>n+cashEffect(entry,periods.finance),0),6500);
-console.log('Consignações: envio e saldo inicial, reservas, lotes/preços/custos, conferência, comissão em centavos, retornos/perdas, acertos sem caixa, repasses parciais, repetição, conflitos e correção com histórico passaram.');
+// A retirada é uma transferência independente da conferência e do financeiro.
+const sent = applyFinanceCommand(base(), send);
+const withdraw: FinanceCommand = { type:'consignment_withdraw', id:'withdraw', locationId:'store', date:'2026-11-03', expectedStock:consignmentStockFingerprint(sent.stockMovements,'store'), items:[{productId:'p',quantity:3}], note:'Retirada de teste' };
+const withdrawn = applyFinanceCommand(sent,withdraw);
+assert.equal(withdrawn.products[0].currentStock,23);assert.equal(consignmentStock(withdrawn.stockMovements,'store')[0].quantity,7);
+assert.deepEqual(withdrawn.sales,sent.sales);assert.deepEqual(withdrawn.finance,sent.finance);assert.equal(consignmentChecks(withdrawn.stockMovements,'store').length,0);
+assert.equal(applyFinanceCommand(withdrawn,withdraw),withdrawn,'Retry never returns stock twice.');
+assert.throws(()=>applyFinanceCommand(withdrawn,{...withdraw,items:[{productId:'p',quantity:2}]}),/outros dados/);
+assert.throws(()=>applyFinanceCommand(withdrawn,{...withdraw,id:'stale-withdraw'}),/estoque.*mudou/);
+assert.equal(withdrawn.stockMovements.filter(move=>move.consignment?.operationId==='withdraw').length,2);
+assert.equal(withdrawn.stockMovements.at(-2)!.note,'Retirada de teste');assert.equal(withdrawn.stockMovements.at(-1)!.locationId,undefined);
+for(const items of [[],[{productId:'p',quantity:0}],[{productId:'p',quantity:-1}],[{productId:'p',quantity:1.5}],[{productId:'p',quantity:11}],[{productId:'missing',quantity:1}],[{productId:'p',quantity:1},{productId:'p',quantity:1}],[{productId:'p',quantity:1},{productId:'missing',quantity:1}]]){
+ assert.throws(()=>applyFinanceCommand(sent,{...withdraw,items}));
+}
+assert.equal(sent.products[0].currentStock,20,'Failed withdrawals never partially change the original.');assert.equal(sent.stockMovements.length,2);
+const returnedOpening=applyFinanceCommand(opened,{...withdraw,expectedStock:consignmentStockFingerprint(opened.stockMovements,'store'),items:[{productId:'p',quantity:10}]});
+assert.equal(returnedOpening.products[0].currentStock,40);assert.deepEqual(consignmentStock(returnedOpening.stockMovements,'store'),[]);
+let mixed=applyFinanceCommand(base(),send);
+mixed.products[0]={...mixed.products[0],inventoryBusinessCost:20,inventoryLaborCost:8};
+mixed=applyFinanceCommand(mixed,{...send,id:'new-lot',items:[{productId:'p',quantity:2,unitPriceCents:3000}]});
+mixed=applyFinanceCommand(mixed,{...withdraw,expectedStock:consignmentStockFingerprint(mixed.stockMovements,'store'),items:[{productId:'p',quantity:11}]});
+assert.equal(mixed.products[0].currentStock,29);assert.ok(Math.abs(mixed.products[0].inventoryBusinessCost!-480/29)<1e-9);assert.ok(Math.abs(mixed.products[0].inventoryLaborCost!-202/29)<1e-9);
+assert.equal(consignmentStock(mixed.stockMovements,'store')[0].quantity,1);assert.equal(consignmentLots(mixed.stockMovements,'store').find(lot=>lot.quantity)!.businessCost,20);
+let twoLocations=applyFinanceCommand(sent,{type:'consignment_location',location:{...location,id:'other'},expected:null});
+twoLocations=applyFinanceCommand(twoLocations,{...send,id:'other-send',locationId:'other',items:[{productId:'p',quantity:2,unitPriceCents:2500}]});
+const otherStock=consignmentStock(twoLocations.stockMovements,'other');
+twoLocations=applyFinanceCommand(twoLocations,withdraw);assert.deepEqual(consignmentStock(twoLocations.stockMovements,'other'),otherStock);
+const afterSales=applyFinanceCommand(periods,{...withdraw,expectedStock:consignmentStockFingerprint(periods.stockMovements,'store'),items:[{productId:'p',quantity:6}]});
+assert.deepEqual(afterSales.sales,periods.sales);assert.deepEqual(afterSales.finance,periods.finance);assert.deepEqual(consignmentChecks(afterSales.stockMovements,'store'),consignmentChecks(periods.stockMovements,'store'));
+assert.equal(afterSales.products[0].currentStock,26);assert.deepEqual(consignmentStock(afterSales.stockMovements,'store'),[]);
+assert.throws(()=>applyFinanceCommand(afterSales,{...undo,id:'undo-after-withdraw',originalId:'aaa-newer',expectedStock:consignmentStockFingerprint(afterSales.stockMovements,'store')}),/antes de uma nova movimentação/);
+console.log('Consignações: envios, reservas, lotes/custos, conferência/comissão, repasses e correção; retirada parcial/total, saldo inicial, histórico, financeiro preservado, validação e repetição passaram.');
