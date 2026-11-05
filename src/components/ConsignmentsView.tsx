@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowLeft, Store, Plus, Package, ClipboardCheck, Wallet } from 'lucide-react';
+import { ArrowLeft, Store, Plus, Package, PackageMinus, ClipboardCheck, Wallet } from 'lucide-react';
 import type { ConsignmentLocation, ConsignmentCountRow, FinanceData, Product, Sale, StockMovement } from '../types';
 import type { FinanceAction } from './FinanceView';
 import { activeEntries, cents, isActiveOrder, money, newId, orderBalance, orderPaid } from '../utils/financeLedger';
@@ -20,7 +20,7 @@ type Props = { key?: string; products: Product[]; sales: Sale[]; finance: Financ
 
 export function ConsignmentsView({ products, sales, finance, stockMovements, onAction, initialLocationId }: Props) {
   const [selected, setSelected] = useState(initialLocationId || '');
-  const [form, setForm] = useState<'location' | 'send' | 'check' | 'payment' | null>(null);
+  const [form, setForm] = useState<'location' | 'send' | 'withdraw' | 'check' | 'payment' | null>(null);
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const locations = finance.consignmentLocations || [];
@@ -32,7 +32,7 @@ export function ConsignmentsView({ products, sales, finance, stockMovements, onA
   const lastMove = stockMovements.filter(move => move.consignment?.locationId === selected).at(-1);
   const latestCheck = checks.find(check => check.consignment?.operationId === lastMove?.consignment?.operationId);
   const latestCheckPaid = !!latestCheck && activeEntries(finance).some(entry => entry.saleId === `consignment:${latestCheck.consignment!.operationId}`);
-  const action: FinanceAction = async command => { setNotice(''); const ok = await onAction(command); if (ok) { setForm(null); setNotice('Registrado. Estoques e saldos foram atualizados.'); } return ok; };
+  const action: FinanceAction = async command => { setNotice(''); const ok = await onAction(command); if (ok) { setForm(null); setNotice(command.type === 'consignment_withdraw' ? 'Retirada registrada. As peças voltaram para o estoque do ateliê.' : 'Registrado. Estoques e saldos foram atualizados.'); } return ok; };
   const open = (next: typeof form) => { setNotice(''); setForm(next); };
   return <div className="liare-consignments space-y-5">
     <header className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-2xl font-bold"><Store className="h-6 w-6" />Consignações</h2><p className="mt-1 text-sm text-stone-500">Velas em cada local, conferências e repasses.</p></div>{!location && <button className={primary} onClick={() => open('location')}><Plus className="mr-1 inline h-4 w-4" />Novo local</button>}</header>
@@ -43,8 +43,9 @@ export function ConsignmentsView({ products, sales, finance, stockMovements, onA
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4"><Metric label="Peças no local" value={rows.reduce((sum, row) => sum + row.quantity, 0)} /><Metric label="Valor das peças no local" value={currency(rows.reduce((sum, row) => sum + row.valueCents, 0))} /><Metric label="Repasse a receber" value={currency(due)} /><Metric label="Última conferência" value={checks.length ? formatDate(checks.at(-1)!.date) : 'Ainda não conferido'} /></div>
         <p className="mt-3 text-xs text-stone-500">As peças no local continuam sendo suas. Só vendas confirmadas geram repasse a receber.</p>
       </section>
-      {!location.archived && <div className="flex flex-wrap gap-2"><button className={primary} onClick={() => open('send')}><Package className="mr-1 inline h-4 w-4" />Enviar / repor velas</button><button className={secondary} disabled={!rows.length} onClick={() => open('check')}><ClipboardCheck className="mr-1 inline h-4 w-4" />Conferir período</button><button className={secondary} disabled={!due} onClick={() => open('payment')}><Wallet className="mr-1 inline h-4 w-4" />Registrar repasse</button></div>}
+      {!location.archived && <div className="flex flex-wrap gap-2"><button className={primary} onClick={() => open('send')}><Package className="mr-1 inline h-4 w-4" />Enviar / repor velas</button><button className={secondary} disabled={!rows.length} onClick={() => open('withdraw')}><PackageMinus className="mr-1 inline h-4 w-4" />Retirar produtos</button><button className={secondary} disabled={!rows.length} onClick={() => open('check')}><ClipboardCheck className="mr-1 inline h-4 w-4" />Conferir período</button><button className={secondary} disabled={!due} onClick={() => open('payment')}><Wallet className="mr-1 inline h-4 w-4" />Registrar repasse</button></div>}
       {form === 'send' && <SendForm key={location.id} location={location} products={products} sales={sales} onAction={action} onCancel={() => setForm(null)} />}
+      {form === 'withdraw' && <WithdrawForm key={location.id} location={location} moves={stockMovements} onAction={action} onCancel={() => setForm(null)} />}
       {form === 'check' && <CountForm key={location.id} location={location} moves={stockMovements} onAction={action} onCancel={() => setForm(null)} />}
       {form === 'payment' && <PaymentForm key={location.id} location={location} due={due} finance={finance} onAction={action} onCancel={() => setForm(null)} />}
       {!form && <section className={panel}><h3 className="mb-3 font-semibold">Estoque neste local</h3><div className="divide-y">{rows.map(row => <div key={row.productId} className="flex items-center justify-between gap-3 py-3 text-sm"><span>{row.name}</span><strong className="shrink-0">{row.quantity} un.</strong></div>)}</div>{!rows.length && <p className="text-sm text-stone-500">Registre o primeiro envio ou o saldo que já está neste local.</p>}</section>}
@@ -54,7 +55,7 @@ export function ConsignmentsView({ products, sales, finance, stockMovements, onA
           <details className="mt-3"><summary className="cursor-pointer text-[#92553f]">Ver produtos e recebimentos</summary><ul className="mt-2 space-y-1">{sale.items?.map(item => <li key={item.id}>{item.quantity} × {item.productName} · {formatCurrency(item.unitPrice)}</li>)}</ul>{activeEntries(finance).filter(entry => entry.saleId === sale.id && entry.kind === 'receipt').map(entry => <p className="mt-2" key={entry.id}>{formatDate(entry.date)} · {entry.method} · {currency(entry.amountCents)}</p>)}{sale.notes && <p className="mt-2 whitespace-pre-wrap">{sale.notes}</p>}</details>
         </article>)}</div>{!orders.length && <p className="text-sm text-stone-500">Ainda não há vendas confirmadas neste local.</p>}
       </section>
-      <section className={panel}><h3 className="mb-3 font-semibold">Histórico de envios e conferências</h3><div className="space-y-2">{[...stockMovements].reverse().filter(move => move.locationId === selected && move.consignment && move.consignment.kind !== 'sale').map(move => <p key={move.id} className="border-b border-stone-100 pb-2 text-sm"><span className="text-stone-500">{formatDate(move.date)}</span> · {move.reason}{move.quantity !== 0 && ` · ${Math.abs(move.quantity)} × ${move.consignment!.productName}`}{move.note && ` · ${move.note}`}</p>)}</div>
+      <section className={panel}><h3 className="mb-3 font-semibold">Histórico de movimentações</h3><div className="space-y-2">{[...stockMovements].reverse().filter(move => move.locationId === selected && move.consignment && move.consignment.kind !== 'sale').map(move => <p key={move.id} className="border-b border-stone-100 pb-2 text-sm"><span className="text-stone-500">{formatDate(move.date)}</span> · {move.reason}{move.quantity !== 0 && ` · ${Math.abs(move.quantity)} × ${move.consignment!.productName}`}{move.note && ` · ${move.note}`}</p>)}</div>
         {latestCheck && !form && <button className="mt-4 text-sm text-[#92553f] underline disabled:opacity-50" disabled={busy || latestCheckPaid} title={latestCheckPaid ? 'Estorne os recebimentos vinculados no Financeiro antes de corrigir.' : undefined} onClick={async () => { if (!confirm('Desfazer a última conferência e restaurar suas quantidades? O histórico será preservado. Recebimentos vinculados precisam ser estornados antes.')) return; setBusy(true); try { await action({ type: 'consignment_undo', id: newId(), locationId: location.id, originalId: latestCheck.consignment!.operationId, date: localDateString(), expectedStock: consignmentStockFingerprint(stockMovements, location.id) }); } finally { setBusy(false); } }}>Desfazer última conferência</button>}{latestCheckPaid && <p className="mt-2 text-xs text-stone-500">Para corrigir esta conferência, estorne os recebimentos vinculados no Financeiro.</p>}
       </section>
     </> : <>
@@ -75,6 +76,35 @@ function LocationForm({ location, onAction, onSaved, onCancel }: { key?: string;
     <h3 className="text-lg font-semibold">{location ? 'Editar local' : 'Novo local de consignação'}</h3><div className="grid gap-4 sm:grid-cols-2"><Field label="Nome do local"><input required className={input} value={name} onChange={event => setName(event.target.value)} /></Field><Field label="Contato do local"><input className={input} value={contact} onChange={event => setContact(event.target.value)} /></Field><Field label="Comissão do local (%)"><input required type="number" min="0" max="100" step="0.01" inputMode="decimal" className={input} value={rate} onChange={event => setRate(event.target.value)} /></Field></div>
     <Field label="Combinados / observações"><textarea className={input} value={notes} onChange={event => setNotes(event.target.value)} /></Field><p className="text-xs text-stone-500">A porcentagem será usada nas próximas conferências. Acertos já registrados mantêm a comissão original.</p>{location && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={archived} onChange={event => setArchived(event.target.checked)} />Local inativo (somente após retirar o estoque e acertar os repasses)</label>}
     <div className="flex flex-wrap gap-2"><button className={primary} disabled={busy}>{busy ? 'Salvando…' : 'Salvar local'}</button><button type="button" className={secondary} onClick={onCancel} disabled={busy}>Cancelar</button></div>
+  </form>;
+}
+
+function WithdrawForm({ location, moves, onAction, onCancel }: { key?: string; location: ConsignmentLocation; moves: StockMovement[]; onAction: FinanceAction; onCancel: () => void }) {
+  const [snapshot] = useState(() => [...moves]), [id] = useState(newId);
+  const [date, setDate] = useState(localDateString()), [note, setNote] = useState(''), [busy, setBusy] = useState(false);
+  const stock = useMemo(() => consignmentStock(snapshot, location.id), [snapshot, location.id]);
+  const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const valid = stock.every(row => { const quantity = Number(quantities[row.productId] || 0); return Number.isSafeInteger(quantity) && quantity >= 0 && quantity <= row.quantity; });
+  const items = stock.map(row => ({ productId: row.productId, quantity: Number(quantities[row.productId] || 0) })).filter(item => item.quantity > 0);
+  const total = items.reduce((sum, item) => sum + item.quantity, 0);
+  return <form aria-label="Retirada de produtos consignados" className={`${panel} space-y-4`} onSubmit={async event => {
+    event.preventDefault(); if (busy || !valid || !items.length) return; setBusy(true);
+    try { await onAction({ type: 'consignment_withdraw', id, locationId: location.id, date, expectedStock: consignmentStockFingerprint(snapshot, location.id), items, note }); } finally { setBusy(false); }
+  }}>
+    <div><h3 className="text-lg font-semibold">Retirar produtos</h3><p className="mt-1 text-sm text-stone-500">Escolha as quantidades que vão sair de {location.name} e voltar para o estoque do ateliê.</p></div>
+    <Field label="Data da retirada"><input required type="date" className={input} value={date} onChange={event => setDate(event.target.value)} /></Field>
+    <button type="button" className={secondary} disabled={busy || !stock.length} onClick={() => setQuantities(Object.fromEntries(stock.map(row => [row.productId, String(row.quantity)])))}>Retirar todos os produtos</button>
+    <div className="space-y-3">{stock.map(row => {
+      const quantity = Number(quantities[row.productId] || 0), invalid = !Number.isSafeInteger(quantity) || quantity < 0 || quantity > row.quantity;
+      return <div key={row.productId} className="rounded-xl border border-[#e5dad1] p-3">
+        <div className="flex flex-wrap justify-between gap-1 text-sm"><strong>{row.name}</strong><span className="text-stone-500">{row.quantity} un. no local</span></div>
+        <div className="mt-3 grid items-end gap-3 sm:grid-cols-2"><Field label={`Retirar · ${row.name}`}><input type="number" min="0" max={row.quantity} step="1" inputMode="numeric" className={input} value={quantities[row.productId] || ''} placeholder="0" aria-invalid={invalid} onChange={event => setQuantities({ ...quantities, [row.productId]: event.target.value })} /></Field><p className="pb-2 text-sm text-stone-500">{invalid ? 'Use uma quantidade inteira entre 0 e ' + row.quantity + '.' : `${row.quantity - quantity} un. vão continuar no local`}</p></div>
+      </div>;
+    })}</div>
+    <Field label="Observações da retirada (opcional)"><textarea className={input} value={note} onChange={event => setNote(event.target.value)} /></Field>
+    <div aria-live="polite"><Metric label="Peças que voltam para o ateliê" value={valid ? `${total} un.` : 'Confira as quantidades'} /></div>
+    <p className="text-xs text-stone-500">A retirada fica registrada no histórico do local.</p>
+    <div className="flex flex-wrap gap-2"><button className={primary} disabled={busy || !valid || !items.length}>{busy ? 'Registrando…' : 'Confirmar retirada'}</button><button type="button" className={secondary} onClick={onCancel} disabled={busy}>Cancelar</button></div>
   </form>;
 }
 

@@ -77,3 +77,10 @@ Pausado significa que o material não está em uso no momento; o estoque registr
 - A seleção informa o estoque disponível após reservas, preserva o ID e o preço do aroma, impede repetir o mesmo produto na lista e pede concluir ou limpar um produto em preenchimento antes de enviar.
 - Pedidos e produção conservam seus modos de seleção existentes. As regras de transferências, saldos iniciais, comissões e repasses permanecem nos mesmos comandos de estoque e financeiro.
 - Validação com dados fictícios: seleção individual e por família, múltiplos aromas, preço e estoque, produto repetido, rascunho incompleto, reabertura, regressões de pedidos/produção e navegador em desktop/tablet/celular.
+
+## Retirada de consignações — 05/11/2026
+
+- Cada local tem a ação Retirar produtos para selecionar quantidades ou retirar todas as peças, com data e observações. O retorno ao ateliê acontece ao confirmar, sem depender de uma conferência do período.
+- A retirada transfere o estoque do parceiro para o ateliê com histórico nas duas pontas, preservando os custos originais dos lotes e a média do estoque. Vendas, comissões, repasses e conferências anteriores são preservados.
+- Quantidades inteiras limitadas ao saldo do local; transações revalidam o estoque e impedem retirar duas vezes por repetição ou concorrência entre aparelhos. Cancelar não movimenta peças.
+- Validação com dados fictícios: retiradas parciais e totais, múltiplos aromas/lotes, saldo inicial, custos, histórico, financeiro, persistência, interface integrada e dois aparelhos simulados; tipagem/build e navegador em desktop/tablet/celular. Nenhuma movimentação de teste na conta real.

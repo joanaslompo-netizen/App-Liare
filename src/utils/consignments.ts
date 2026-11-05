@@ -6,6 +6,7 @@ import { canonicalJSON } from '../services/workspaceRecordStore';
 export type ConsignmentStockCommand =
   | { type: 'consignment_location'; location: ConsignmentLocation; expected: string | null }
   | { type: 'consignment_send'; id: string; locationId: string; date: string; opening: boolean; items: { productId: string; quantity: number; unitPriceCents: number }[] }
+  | { type: 'consignment_withdraw'; id: string; locationId: string; date: string; expectedStock: string; items: { productId: string; quantity: number }[]; note: string }
   | { type: 'consignment_check'; id: string; locationId: string; date: string; periodStart: string; expectedStock: string; expectedCommission: number; rows: ConsignmentCountRow[]; note: string }
   | { type: 'consignment_undo'; id: string; locationId: string; date: string; originalId: string; expectedStock: string };
 export type ConsignmentLot = { id: string; productId: string; name: string; quantity: number; unitPriceCents: number; businessCost: number; laborCost: number };
@@ -70,6 +71,20 @@ export function previewConsignmentCheck(moves: StockMovement[], locationId: stri
 function validDate(date: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date + 'T12:00:00Z')) || new Date(date + 'T12:00:00Z').toISOString().slice(0, 10) !== date) fail('Informe uma data válida.');
 }
+export function previewConsignmentWithdrawal(moves: StockMovement[], locationId: string, items: { productId: string; quantity: number }[]) {
+  const stock = consignmentStock(moves, locationId);
+  if (!items.length) fail('Escolha pelo menos um produto para retirar.');
+  if (new Set(items.map(item => item.productId)).size !== items.length) fail('Um produto foi repetido na retirada.');
+  for (const item of items) {
+    if (!whole(item.quantity) || !item.quantity) fail('Informe quantidades inteiras e maiores que zero para retirar.');
+    const current = stock.find(row => row.productId === item.productId);
+    if (!current || item.quantity > current.quantity) fail('A retirada supera o estoque do produto neste local. Confira as quantidades.');
+  }
+  return previewConsignmentCheck(moves, locationId, stock.map(row => {
+    const quantity = items.find(item => item.productId === row.productId)?.quantity || 0;
+    return { productId: row.productId, remaining: row.quantity - quantity, returned: quantity, lost: 0 };
+  }), 0).consumed;
+}
 export function applyConsignmentStockCommand<T extends LedgerWorkspace>(source: T, command: ConsignmentStockCommand): T {
   const finance: FinanceData = source.finance || { version: 1, entries: [], bills: [] };
   const locations = finance.consignmentLocations || [];
@@ -84,7 +99,7 @@ export function applyConsignmentStockCommand<T extends LedgerWorkspace>(source: 
     if (location.archived && (consignmentStock(source.stockMovements || [],location.id).length || outstanding > 0)) fail('Retire as peças e acerte os repasses pendentes antes de inativar este local.');
     return { ...source, finance: { ...finance, consignmentLocations: previous ? locations.map(value => value.id === location.id ? location : value) : [...locations, location] } };
   }
-  const fingerprint = canonicalJSON(command.type === 'consignment_check' || command.type === 'consignment_undo' ? { ...command, expectedStock: '' } : command);
+  const fingerprint = canonicalJSON('expectedStock' in command ? { ...command, expectedStock: '' } : command);
   const old = (source.stockMovements || []).find(move => move.consignment?.operationId === command.id);
   if (old) { if (old.consignment!.fingerprint !== fingerprint) fail('Esta operação já foi registrada com outros dados.'); return source; }
   if (!command.id) fail('Operação de consignação inválida.');
@@ -93,7 +108,7 @@ export function applyConsignmentStockCommand<T extends LedgerWorkspace>(source: 
   validDate(command.date);
   const moves = [...(source.stockMovements || [])];
   if (moves.some(move => move.consignment?.locationId === location.id && move.date > command.date)) fail('Use uma data igual ou posterior à última movimentação deste local.');
-  if ((command.type === 'consignment_check' || command.type === 'consignment_undo') && consignmentStockFingerprint(moves, location.id) !== command.expectedStock) fail('O estoque deste local mudou. Reabra a conferência antes de registrar.');
+  if ('expectedStock' in command && consignmentStockFingerprint(moves, location.id) !== command.expectedStock) fail(`O estoque deste local mudou. Reabra a ${command.type === 'consignment_withdraw' ? 'retirada' : 'conferência'} antes de registrar.`);
   let products = [...source.products], sales = [...source.sales];
   const add = (move: Omit<StockMovement, 'consignment'>, detail: Omit<NonNullable<StockMovement['consignment']>, 'locationId' | 'operationId' | 'fingerprint'>) => moves.push({ ...move, consignment: { ...detail, locationId: location.id, operationId: command.id, fingerprint } });
   const restore = (productId: string, quantity: number, business: number, labor: number) => {
@@ -117,6 +132,17 @@ export function applyConsignmentStockCommand<T extends LedgerWorkspace>(source: 
         products = products.map(value => value.id === product.id ? { ...value, currentStock: (value.currentStock || 0) - item.quantity } : value);
         add({ id: `${id}:atelier`, date: command.date, targetId: product.id, type: 'product', quantity: -item.quantity, businessUnitCost: business, reason: `Enviado para ${location.name}` }, detail);
       }
+    });
+  }
+  if (command.type === 'consignment_withdraw') {
+    const rows = previewConsignmentWithdrawal(moves, location.id, command.items);
+    rows.forEach((row, index) => {
+      const detail = { kind: 'return' as const, lotId: row.lot.id, productName: row.lot.name, unitPriceCents: row.lot.unitPriceCents, laborUnitCost: row.lot.laborCost };
+      restore(row.lot.productId, row.quantity, row.lot.businessCost, row.lot.laborCost);
+      add({ id: `${command.id}:${index}`, date: command.date, targetId: row.lot.productId, type: 'product', quantity: -row.quantity, locationId: location.id,
+        businessUnitCost: row.lot.businessCost, reason: 'Retirada de consignação', referenceId: command.id, note: command.note }, detail);
+      add({ id: `${command.id}:${index}:atelier`, date: command.date, targetId: row.lot.productId, type: 'product', quantity: row.quantity,
+        businessUnitCost: row.lot.businessCost, reason: `Retorno de ${location.name}`, referenceId: command.id, note: command.note }, detail);
     });
   }
   if (command.type === 'consignment_check') {

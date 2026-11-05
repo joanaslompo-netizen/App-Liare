@@ -114,7 +114,7 @@ function customDeliveryProduct(sale: Sale, item: SaleItem, id: string, date: str
 }
 
 export function applyFinanceCommand<T extends LedgerWorkspace>(source: T, command: FinanceCommand): T {
-  if (command.type === 'consignment_location' || command.type === 'consignment_send' || command.type === 'consignment_check' || command.type === 'consignment_undo') return applyConsignmentStockCommand(source, command);
+  if (command.type === 'consignment_location' || command.type === 'consignment_send' || command.type === 'consignment_withdraw' || command.type === 'consignment_check' || command.type === 'consignment_undo') return applyConsignmentStockCommand(source, command);
   if (command.type === 'consignment_payment') {
     const fingerprint = consignmentFingerprint(command);
     const previous = source.finance?.entries.find(entry => entry.consignmentPaymentId === command.id);
