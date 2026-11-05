@@ -10,6 +10,9 @@ import type { Sale } from '../src/types';
 const dom = new JSDOM('<!doctype html><title>App LIARE</title><div id="root"></div>', { url: 'http://localhost/' });
 for (const key of ['window', 'document', 'HTMLElement', 'HTMLInputElement', 'Event', 'MouseEvent']) Object.defineProperty(globalThis, key, { value: dom.window[key], configurable: true });
 Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, configurable: true });
+const shared: ShareData[] = [];let shareError = '';
+Object.defineProperty(navigator, 'canShare', { configurable: true, value: (data: ShareData) => data.files?.[0]?.type === 'application/pdf' });
+Object.defineProperty(navigator, 'share', { configurable: true, value: async (data: ShareData) => { if (shareError) throw new DOMException('Teste', shareError); shared.push(data); } });
 const alerts: string[] = [];
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true, alert: (message: string) => alerts.push(message), confirm: () => true,
   requestAnimationFrame: (callback: () => void) => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout });
@@ -41,6 +44,7 @@ async function select(number: number) { const element = checkbox(number);assert(
 async function search(value: string) { const input = document.querySelector<HTMLInputElement>('input[placeholder^="Buscar por cliente"]')!;assert(input);
   await act(async () => { Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(input, value);input.dispatchEvent(new dom.window.Event('input', { bubbles: true })); }); }
 const invoiceDocument = () => { const frame = document.querySelector<HTMLIFrameElement>('iframe');assert(frame);return new JSDOM(frame.srcdoc).window.document; };
+async function readyPdf() { for(let attempt=0;attempt<200;attempt++){if(document.querySelector('a[download]'))return;await act(async()=>{await new Promise(resolve=>setTimeout(resolve,25));});}assert.fail(document.querySelector('[role=alert]')?.textContent || 'PDF não ficou pronto'); }
 await act(async () => root.render(<App />));await button('Pedidos');
 const before = saved();
 assert.equal(document.querySelectorAll('input[type="checkbox"]').length, 0);
@@ -56,11 +60,15 @@ assert(invoice.body.textContent?.includes('000011'));assert(invoice.body.textCon
 assert(invoice.querySelector('.summary .balance')?.textContent?.includes(formatCurrency(140)));
 const whatsapp=document.querySelector<HTMLAnchorElement>('a[href^="https://wa.me/"]');assert(whatsapp,'Envio disponível na fatura conjunta');
 const whatsappUrl=new URL(whatsapp.href);assert.equal(whatsappUrl.pathname,'/5541999990000');assert.equal(whatsapp.target,'_blank');assert(whatsapp.rel.includes('noopener'));
-const message=whatsappUrl.searchParams.get('text')!;assert(message.includes('000011'));assert(message.includes('000012'));assert(!message.includes('000014'));assert(message.includes('Saldo a pagar: R$ 140,00'));assert(message.includes('pix-ficticio'));assert(message.includes('Desconto concedido: −R$ 10,00'));
+assert.equal(whatsappUrl.search,'','O atalho abre a conversa sem substituir o anexo por texto.');
+await readyPdf();assert.equal(document.querySelector('a[download]')?.getAttribute('download'),'LIARE-Fatura-Conjunta.pdf');
+await button('Compartilhar PDF');assert.equal(shared.length,1);assert.equal(shared[0].files?.length,1);assert.equal(shared[0].files![0].type,'application/pdf');assert.equal(shared[0].files![0].name,'LIARE-Fatura-Conjunta.pdf');assert.equal(shared[0].text,undefined);assert.equal(new TextDecoder().decode((await shared[0].files![0].arrayBuffer()).slice(0,5)),'%PDF-');
+shareError='AbortError';await button('Compartilhar PDF');assert.equal(shared.length,1);assert(!document.querySelector('[aria-label="Compartilhar fatura em PDF"]')?.textContent?.includes('Não foi possível compartilhar'));
+shareError='NotAllowedError';await button('Compartilhar PDF');assert(document.querySelector('[aria-label="Compartilhar fatura em PDF"] [role=status]')?.textContent?.includes('Não foi possível compartilhar'));assert(document.querySelector('a[download]'),'Falha de compartilhamento mantém o download disponível.');shareError='';
 assert(document.title.includes('Fatura conjunta'));
 let prints = 0;const frame = document.querySelector<HTMLIFrameElement>('iframe')!;
 frame.contentWindow!.focus = () => {};frame.contentWindow!.print = () => { prints += 1; };
-await button('Salvar PDF / Imprimir');assert.equal(prints, 1);
+await button('Imprimir');assert.equal(prints, 1);
 await act(async () => (document.querySelector('[aria-label="Fechar fatura"]') as HTMLButtonElement).click());
 assert.equal(document.title, 'App LIARE');assert(checkbox(12).checked, 'Fechar permite revisar a seleção');
 await search('');assert(checkbox(11).checked);await select(12);await select(13);await button('Gerar fatura única');
@@ -72,15 +80,16 @@ assert.equal(saved(), before, 'Selecionar, imprimir e fechar não altera pedidos
 const single = document.querySelector<HTMLButtonElement>('[aria-label="Gerar fatura"]')!;assert(single);await act(async () => single.click());
 assert.equal(document.querySelector('#invoice-title')?.textContent, 'Fatura da encomenda');
 assert(document.querySelector('a[href^="https://wa.me/"]'),'Envio disponível na fatura individual');
+await readyPdf();await button('Compartilhar PDF');assert.equal(shared.at(-1)!.files![0].name.endsWith('.pdf'),true);
 await act(async () => (document.querySelector('[aria-label="Fechar fatura"]') as HTMLButtonElement).click());
 await act(async () => root.unmount());root = createRoot(document.querySelector('#root')!);await act(async () => root.render(<App />));
 assert.equal(saved(), before, 'Reabrir preserva os pedidos separados e seus pagamentos');
 // Cadastro sem telefone: explica como corrigir, sem abrir conversa genérica.
-await act(async()=>root.unmount());const missingPhone=JSON.parse(saved());missingPhone.customers[0].phone='';workspaceStorage.setItem('atelie_workspace_finance_v1',JSON.stringify(missingPhone));
+await act(async()=>root.unmount());Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>false});const missingPhone=JSON.parse(saved());missingPhone.customers[0].phone='';workspaceStorage.setItem('atelie_workspace_finance_v1',JSON.stringify(missingPhone));
 root=createRoot(document.querySelector('#root')!);await act(async()=>root.render(<App/>));await button('Pedidos');await search('Difusor fictício');
 await act(async()=>(document.querySelector('[aria-label="Gerar fatura"]') as HTMLButtonElement).click());
-assert.equal(document.querySelector('a[href^="https://wa.me/"]'),null);assert(document.querySelector('[role=status]')?.textContent?.includes('Cadastre o telefone'));
-assert([...document.querySelectorAll('button')].find(node=>node.textContent?.trim()==='Enviar no WhatsApp')?.disabled);
+assert.equal(document.querySelector('a[href^="https://wa.me/"]'),null);assert(document.querySelector('[aria-label="Compartilhar fatura em PDF"]')?.textContent?.includes('Cadastre o telefone'));
+await readyPdf();assert(document.querySelector('a[download]'),'Sem compartilhamento nativo ou telefone, a fatura continua disponível como arquivo.');assert(![...document.querySelectorAll('button')].some(node=>node.textContent?.trim()==='Compartilhar PDF'));
 assert.equal(alerts.length, 0, alerts.join('; '));await act(async () => root.unmount());
 console.log('Fatura conjunta no app: seleção com busca, mesmo cliente, recebimento parcial real, pedido quitado, documento/PDF, revisão, cancelamento e reabertura sem mudanças nos dados passaram.');
 process.exit(0);
