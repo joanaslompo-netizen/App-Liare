@@ -91,3 +91,10 @@ Pausado significa que o material não está em uso no momento; o estoque registr
 - Selecione produto e quantidade e adicione à retirada; somente os itens escolhidos aparecem para ajustar ou remover. Produtos repetidos, quantidades acima do saldo e seleções ainda não adicionadas são sinalizados antes de confirmar. A opção de retirar tudo continua disponível.
 - O estoque mostrado no seletor é o do local, sem preço de venda. A transferência, custos e histórico seguem o comando existente; pedidos, produção e envios conservam a seleção padrão.
 - Validação com dados fictícios: filtro por local/modelo/aroma, produto com saldo apenas no ateliê ou em outro parceiro, produto repetido, seleção pendente, edição/remoção, retorno parcial/total e persistência. Tipagem/build, regressões do seletor e navegador em desktop/tablet/celular.
+
+## Fatura pelo WhatsApp — 05/11/2026
+
+- Faturas individuais e conjuntas têm Enviar no WhatsApp. Abre a conversa do cliente com a fatura em texto preenchida; a pessoa revisa e envia no WhatsApp. Para o PDF, a tela orienta salvar e anexar o arquivo na conversa.
+- Usa o telefone atual do cliente vinculado por ID; pedidos sem vínculo podem usar o contato do próprio pedido. Números brasileiros recebem o código 55 quando necessário, sem duplicá-lo. Telefones ausentes/inválidos ou contatos conflitantes na fatura conjunta bloqueiam o atalho e explicam como corrigir.
+- Mensagem inclui produtos/quantidades/preços, frete, total antes do desconto, desconto, devoluções compensadas, valor pago, saldo e Pix quando houver saldo. Custos internos e dados financeiros de outros clientes não são compartilhados. Preparar/abrir a mensagem não marca a fatura como enviada ou paga, nem altera dados.
+- Validação: faturas e contato, fatura conjunta com recebimentos reais, tipagem/build e navegador em computador/tablet/celular com dados fictícios. Testes conferem a URL e o texto sem enviar mensagens a clientes.

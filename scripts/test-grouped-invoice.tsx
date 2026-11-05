@@ -54,6 +54,9 @@ await button('Gerar fatura única');
 let invoice = invoiceDocument();assert.equal(invoice.querySelectorAll('.order').length, 2);
 assert(invoice.body.textContent?.includes('000011'));assert(invoice.body.textContent?.includes('000012'));assert(!invoice.body.textContent?.includes('000014'));
 assert(invoice.querySelector('.summary .balance')?.textContent?.includes(formatCurrency(140)));
+const whatsapp=document.querySelector<HTMLAnchorElement>('a[href^="https://wa.me/"]');assert(whatsapp,'Envio disponível na fatura conjunta');
+const whatsappUrl=new URL(whatsapp.href);assert.equal(whatsappUrl.pathname,'/5541999990000');assert.equal(whatsapp.target,'_blank');assert(whatsapp.rel.includes('noopener'));
+const message=whatsappUrl.searchParams.get('text')!;assert(message.includes('000011'));assert(message.includes('000012'));assert(!message.includes('000014'));assert(message.includes('Saldo a pagar: R$ 140,00'));assert(message.includes('pix-ficticio'));assert(message.includes('Desconto concedido: −R$ 10,00'));
 assert(document.title.includes('Fatura conjunta'));
 let prints = 0;const frame = document.querySelector<HTMLIFrameElement>('iframe')!;
 frame.contentWindow!.focus = () => {};frame.contentWindow!.print = () => { prints += 1; };
@@ -68,9 +71,16 @@ assert.equal(saved(), before, 'Selecionar, imprimir e fechar não altera pedidos
 // The existing individual invoice remains available.
 const single = document.querySelector<HTMLButtonElement>('[aria-label="Gerar fatura"]')!;assert(single);await act(async () => single.click());
 assert.equal(document.querySelector('#invoice-title')?.textContent, 'Fatura da encomenda');
+assert(document.querySelector('a[href^="https://wa.me/"]'),'Envio disponível na fatura individual');
 await act(async () => (document.querySelector('[aria-label="Fechar fatura"]') as HTMLButtonElement).click());
 await act(async () => root.unmount());root = createRoot(document.querySelector('#root')!);await act(async () => root.render(<App />));
 assert.equal(saved(), before, 'Reabrir preserva os pedidos separados e seus pagamentos');
+// Cadastro sem telefone: explica como corrigir, sem abrir conversa genérica.
+await act(async()=>root.unmount());const missingPhone=JSON.parse(saved());missingPhone.customers[0].phone='';workspaceStorage.setItem('atelie_workspace_finance_v1',JSON.stringify(missingPhone));
+root=createRoot(document.querySelector('#root')!);await act(async()=>root.render(<App/>));await button('Pedidos');await search('Difusor fictício');
+await act(async()=>(document.querySelector('[aria-label="Gerar fatura"]') as HTMLButtonElement).click());
+assert.equal(document.querySelector('a[href^="https://wa.me/"]'),null);assert(document.querySelector('[role=status]')?.textContent?.includes('Cadastre o telefone'));
+assert([...document.querySelectorAll('button')].find(node=>node.textContent?.trim()==='Enviar no WhatsApp')?.disabled);
 assert.equal(alerts.length, 0, alerts.join('; '));await act(async () => root.unmount());
 console.log('Fatura conjunta no app: seleção com busca, mesmo cliente, recebimento parcial real, pedido quitado, documento/PDF, revisão, cancelamento e reabertura sem mudanças nos dados passaram.');
 process.exit(0);
