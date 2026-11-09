@@ -98,3 +98,10 @@ Pausado significa que o material não está em uso no momento; o estoque registr
 - Usa o telefone atual do cliente vinculado por ID; pedidos sem vínculo podem usar o contato do próprio pedido. Números brasileiros recebem o código 55 quando necessário, sem duplicá-lo. Telefones ausentes/inválidos ou contatos conflitantes na fatura conjunta bloqueiam o atalho e explicam como corrigir.
 - Mensagem inclui produtos/quantidades/preços, frete, total antes do desconto, desconto, devoluções compensadas, valor pago, saldo e Pix quando houver saldo. Custos internos e dados financeiros de outros clientes não são compartilhados. Preparar/abrir a mensagem não marca a fatura como enviada ou paga, nem altera dados.
 - Validação: faturas e contato, fatura conjunta com recebimentos reais, tipagem/build e navegador em computador/tablet/celular com dados fictícios. Testes conferem a URL e o texto sem enviar mensagens a clientes.
+
+## Essências nos projetos — 09/11/2026
+
+- Ao escolher cera aromatizada ou outro material virtual com ingrediente variável, o projeto abre a seleção por categoria, incluindo essências virtuais e suas escolhas internas. Funciona na receita personalizada e nos materiais adicionados diretamente ao projeto.
+- A essência fica salva na linha e pode ser alterada ao reabrir o projeto. Materiais iguais com aromas diferentes permanecem separados; quantidade total ou por unidade usa a escolha correspondente.
+- Custos e necessidades consultam os materiais atuais com a configuração salva, desdobrando cera e essências. Planejar não movimenta estoque, não cria receitas no catálogo e não altera pedidos/financeiro. Receitas do catálogo continuam acompanhando a receita mais recente.
+- Validação com dados fictícios: seleção/validação, essência virtual variável, custo e insumos, aromas separados, edição/cancelamento e recarga; regressões de materiais virtuais/receitas atuais, tipagem/build e navegador em desktop/tablet/celular.

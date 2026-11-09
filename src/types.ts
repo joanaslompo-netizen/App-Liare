@@ -473,6 +473,8 @@ export interface ProjectMaterialLine {
   unit: string;
   /** "project" = quantidade total do projeto; "per_unit" = quantidade para cada unidade planejada. */
   scope: 'project' | 'per_unit';
+  /** Choices for variable ingredients of a virtual material, specific to this project line. */
+  categorySelections?: Record<string, string>;
   notes?: string;
 }
 

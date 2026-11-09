@@ -29,6 +29,7 @@ import {
 import { formatCurrency, formatNumber, UNIT_SHORT } from '../utils/formatters';
 import { SearchableProductCombobox } from './SearchableProductCombobox';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
+import { expandVirtualRecipeItems, getCategoryMaterialOptions, getVirtualMaterialRequirements, materialRecipeCosts } from '../utils/virtualMaterials';
 
 interface ProjectsViewProps {
   projects: ProductionProject[];
@@ -55,6 +56,35 @@ const today = () => new Date().toISOString().split('T')[0];
 const getProductUnitCost = (product: Product) =>
   product.unitCostFromBatch > 0 ? product.unitCostFromBatch : product.totalCost;
 
+const getProjectMaterialUnitCost = (material: Material | undefined, materials: Material[], products: Product[], choices?: Record<string, string>) =>
+  !material || material.usageType === 'durable' ? 0 : material.isVirtualRecipe
+    ? materialRecipeCosts(material, materials, choices, new Set(), products).unitCost : material.unitCost || 0;
+
+const selectionKey = (choices?: Record<string, string>) => JSON.stringify(Object.entries(choices || {}).filter(([, value]) => value).sort(([a], [b]) => a.localeCompare(b)));
+
+function configuredChoices(material: Material, choices: Record<string, string>, materials: Material[], products: Product[]) {
+  if (!material.isVirtualRecipe) return undefined;
+  const result = expandVirtualRecipeItems([{ id: 'draft', type: 'material', targetId: material.id, name: material.name,
+    quantity: 1, unit: material.unit, unitCost: 0, totalCost: 0, categorySelections: choices }], materials, products);
+  if (result.errors.length) throw new Error(result.errors[0]);
+  return Object.fromEntries(getVirtualMaterialRequirements(material, materials, choices).map(requirement => [requirement.recipeItemId, choices[requirement.recipeItemId]]).filter(([, value]) => value));
+}
+
+function ProjectMaterialChoices({ id, material, choices, materials, onChange }: {
+  key?: string; id: string; material: Material | null | undefined; choices?: Record<string, string>; materials: Material[]; onChange: (choices: Record<string, string>) => void;
+}) {
+  const requirements = useMemo(() => material?.isVirtualRecipe ? getVirtualMaterialRequirements(material, materials, choices) : [], [material, materials, choices]);
+  if (!requirements.length) return null;
+  return <div className="rounded-xl border border-purple-200 bg-purple-50/70 p-3 space-y-2" aria-label={`Configurar ${material!.name}`} data-project-choice={id}>
+    <p className="text-xs font-semibold text-purple-950">Defina o aroma de {material!.name}</p>
+    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">{requirements.map((requirement, index) => <div key={requirement.recipeItemId} className="min-w-0">
+      <label htmlFor={`${id}-${index}`} className="mb-1 block text-xs font-semibold text-stone-700">{requirement.category} · {requirement.virtualMaterialName}</label>
+      <SearchableMaterialCombobox id={`${id}-${index}`} materials={getCategoryMaterialOptions(materials, requirement.category, requirement.unit, requirement.ancestors)} selectedMaterialId={choices?.[requirement.recipeItemId] || ''} onSelectMaterial={selected => onChange({ ...choices, [requirement.recipeItemId]: selected?.id || '' })} placeholder={`Escolha um material de ${requirement.category}...`} />
+    </div>)}</div>
+    <p className="text-[11px] text-purple-700">A escolha fica salva neste projeto e atualiza a previsão de materiais e custos.</p>
+  </div>;
+}
+
 const getCustomLineUnitCost = (
   line: ProjectProductLine,
   products: Product[],
@@ -65,7 +95,7 @@ const getCustomLineUnitCost = (
     if (item.type === 'material') {
       const material = materials.find((m) => m.id === item.targetId);
       if (material?.usageType === 'durable') return sum;
-      return sum + item.quantity * (material?.unitCost ?? item.unitCost ?? 0);
+      return sum + item.quantity * (material ? getProjectMaterialUnitCost(material, materials, products, item.categorySelections) : item.unitCost || 0);
     }
     const product = products.find((p) => p.id === item.targetId);
     return sum + item.quantity * (product ? getProductUnitCost(product) : item.unitCost || 0);
@@ -78,14 +108,15 @@ const getProjectPlannedUnits = (project: ProductionProject) =>
 
 const getDirectMaterialsCost = (
   project: ProductionProject,
-  materials: Material[]
+  materials: Material[],
+  products: Product[]
 ) => {
   const plannedUnits = getProjectPlannedUnits(project);
   return (project.directMaterials || []).reduce((sum, line) => {
     const material = materials.find((m) => m.id === line.materialId);
     if (material?.usageType === 'durable') return sum;
     const multiplier = line.scope === 'per_unit' ? plannedUnits : 1;
-    return sum + Math.max(0, line.quantity || 0) * multiplier * (material?.unitCost || 0);
+    return sum + Math.max(0, line.quantity || 0) * multiplier * getProjectMaterialUnitCost(material, materials, products, line.categorySelections);
   }, 0);
 };
 
@@ -132,7 +163,7 @@ const buildRequirements = (
   const addRecipeItem = (item: RecipeItem, multiplier: number, visitedVirtual = new Set<string>(), selections: Record<string, string> = {}) => {
     if (item.type === 'material') {
       if (item.selectionMode === 'category' && item.targetCategory) {
-        const selected = materials.find(material => material.id === selections[item.id] && material.category === item.targetCategory);
+        const selected = getCategoryMaterialOptions(materials, item.targetCategory, item.unit, [...visitedVirtual]).find(material => material.id === selections[item.id]);
         if (selected) {
           addRecipeItem({ ...item, selectionMode: 'fixed', targetId: selected.id }, multiplier, visitedVirtual, selections);
           return;
@@ -229,6 +260,7 @@ const buildRequirements = (
         unit: material?.unit || line.unit,
         unitCost: material?.usageType === 'durable' ? 0 : material?.unitCost || 0,
         totalCost: 0,
+        categorySelections: line.categorySelections,
       },
       multiplier
     );
@@ -353,7 +385,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               }
               const product = products.find((p) => p.id === line.productId);
               return sum + (product ? getProductUnitCost(product) : 0) * line.quantity;
-            }, 0) + getDirectMaterialsCost(project, materials);
+            }, 0) + getDirectMaterialsCost(project, materials, products);
             const projectedRevenue = project.lines.reduce((sum, line) => {
               if (line.source === 'custom') return sum + (line.targetSalePrice || 0) * line.quantity;
               const product = products.find((p) => p.id === line.productId);
@@ -552,7 +584,7 @@ const ProjectDetails = ({
             const material = materials.find((m) => m.id === line.materialId);
             const multiplier = line.scope === 'per_unit' ? getProjectPlannedUnits(project) : 1;
             const totalQty = line.quantity * multiplier;
-            const unitCost = material?.usageType === 'durable' ? 0 : material?.unitCost || 0;
+            const unitCost = getProjectMaterialUnitCost(material, materials, products, line.categorySelections);
             return (
               <div key={line.id} className="bg-white border border-stone-200 rounded-xl p-3 flex items-start justify-between gap-3">
                 <div>
@@ -563,6 +595,7 @@ const ProjectDetails = ({
                     {line.scope === 'per_unit' ? ` • total ${formatNumber(totalQty)}` : ''}
                   </div>
                   {line.notes && <div className="text-[11px] text-stone-600 mt-1 italic">{line.notes}</div>}
+                  {line.categorySelections && <div className="text-[11px] text-purple-700 mt-1">{Object.values(line.categorySelections).map(id => materials.find(material => material.id === id)?.name).filter(Boolean).join(' · ')}</div>}
                 </div>
                 <div className="text-xs font-semibold text-stone-700 shrink-0">
                   {formatCurrency(totalQty * unitCost)}
@@ -691,22 +724,27 @@ const ProjectModal = ({
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   const [selectedSubProduct, setSelectedSubProduct] = useState<Product | null>(null);
   const [customItemQty, setCustomItemQty] = useState('1');
+  const [customChoices, setCustomChoices] = useState<Record<string, string>>({});
+  const [directChoices, setDirectChoices] = useState<Record<string, string>>({});
 
   const requirements = useMemo(() => buildRequirements(draft, products, materials), [draft, products, materials]);
   const projectedCost = draft.lines.reduce((sum, line) => {
     if (line.source === 'custom') return sum + getCustomLineUnitCost(line, products, materials) * line.quantity;
     const product = products.find((p) => p.id === line.productId);
     return sum + (product ? getProductUnitCost(product) : 0) * line.quantity;
-  }, 0) + getDirectMaterialsCost(draft, materials);
+  }, 0) + getDirectMaterialsCost(draft, materials, products);
 
   const addProjectMaterial = () => {
     const qty = Number(projectMaterialQty);
     if (!selectedProjectMaterial || !Number.isFinite(qty) || qty <= 0) return;
+    let categorySelections: Record<string, string> | undefined;
+    try { categorySelections = configuredChoices(selectedProjectMaterial, directChoices, materials, products); }
+    catch (error) { alert((error as Error).message); return; }
 
     setDraft((prev) => {
       const directMaterials = prev.directMaterials || [];
       const existing = directMaterials.find(
-        (line) => line.materialId === selectedProjectMaterial.id && line.scope === projectMaterialScope
+        (line) => line.materialId === selectedProjectMaterial.id && line.scope === projectMaterialScope && selectionKey(line.categorySelections) === selectionKey(categorySelections)
       );
       if (existing) {
         return {
@@ -724,12 +762,14 @@ const ProjectModal = ({
         quantity: qty,
         unit: selectedProjectMaterial.unit,
         scope: projectMaterialScope,
+        categorySelections,
       };
       return { ...prev, directMaterials: [...directMaterials, line] };
     });
 
     setSelectedProjectMaterial(null);
     setProjectMaterialQty('1');
+    setDirectChoices({});
   };
 
   const addCatalogLine = () => {
@@ -765,6 +805,10 @@ const ProjectModal = ({
     if (!Number.isFinite(qty) || qty <= 0) return;
 
     if (customItemType === 'material' && selectedMaterial) {
+      let categorySelections: Record<string, string> | undefined;
+      try { categorySelections = configuredChoices(selectedMaterial, customChoices, materials, products); }
+      catch (error) { alert((error as Error).message); return; }
+      const unitCost = getProjectMaterialUnitCost(selectedMaterial, materials, products, categorySelections);
       setCustomItems((prev) => [
         ...prev,
         {
@@ -774,12 +818,14 @@ const ProjectModal = ({
           name: selectedMaterial.name,
           quantity: qty,
           unit: selectedMaterial.unit,
-          unitCost: selectedMaterial.usageType === 'durable' ? 0 : selectedMaterial.unitCost,
-          totalCost: selectedMaterial.usageType === 'durable' ? 0 : selectedMaterial.unitCost * qty,
+          unitCost,
+          totalCost: unitCost * qty,
+          categorySelections,
         },
       ]);
       setSelectedMaterial(null);
       setCustomItemQty('1');
+      setCustomChoices({});
       return;
     }
 
@@ -843,6 +889,16 @@ const ProjectModal = ({
       alert('Dê um nome ao projeto.');
       return;
     }
+    try {
+      for (const line of draft.directMaterials || []) {
+        const material = materials.find(value => value.id === line.materialId);
+        if (material) configuredChoices(material, line.categorySelections || {}, materials, products);
+      }
+      for (const line of draft.lines.filter(line => line.source === 'custom')) for (const item of line.customRecipeItems || []) {
+        const material = item.type === 'material' ? materials.find(value => value.id === item.targetId) : undefined;
+        if (material) configuredChoices(material, item.categorySelections || {}, materials, products);
+      }
+    } catch (error) { alert((error as Error).message); return; }
     onSave({
       ...draft,
       name: draft.name.trim(),
@@ -913,7 +969,7 @@ const ProjectModal = ({
               </button>
             </div>
 
-            <div className="grid md:grid-cols-[1fr_110px_auto] gap-2 items-end">
+            <div className="grid min-w-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_110px_auto] gap-2 items-end">
               <SearchableProductCombobox
                 products={products.filter((p) => !p.isCustomRecipe)}
                 selectedProductId={selectedProduct?.id || ''}
@@ -997,12 +1053,13 @@ const ProjectModal = ({
                     </button>
                   </div>
 
-                  <div className="grid md:grid-cols-[1fr_110px_auto] gap-2 items-end">
+                  <div className="grid min-w-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_110px_auto] gap-2 items-end">
                     {customItemType === 'material' ? (
                       <SearchableMaterialCombobox
+                        id="project-custom-material"
                         materials={materials}
                         selectedMaterialId={selectedMaterial?.id || ''}
-                        onSelectMaterial={setSelectedMaterial}
+                        onSelectMaterial={material => { setSelectedMaterial(material); setCustomChoices({}); }}
                         placeholder="Buscar material para a receita..."
                       />
                     ) : (
@@ -1034,6 +1091,7 @@ const ProjectModal = ({
                       + Insumo
                     </button>
                   </div>
+                  {customItemType === 'material' && <div className="mt-3"><ProjectMaterialChoices id="project-custom-aroma" material={selectedMaterial} materials={materials} choices={customChoices} onChange={setCustomChoices} /></div>}
                 </div>
 
                 {customItems.length > 0 && (
@@ -1045,6 +1103,7 @@ const ProjectModal = ({
                           <div className="text-[10px] text-stone-500">
                             {formatNumber(item.quantity)} {UNIT_SHORT[item.unit as keyof typeof UNIT_SHORT] || item.unit} por receita
                           </div>
+                          {item.categorySelections && <div className="text-[11px] text-purple-700">{Object.values(item.categorySelections).map(id => materials.find(material => material.id === id)?.name).filter(Boolean).join(' · ')}</div>}
                         </div>
                         <button
                           type="button"
@@ -1162,6 +1221,14 @@ const ProjectModal = ({
                           />
                         </label>
                       </div>
+                      {line.source === 'custom' && (line.customRecipeItems || []).map(item => {
+                        const material = item.type === 'material' ? materials.find(value => value.id === item.targetId) : undefined;
+                        return material?.isVirtualRecipe ? <div key={item.id} className="mt-3"><ProjectMaterialChoices id={`project-saved-${line.id}-${item.id}`} material={material} materials={materials} choices={item.categorySelections} onChange={choices => setDraft(previous => ({ ...previous, lines: previous.lines.map(value => value.id === line.id ? { ...value, customRecipeItems: value.customRecipeItems?.map(recipeItem => {
+                          if (recipeItem.id !== item.id) return recipeItem;
+                          const unitCost = getProjectMaterialUnitCost(material, materials, products, choices);
+                          return { ...recipeItem, categorySelections: choices, unitCost, totalCost: recipeItem.quantity * unitCost };
+                        }) } : value) }))} /></div> : null;
+                      })}
                     </div>
                   );
                 })}
@@ -1177,11 +1244,12 @@ const ProjectModal = ({
               </p>
             </div>
 
-            <div className="grid md:grid-cols-[1fr_105px_165px_auto] gap-2 items-end">
+            <div className="grid min-w-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_105px_165px_auto] gap-2 items-end">
               <SearchableMaterialCombobox
+                id="project-direct-material"
                 materials={materials}
                 selectedMaterialId={selectedProjectMaterial?.id || ''}
-                onSelectMaterial={setSelectedProjectMaterial}
+                onSelectMaterial={material => { setSelectedProjectMaterial(material); setDirectChoices({}); }}
                 placeholder="Buscar material..."
               />
               <label className="text-[11px] font-semibold text-stone-600">
@@ -1215,6 +1283,7 @@ const ProjectModal = ({
                 Adicionar
               </button>
             </div>
+            <ProjectMaterialChoices id="project-direct-aroma" material={selectedProjectMaterial} materials={materials} choices={directChoices} onChange={setDirectChoices} />
 
             {(draft.directMaterials?.length || 0) > 0 && (
               <div className="space-y-2 pt-2 border-t border-stone-100">
@@ -1223,7 +1292,7 @@ const ProjectModal = ({
                   const plannedUnits = getProjectPlannedUnits(draft);
                   const totalQty = line.quantity * (line.scope === 'per_unit' ? plannedUnits : 1);
                   const unit = material?.unit || line.unit;
-                  const unitCost = material?.usageType === 'durable' ? 0 : material?.unitCost || 0;
+                  const unitCost = getProjectMaterialUnitCost(material, materials, products, line.categorySelections);
                   return (
                     <div key={line.id} className="rounded-xl border border-stone-200 bg-stone-50/60 p-3">
                       <div className="flex items-start justify-between gap-3">
@@ -1287,6 +1356,7 @@ const ProjectModal = ({
                           </select>
                         </label>
                       </div>
+                      <div className="mt-3"><ProjectMaterialChoices id={`project-direct-saved-${line.id}`} material={material} materials={materials} choices={line.categorySelections} onChange={choices => setDraft(previous => ({ ...previous, directMaterials: previous.directMaterials?.map(value => value.id === line.id ? { ...value, categorySelections: choices } : value) }))} /></div>
                     </div>
                   );
                 })}
