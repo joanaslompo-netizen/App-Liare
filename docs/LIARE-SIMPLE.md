@@ -105,3 +105,10 @@ Pausado significa que o material não está em uso no momento; o estoque registr
 - A essência fica salva na linha e pode ser alterada ao reabrir o projeto. Materiais iguais com aromas diferentes permanecem separados; quantidade total ou por unidade usa a escolha correspondente.
 - Custos e necessidades consultam os materiais atuais com a configuração salva, desdobrando cera e essências. Planejar não movimenta estoque, não cria receitas no catálogo e não altera pedidos/financeiro. Receitas do catálogo continuam acompanhando a receita mais recente.
 - Validação com dados fictícios: seleção/validação, essência virtual variável, custo e insumos, aromas separados, edição/cancelamento e recarga; regressões de materiais virtuais/receitas atuais, tipagem/build e navegador em desktop/tablet/celular.
+
+## Registrar produção já concluída — 10/11/2026
+
+- Nova produção tem a opção Produção já concluída, desmarcada por padrão. Vale para todos os itens do lançamento e registra as quantidades prontas sem passar pelas etapas. A data passa a ser a de conclusão; o histórico identifica o registro como já concluído.
+- Com estoque automático ativo, baixa os ingredientes de todas as etapas e dá entrada nas peças uma vez, incluindo custos e fabricação automática de componentes. Itens do mesmo lançamento compartilham os saldos previstos. Mantém a escolha de essências e o aviso de falta de materiais com opção de continuar.
+- A opção de não movimentar estoque permanece disponível para registros históricos. A receita do catálogo e produções em andamento permanecem independentes da escolha; desmarcar mantém o fluxo normal por etapas.
+- Validação com dados fictícios: produção agrupada, custo/ingredientes/peças, data, histórico/reabertura, materiais variáveis, falta de estoque e cancelamento, estoque opcional e retorno às etapas; tipagem/build e salvar/recarregar no navegador em desktop. Sincronização real e conferência visual em celular/tablet não foram validadas nesta sessão.

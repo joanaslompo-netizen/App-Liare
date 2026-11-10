@@ -438,6 +438,8 @@ export interface Production {
   variableSelections?: Record<string, string>;
   /** Se false, a ordem é apenas registro e não movimenta estoque. */
   stockTrackingEnabled?: boolean;
+  /** Registrada já pronta, sem lançamentos individuais das etapas. */
+  recordedAsCompleted?: boolean;
   notes?: string;
   createdAt: string;
   completedAt?: string;

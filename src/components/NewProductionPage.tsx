@@ -51,6 +51,7 @@ export function NewProductionPage({
   const [date, setDate] = useState(localDateString());
   const [notes, setNotes] = useState("");
   const [updateStock, setUpdateStock] = useState(true);
+  const [alreadyCompleted, setAlreadyCompleted] = useState(false);
   const [error, setError] = useState("");
   const submitted = useRef(false);
   const change = (id: string, patch: Partial<Draft>) => {
@@ -96,9 +97,10 @@ export function NewProductionPage({
         materials,
         products,
         row.variables,
+        alreadyCompleted,
       ),
     ));
-  }, [rows, products, materials]);
+  }, [rows, products, materials, alreadyCompleted]);
   const deductions = aggregateProductionDeductions(plans);
   const ready =
     rows.length > 0 &&
@@ -127,7 +129,7 @@ export function NewProductionPage({
       updateStock &&
       shortages.length &&
       !window.confirm(
-        "Materiais insuficientes para a produção direta:\n" +
+        (alreadyCompleted ? "Materiais insuficientes para registrar a produção concluída:\n" : "Materiais insuficientes para a produção direta:\n") +
           shortages
             .map(
               (d) =>
@@ -307,11 +309,25 @@ export function NewProductionPage({
             </button>
           </div>
         </section>
+        <div className="rounded-xl border border-[#e5dad1] bg-white p-4">
+          <label htmlFor="production-already-completed" className="flex items-center gap-3 text-sm font-semibold">
+            <input
+              id="production-already-completed"
+              type="checkbox"
+              checked={alreadyCompleted}
+              aria-describedby="production-already-completed-help"
+              onChange={event => { setAlreadyCompleted(event.target.checked); setError(''); }}
+              className="h-5 w-5 accent-[#a86149]"
+            />
+            Produção já concluída
+          </label>
+          <p id="production-already-completed-help" className="mt-2 text-xs text-[#75665c]">Marque para registrar todos os itens como prontos. Com o estoque automático ativo, os materiais são descontados e as peças entram no estoque na hora.</p>
+        </div>
         <div className="flex flex-wrap items-start gap-5">
           <label className="text-xs text-[#75665c]">
-            Data de início
+            {alreadyCompleted ? 'Data de conclusão' : 'Data de início'}
             <input
-              aria-label="Data de início da produção"
+              aria-label={alreadyCompleted ? 'Data de conclusão da produção' : 'Data de início da produção'}
               type="date"
               required
               value={date}
@@ -374,17 +390,17 @@ export function NewProductionPage({
           </details>
         )}
         {plans.some(plan => plan.automaticManufacturing.length > 0) && <p role="status" className="rounded-xl border border-[#e5dad1] bg-white p-3 text-sm">O app vai fabricar e consumir automaticamente o que faltar de: {[...new Set(plans.flatMap(plan => plan.automaticManufacturing.map(item => item.name)))].join(', ')}. Os ingredientes correspondentes já estão incluídos na baixa prevista.</p>}
-        {direct.length > 0 && (
+        {!alreadyCompleted && direct.length > 0 && (
           <p className="text-sm text-[#75665c]">
             {direct.map((p) => p.product.name).join("; ")}:{" "}
             {direct.reduce((sum, p) => sum + p.quantityProduced, 0)} unidades
             serão registradas como prontas, pois estas receitas não têm etapas.
           </p>
         )}
-        <p className="text-xs text-[#75665c]">
+        {!alreadyCompleted && <p className="text-xs text-[#75665c]">
           Nas receitas por etapas, os materiais são baixados conforme o trabalho
           avança e os produtos entram no estoque somente na última etapa.
-        </p>
+        </p>}
         {error && (
           <p role="alert" className="text-sm text-red-700">
             {error}
@@ -401,7 +417,7 @@ export function NewProductionPage({
             disabled={!ready}
             className={primary}
           >
-            Iniciar todas as produções
+            {alreadyCompleted ? 'Registrar produção concluída' : 'Iniciar todas as produções'}
           </button>
         </div>
       </form>

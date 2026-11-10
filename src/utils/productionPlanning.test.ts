@@ -11,6 +11,7 @@ import {
 } from "./productionPlanning";
 import { getProductModels } from "./productModels";
 import type { Material } from "../types";
+import { autoMaterials, autoProducts } from '../../scripts/automaticManufacturingFixtures';
 
 const snapshot = JSON.stringify({ materials, products });
 const groups = getProductModels(products, "production");
@@ -90,6 +91,24 @@ assert.equal(
   70,
 );
 assert.equal(aggregateProductionDeductions([staged, child], true).length, 0);
+const finishedPlans = [getProductionPlan(products[0], 4, materials, products, {}, true), getProductionPlan(products[1], 3, materials, products, {}, true)];
+const finishedBatch = buildProductionBatch(finishedPlans, '2026-10-19', 'Produção já feita', true);
+assert(finishedBatch.every(production => production.status === 'completed' && production.recordedAsCompleted));
+assert.deepEqual(finishedBatch.map(production => production.quantityProduced), [4, 3]);
+assert.deepEqual(finishedBatch.map(production => production.totalCost), [56, 45]);
+assert(finishedBatch.every(production => production.completedAt === '2026-10-19' && production.notes === 'Produção já feita' && !production.stageProgress));
+assert.equal(finishedBatch[0].deductedItems.find(item => item.targetId === 'wax')!.stockAfter, 960);
+assert.equal(finishedBatch[1].deductedItems.find(item => item.targetId === 'wax')!.stockBefore, 960);
+assert.equal(finishedBatch[1].deductedItems.find(item => item.targetId === 'wax')!.stockAfter, 930);
+assert.equal(aggregateProductionDeductions(finishedPlans, true).find(item => item.targetId === 'label')!.quantityTotal, 7, 'O registro pronto inclui ingredientes de todas as etapas.');
+assert.equal(buildProductionBatch(finishedPlans, '2026-10-19', '', false)[0].stockTrackingEnabled, false);
+assert.equal(products[0].useProductionStages, true, 'A opção não modifica a receita do catálogo.');
+const completedWithComponents = buildProductionBatch([
+  getProductionPlan({ ...autoProducts[1], useProductionStages: true, productionStages: products[0].productionStages }, 1, autoMaterials, autoProducts, {}, true),
+], '2026-10-19', '', true)[0];
+assert.equal(completedWithComponents.status, 'completed');
+assert.equal(completedWithComponents.automaticManufacturing?.length, 2, 'Registrar pronta também fabrica os componentes que faltam.');
+assert.equal(completedWithComponents.deductedItems.find(item => item.targetId === 'wax')!.quantityTotal, 36);
 
 const directA = getProductionPlan(products[2], 4, materials, products);
 const directB = getProductionPlan(products[2], 3, materials, products);
@@ -181,6 +200,9 @@ assert.equal(
   chosen.deductions.find((d) => d.targetId === "tea")?.quantityTotal,
   2,
 );
+assert(getProductionPlan({ ...virtualProduct, useProductionStages: true, productionStages: products[0].productionStages }, 2, withVirtual, products, {}, true).hasMissingVariableSelection, 'Registrar pronta ainda exige escolher a essência.');
+const completedVirtual = buildProductionBatch([getProductionPlan({ ...virtualProduct, useProductionStages: true, productionStages: products[0].productionStages }, 2, withVirtual, products, { [requirement.key]: 'tea' }, true)], '2026-10-19', '', true)[0];
+assert.equal(completedVirtual.status, 'completed');assert.equal(completedVirtual.deductedItems.find(item => item.targetId === 'tea')!.quantityTotal, 2);
 const durable = materials.map((m) =>
   m.id === "wax" ? { ...m, usageType: "durable" as const } : m,
 );

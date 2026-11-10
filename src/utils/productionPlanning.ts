@@ -20,6 +20,7 @@ export function getProductionPlan(
   materials: Material[],
   products: Product[],
   variableSelections: Record<string, string> = {},
+  alreadyCompleted = false,
 ) {
   const batchYield =
     Number.isFinite(selectedProduct.batchYield) &&
@@ -28,7 +29,7 @@ export function getProductionPlan(
       : 1;
   const parsedBatchCount = quantityProduced / batchYield;
   const isStagedProduction = !!(
-    selectedProduct.useProductionStages &&
+    !alreadyCompleted && selectedProduct.useProductionStages &&
     selectedProduct.productionStages?.length
   );
   const expanded = planAutomaticConsumption(selectedProduct.items, materials, products, parsedBatchCount, variableSelections);
@@ -66,6 +67,7 @@ export function getProductionPlan(
     totalCost,
     unitCost,
     variableSelections,
+    alreadyCompleted,
   };
 }
 
@@ -101,7 +103,7 @@ export function replanProductionSequence(plans: ProductionPlan[], immediateOnly 
   let products = plans[0]?.sourceProducts || [];
   return plans.map(original => {
     if (immediateOnly && original.isStagedProduction) return original;
-    const plan = getProductionPlan(original.product, original.quantityProduced, materials, products, original.variableSelections);
+    const plan = getProductionPlan(original.product, original.quantityProduced, materials, products, original.variableSelections, original.alreadyCompleted);
     materials = materials.map(material => {
       const deduction = plan.deductions.find(item => item.type === 'material' && item.targetId === material.id);
       return deduction ? {...material, currentStock: Math.max(0, material.currentStock - deduction.quantityTotal)} : material;
@@ -196,9 +198,10 @@ export function buildProductionRecord(
       ? { ...variableSelections }
       : undefined,
     stockTrackingEnabled: updateStock,
+    recordedAsCompleted: plan.alreadyCompleted || undefined,
     notes: notes.trim() || undefined,
     createdAt: localDateString(),
-    completedAt: isStagedProduction ? undefined : localDateString(),
+    completedAt: isStagedProduction ? undefined : plan.alreadyCompleted ? date : localDateString(),
   };
 
   return newProduction;
