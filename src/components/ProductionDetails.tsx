@@ -343,6 +343,7 @@ export const ViewProductionModal: React.FC<ViewProductionModalProps> = ({
                 em {production.batchCount}{" "}
                 {production.batchCount === 1 ? "batelada" : "bateladas"}.
               </p>
+              {production.recordedAsCompleted && <p className="mt-1 text-xs text-stone-500">Registrada já concluída, sem lançamentos individuais das etapas.</p>}
             </div>
           </div>
 

@@ -379,6 +379,7 @@ export function ProductionsView({
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                 <span className="text-xs text-[#75665c]">
                   {formatNumber(p.quantityProduced)} unidades finalizadas
+                  {p.recordedAsCompleted && ' · Registrada já concluída'}
                 </span>
                 <button type="button" onClick={() => setViewingId(p.id)} className="rounded-xl border border-[#e5dad1] px-4 py-2.5 text-sm">
                   Ver detalhes
@@ -431,10 +432,10 @@ export function ProductionsView({
           );
         })}
       </div>
-      <p className="text-xs text-[#75665c]">
+      {status === 'in_progress' && <p className="text-xs text-[#75665c]">
         Os materiais são baixados por etapa. As unidades prontas entram no
         estoque ao concluir a última etapa.
-      </p>
+      </p>}
     </section>
   );
 }
