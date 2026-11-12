@@ -8,7 +8,8 @@ import type { Customer, Sale } from '../types';
 const customer: Customer = { id: 'customer', name: 'Cliente Fictícia', phone: '41999990000', email: 'teste@example.com', createdAt: '2026-01-01' };
 const first = { id: 'first', orderNumber: 11, date: '2026-10-01', customerId: customer.id, customerName: customer.name,
   productId: '', productName: 'Vela personalizada', quantity: 2, unitPrice: 50, totalRevenue: 100,
-  discountAmount: 10, shippingCharged: 10, returnAdjustmentCents: 1000, amountPaid: 30, paymentStatus: 'pendente_pagamento',
+  discountAmount: 10, discountCode: 'Presente <Especial>', discountType: 'percentage', discountValue: 10,
+  shippingCharged: 10, returnAdjustmentCents: 1000, amountPaid: 30, paymentStatus: 'pendente_pagamento',
   notes: 'Entregar com laço', paymentScheduledDate: '2026-11-01' } as Sale;
 const second = { ...first, id: 'second', orderNumber: 12, date: '2026-10-10', productName: 'Difusor', quantity: 1,
   unitPrice: 80, totalRevenue: 80, discountAmount: 0, shippingCharged: 0, returnAdjustmentCents: 0, amountPaid: 0, notes: '' };
@@ -24,6 +25,9 @@ assert(document.querySelector('.summary .discount')?.textContent?.includes(forma
 const firstOrderSummary = document.querySelector('.order-summary')!;
 assert(firstOrderSummary.querySelector('.order-original')?.textContent?.includes(formatCurrency(110)));
 assert(firstOrderSummary.querySelector('.order-discount')?.textContent?.includes(formatCurrency(10)));
+assert(firstOrderSummary.querySelector('.order-discount')?.textContent?.includes('Presente <Especial> · 10%'));
+assert(!document.querySelector('especial'), 'O nome do código deve ser renderizado como texto.');
+assert(!document.querySelector('.summary .discount')?.textContent?.includes('10%'), 'A porcentagem pertence ao pedido individual.');
 assert([...firstOrderSummary.children].indexOf(firstOrderSummary.querySelector('.order-original')!) < [...firstOrderSummary.children].indexOf(firstOrderSummary.querySelector('.order-discount')!));
 assert.equal(document.querySelectorAll('.order-discount').length, 1, 'O pedido sem desconto não recebe um desconto inventado.');
 assert(document.body.textContent?.includes('Vela personalizada'));

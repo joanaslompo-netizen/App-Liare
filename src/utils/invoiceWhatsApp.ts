@@ -1,6 +1,6 @@
 import type { AtelierSettings, Customer, Product, Sale } from '../types';
 import { formatCurrency, formatDate } from './formatters';
-import { getGroupedInvoiceTotals, getInvoiceCustomerKey, getInvoiceSelectionError, getInvoiceTotals } from './invoice';
+import { getGroupedInvoiceTotals, getInvoiceCustomerKey, getInvoiceDiscountLabel, getInvoiceSelectionError, getInvoiceTotals } from './invoice';
 import { formatOrderNumber } from './orderNumbers';
 
 /** National numbers are Brazilian; an explicit + or 00 preserves other country codes. */
@@ -21,11 +21,11 @@ const inline = (value: string | undefined) => (value || '').replace(/[\s\u0000-\
 const currency = (value: number) => formatCurrency(value).replace(/\u00a0/g, ' ');
 const sortedOrders = (orders: Sale[]) => [...orders].sort((a, b) => a.date.localeCompare(b.date) || (a.orderNumber || 0) - (b.orderNumber || 0) || a.id.localeCompare(b.id));
 
-function summary(totals: ReturnType<typeof getInvoiceTotals>, shipping: number, returns: number): string[] {
+function summary(totals: ReturnType<typeof getInvoiceTotals>, shipping: number, returns: number, discountLabel = 'Desconto concedido'): string[] {
   return [
     `Subtotal dos produtos: ${currency(totals.subtotal)}`,
     ...(shipping ? [`Frete: ${currency(shipping)}`] : []),
-    ...(totals.discount ? [`*Total antes do desconto: ${currency(Math.round((totals.subtotal + shipping) * 100) / 100)}*`, `*Desconto concedido: −${currency(totals.discount)}*`] : []),
+    ...(totals.discount ? [`*Total antes do desconto: ${currency(Math.round((totals.subtotal + shipping) * 100) / 100)}*`, `*${inline(discountLabel)}: −${currency(totals.discount)}*`] : []),
     ...(returns ? [`Devoluções compensadas: −${currency(returns)}`] : []),
     `Total da fatura: ${currency(totals.total)}`,
     `Valor pago: ${currency(totals.paid)}`,
@@ -52,10 +52,10 @@ export function buildInvoiceWhatsAppMessage(orders: Sale[], settings: AtelierSet
     }
     if (order.paymentScheduledDate) lines.push(`Vencimento: ${formatDate(order.paymentScheduledDate)}`);
     if (order.deliveryActualDate || order.deliveryScheduledDate) lines.push(`Entrega ${order.deliveryActualDate ? 'realizada' : 'prevista'}: ${formatDate(order.deliveryActualDate || order.deliveryScheduledDate!)}`);
-    if (grouped) lines.push(...summary(getGroupedInvoiceTotals([order]), order.shippingCharged || 0, (order.returnAdjustmentCents || 0) / 100));
+    if (grouped) lines.push(...summary(getGroupedInvoiceTotals([order]), order.shippingCharged || 0, (order.returnAdjustmentCents || 0) / 100, getInvoiceDiscountLabel(order)));
     if (order.notes?.trim()) lines.push(`Observações: ${inline(order.notes)}`);
   }
-  lines.push('', grouped ? '*Resumo da fatura conjunta*' : '*Resumo da fatura*', ...summary(totals, shipping, returns));
+  lines.push('', grouped ? '*Resumo da fatura conjunta*' : '*Resumo da fatura*', ...summary(totals, shipping, returns, grouped ? undefined : getInvoiceDiscountLabel(sorted[0])));
   if (totals.balance > 0 && settings.pixKey?.trim()) {
     lines.push('', '*Pagamento via Pix*', `Chave Pix: ${inline(settings.pixKey)}`);
     if (settings.pixHolder?.trim()) lines.push(`Titular: ${inline(settings.pixHolder)}`);

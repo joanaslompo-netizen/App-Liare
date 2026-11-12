@@ -44,6 +44,7 @@ import {
 import { FinanceData, AtelierSettings, Sale, Product, Material, RecipeItem, OrderType, DeliveryStatus, PaymentStatus, SaleItem, Customer, DiscountCode, DiscountType } from '../types';
 import { 
   formatCurrency, 
+  formatNumber,
   formatPercent, 
   formatDate,
   formatBirthday,
@@ -53,6 +54,15 @@ import {
 import { ProductModelPicker } from './ProductModelPicker';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
 import { getProductFinancialSplit, getSaleFinancials, getSaleItemFinancialSplit } from '../utils/financials';
+
+const discountModes = [
+  ['none', 'Sem desconto'],
+  ['code', 'Código'],
+  ['single-use', 'Código de uso único'],
+  ['percentage', '% manual'],
+  ['fixed', 'R$ manual'],
+] as const;
+type DiscountMode = (typeof discountModes)[number][0];
 
 interface SalesViewProps {
   finance?: FinanceData;
@@ -1008,18 +1018,21 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
   const [channel, setChannel] = useState(existingSale?.channel || 'Instagram');
   const [notes, setNotes] = useState(existingSale?.notes || '');
-  const initialDiscountMode: 'none' | 'code' | 'percentage' | 'fixed' = existingSale?.discountCodeId
-    ? 'code'
-    : existingSale?.discountType === 'fixed'
-      ? 'fixed'
-      : existingSale?.discountType === 'percentage'
-        ? 'percentage'
-        : 'none';
-  const [discountMode, setDiscountMode] = useState<'none' | 'code' | 'percentage' | 'fixed'>(initialDiscountMode);
+  const existingSingleUseCode = existingSale?.discountCodeId ? undefined : existingSale?.discountCode;
+  const [discountMode, setDiscountMode] = useState<DiscountMode>(() => {
+    if (existingSale?.discountCodeId) return 'code';
+    if (existingSingleUseCode) return 'single-use';
+    return existingSale?.discountType ?? 'none';
+  });
   const [discountCodeId, setDiscountCodeId] = useState(existingSale?.discountCodeId || '');
   const [manualDiscountValue, setManualDiscountValue] = useState(
     existingSale?.discountValue?.toString() || ''
   );
+  const [singleUseDiscount, setSingleUseDiscount] = useState<{ code: string; type: DiscountType; value: string }>(() => ({
+    code: existingSingleUseCode ?? '',
+    type: existingSingleUseCode ? existingSale?.discountType ?? 'fixed' : 'percentage',
+    value: existingSingleUseCode ? String(existingSale?.discountValue ?? existingSale?.discountAmount ?? '') : '',
+  }));
 
   // Computed all available payment categories
   const allPaymentCategories = useMemo(() => {
@@ -1525,18 +1538,17 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     return acc + split.laborRemunerationPerUnit * it.quantity;
   }, 0);
 
-  const effectiveDiscountType: DiscountType | undefined =
-    discountMode === 'code'
-      ? appliedDiscountCode?.type
-      : discountMode === 'percentage'
-        ? 'percentage'
-        : discountMode === 'fixed'
-          ? 'fixed'
-          : undefined;
-  const effectiveDiscountValue =
-    discountMode === 'code'
-      ? (appliedDiscountCode?.value || 0)
-      : Math.max(0, parseFloat(manualDiscountValue) || 0);
+  const appliedCodeName = discountMode === 'single-use'
+    ? singleUseDiscount.code.trim()
+    : discountMode === 'code' ? appliedDiscountCode?.code : undefined;
+  const effectiveDiscountType: DiscountType | undefined = discountMode === 'single-use'
+    ? singleUseDiscount.type
+    : discountMode === 'code' ? appliedDiscountCode?.type
+      : discountMode === 'none' ? undefined : discountMode;
+  const enteredDiscountValue = Number(discountMode === 'single-use' ? singleUseDiscount.value : manualDiscountValue);
+  const effectiveDiscountValue = discountMode === 'code'
+    ? appliedDiscountCode?.value ?? 0
+    : Number.isFinite(enteredDiscountValue) ? Math.max(0, enteredDiscountValue) : 0;
   const discountAmount = effectiveDiscountType === 'percentage'
     ? Math.min(subtotalRevenue, subtotalRevenue * Math.min(100, effectiveDiscountValue) / 100)
     : effectiveDiscountType === 'fixed'
@@ -1554,6 +1566,12 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     if (isAddingPaymentCategory && newPaymentCategoryInput.trim()) { setStep(2); setFormError('Confirme a nova forma de pagamento antes de concluir.'); return; }
     if (!date) { setStep(0); setFormError('Informe a data do pedido.'); return; }
     if (!existingSale && (step !== 2 || pendingItem())) { goToStep(2); return; }
+    if (discountMode === 'single-use' && (!appliedCodeName || effectiveDiscountValue <= 0 ||
+      (singleUseDiscount.type === 'percentage' && effectiveDiscountValue > 100))) {
+      setStep(2);
+      setFormError('Informe o nome do código de uso único e um desconto válido.');
+      return;
+    }
     const invalid = e.currentTarget.querySelector(':invalid') as HTMLInputElement | null;
     if (invalid) {
       const section = invalid.closest('section');
@@ -1608,7 +1626,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       discountType: effectiveDiscountType,
       discountValue: effectiveDiscountType ? effectiveDiscountValue : undefined,
       discountAmount: discountAmount > 0 ? discountAmount : undefined,
-      discountCode: discountMode === 'code' ? appliedDiscountCode?.code : undefined,
+      discountCode: appliedCodeName,
       discountCodeId: discountMode === 'code' ? appliedDiscountCode?.id : undefined,
       totalRevenue,
       totalCost,
@@ -2465,18 +2483,15 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
               )}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {[
-                ['none', 'Sem desconto'],
-                ['code', 'Código'],
-                ['percentage', '% manual'],
-                ['fixed', 'R$ manual'],
-              ].map(([mode, label]) => (
+            <div className="flex flex-wrap gap-2">
+              {discountModes.map(([mode, label]) => (
                 <button
                   key={mode}
                   type="button"
+                  aria-pressed={discountMode === mode}
                   onClick={() => {
-                    setDiscountMode(mode as 'none' | 'code' | 'percentage' | 'fixed');
+                    setDiscountMode(mode);
+                    setFormError('');
                     if (mode === 'none') {
                       setDiscountCodeId('');
                       setManualDiscountValue('');
@@ -2504,6 +2519,51 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
               </select>
             )}
 
+            {discountMode === 'single-use' && (
+              <div className="space-y-3">
+                <label className="block text-sm">
+                  Nome do código
+                  <input
+                    aria-label="Nome do código de uso único"
+                    value={singleUseDiscount.code}
+                    onChange={event => setSingleUseDiscount({ ...singleUseDiscount, code: event.target.value })}
+                    placeholder="Ex.: PRESENTE30"
+                    required
+                    className="mt-1 w-full min-w-0 rounded-xl border border-stone-300 bg-white px-3 py-2 text-base"
+                  />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="text-sm">
+                    Tipo de desconto
+                    <select
+                      aria-label="Tipo do desconto de uso único"
+                      value={singleUseDiscount.type}
+                      onChange={event => setSingleUseDiscount({ ...singleUseDiscount, type: event.target.value as DiscountType })}
+                      className="mt-1 w-full min-w-0 rounded-xl border border-stone-300 bg-white px-3 py-2 text-base"
+                    >
+                      <option value="percentage">Porcentagem</option>
+                      <option value="fixed">Valor em R$</option>
+                    </select>
+                  </label>
+                  <label className="text-sm">
+                    {singleUseDiscount.type === 'percentage' ? 'Desconto (%)' : 'Desconto (R$)'}
+                    <input
+                      aria-label="Valor do desconto de uso único"
+                      type="number"
+                      min="0.01"
+                      max={singleUseDiscount.type === 'percentage' ? 100 : undefined}
+                      step="0.01"
+                      value={singleUseDiscount.value}
+                      onChange={event => setSingleUseDiscount({ ...singleUseDiscount, value: event.target.value })}
+                      required
+                      className="mt-1 w-full min-w-0 rounded-xl border border-stone-300 bg-white px-3 py-2 text-base"
+                    />
+                  </label>
+                </div>
+                <p className="text-xs text-stone-500">Válido só neste pedido.</p>
+              </div>
+            )}
+
             {(discountMode === 'percentage' || discountMode === 'fixed') && (
               <div className="relative">
                 <input
@@ -2522,7 +2582,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
               </div>
             )}
 
-            {selectedCustomer && (
+            {selectedCustomer && discountMode !== 'single-use' && (
               <div className="text-xs text-stone-500">
                 {selectedCustomer.defaultDiscountCodeId || (selectedCustomer.defaultDiscountPercent || 0) > 0
                   ? 'Benefício padrão do cliente aplicado automaticamente neste novo pedido.'
@@ -2718,7 +2778,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
               {discountAmount > 0 && (
                 <div className="flex justify-between text-[#a86149]">
                   <span>
-                    Desconto{discountMode === 'code' && appliedDiscountCode ? ` · ${appliedDiscountCode.code}` : ''}:
+                    Desconto{appliedCodeName ? ` · ${appliedCodeName}` : ''}:
                   </span>
                   <span className="font-bold">-{formatCurrency(discountAmount)}</span>
                 </div>

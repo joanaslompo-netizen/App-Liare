@@ -26,6 +26,11 @@ const second={...sale,id:'two',orderNumber:43,date:'2026-11-06',quantity:1,unitP
 const grouped=getInvoiceWhatsApp([second,sale],settings,[customer],[]);
 assert.equal(grouped.error,'');assert(grouped.message.indexOf('000042')<grouped.message.indexOf('000043'));assert(grouped.message.includes('*Resumo da fatura conjunta*'));
 assert(grouped.message.includes('Total da fatura: R$ 180,00'));assert(grouped.message.includes('Valor pago: R$ 110,00'));assert(grouped.message.includes('Saldo a pagar: R$ 70,00'),'Excedente de outro pedido não quita o saldo por conta própria.');
+const codedSale: Sale = { ...sale, discountCode: 'PRESENTE10', discountType: 'percentage', discountValue: 10 };
+for (const orders of [[codedSale], [codedSale, second]]) {
+  const message = getInvoiceWhatsApp(orders, settings, [customer], products).message;
+  assert(message.includes('Desconto concedido (PRESENTE10 · 10%): −R$ 10,00'));
+}
 assert.equal(getInvoiceWhatsApp([sale,{...second,customerId:'other'}],settings,[customer],[]).url,null);
 assert.equal(getInvoiceWhatsApp([sale,second],settings,[{...customer,phone:''}],[]).error,'','Mesmo contato dos pedidos pode ser usado se o cadastro não tiver telefone.');
 assert(getInvoiceWhatsApp([sale,{...second,customerContact:'11977770000'}],settings,[{...customer,phone:''}],[]).error.includes('telefones diferentes'));
