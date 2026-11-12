@@ -9,6 +9,7 @@ import { getProductFinancialSplit } from "./utils/financials";
 import { FinanceView } from "./components/FinanceView";
 import { ConsignmentsView } from './components/ConsignmentsView';
 import { ManagementView, isManagementTab } from './components/ManagementView';
+import { DiscountCodesView } from './components/DiscountCodesView';
 import { consignmentStock } from './utils/consignments';
 import { OrderDetailView, type OrderFocus } from "./components/OrderDetailView";
 import { applyFinanceCommand, emptyFinance, projectOrder, isActiveOrder, orderBalance, type FinanceCommand } from "./utils/financeLedger";
@@ -1826,6 +1827,12 @@ export default function App() {
         )}
 
         {activeTab === 'consignments' && <ConsignmentsView key={consignmentInitialLocation || 'list'} initialLocationId={consignmentInitialLocation} products={products} sales={sales} finance={finance} stockMovements={stockMovements} onAction={handleFinanceAction} />}
+        {activeTab === 'discount-codes' && (
+          <DiscountCodesView
+            codes={settings.discountCodes || []}
+            onChange={discountCodes => setSettings(previous => ({ ...previous, discountCodes }))}
+          />
+        )}
         </ManagementView>}
 
         {activeTab === 'suppliers' && (
