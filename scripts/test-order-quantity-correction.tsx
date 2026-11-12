@@ -30,7 +30,7 @@ await mount();const before = JSON.stringify(saved());const receipt = JSON.string
 await button('Editar itens');assert.equal(document.querySelector<HTMLInputElement>('[aria-label="Quantidade de Vela de teste"]')!.min, '1');
 await quantity('2');assert(document.querySelector('[aria-label="Correção das entregas registradas"]')?.textContent?.includes('5 → 2'));
 await button('Cancelar alterações');assert.equal(JSON.stringify(saved()), before);
-await button('Editar itens');await quantity('2');await button('Salvar itens do pedido');
+await button('Editar itens');await quantity('2');await button('Conferir pedido');await button('Salvar alterações');
 assert.equal(alerts.length, 0, alerts.join('; '));assert(document.querySelector('[data-testid="order-detail"]'));
 assert.equal(saved().sales.length, 1);assert.equal(saved().sales[0].orderNumber, 1);assert.equal(saved().sales[0].quantity, 2);
 assert.equal(saved().sales[0].items[0].deliveredQuantity, 2);assert.equal(saved().sales[0].deliveryStatus, 'entregue');
@@ -41,7 +41,7 @@ assert(document.body.textContent?.includes('Correção de quantidade registrada'
 await act(async () => root.unmount());root = createRoot(document.querySelector('#root')!);await mount();
 await button('Editar itens');assert.equal(document.querySelector<HTMLInputElement>('[aria-label="Quantidade de Vela de teste"]')!.value, '2');
 await quantity('1');await act(async () => document.querySelector<HTMLInputElement>('[aria-label="Repor diferença no estoque"]')!.click());
-await button('Salvar itens do pedido');
+await button('Conferir pedido');await button('Salvar alterações');
 assert.equal(saved().sales[0].quantity, 1);assert.equal(saved().products[0].currentStock, 8, 'Reposição desmarcada mantém o estoque');
 assert.equal(saved().sales[0].quantityCorrections.length, 2);assert.equal(creditBalance(saved().finance, 'c'), 20000);assert.equal(JSON.stringify(saved().finance.entries[0]), receipt);
 await act(async () => root.unmount());
@@ -52,7 +52,7 @@ const legacy = structuredClone(fixture);delete legacy.sales[0].customerId;delete
 delete legacy.sales[0].deliveryHistory;delete legacy.sales[0].items[0].deliveredQuantity;delete legacy.sales[0].items[0].stockConsumedQuantity;
 workspaceStorage.setItem('atelie_workspace_finance_v1', JSON.stringify(legacy));root = createRoot(document.querySelector('#root')!);await mount();
 await button('Editar itens');await quantity('2');assert(!document.querySelector('[aria-label="Repor diferença no estoque"]'));
-await button('Salvar itens do pedido');assert.equal(saved().sales[0].quantity, 2);assert.equal(saved().sales[0].items[0].deliveredQuantity, 2);
+await button('Conferir pedido');await button('Salvar alterações');assert.equal(saved().sales[0].quantity, 2);assert.equal(saved().sales[0].items[0].deliveredQuantity, 2);
 assert.equal(saved().products[0].currentStock, 5);assert.equal(saved().finance.entries.length, 1);assert.equal(saved().finance.entries[0].amountCents, 25000);
 assert.equal(alerts.length, 0, alerts.join('; '));await act(async () => root.unmount());
 console.log('App: reduzir item entregue, conferir/cancelar, corrigir com ou sem reposição, preservar recebimento/crédito/histórico, reabrir e corrigir legado sem fabricar estoque passaram.');

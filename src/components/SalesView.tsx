@@ -9,6 +9,9 @@ import { MoreOptions } from './MoreOptions';
 import { formatOrderNumber } from '../utils/orderNumbers';
 import { getGroupedInvoiceTotals, getInvoiceCustomerKey, getInvoiceSelectionError, getInvoiceTotals } from '../utils/invoice';
 import { InvoiceModal } from './InvoiceModal';
+import { OrderDiscountFields } from './OrderDiscountFields';
+import { OrderSteps } from './OrderSteps';
+import { initialOrderDiscount, orderDiscountOptions, resolveOrderDiscount } from '../utils/orderDiscount';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Plus, 
@@ -38,13 +41,11 @@ import {
   Store,
   UserPlus,
   Sparkles,
-  Percent,
   FileText
 } from 'lucide-react';
-import { FinanceData, AtelierSettings, Sale, Product, Material, RecipeItem, OrderType, DeliveryStatus, PaymentStatus, SaleItem, Customer, DiscountCode, DiscountType } from '../types';
+import { FinanceData, AtelierSettings, Sale, Product, Material, RecipeItem, OrderType, DeliveryStatus, PaymentStatus, SaleItem, Customer, DiscountCode } from '../types';
 import { 
   formatCurrency, 
-  formatNumber,
   formatPercent, 
   formatDate,
   formatBirthday,
@@ -54,15 +55,6 @@ import {
 import { ProductModelPicker } from './ProductModelPicker';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
 import { getProductFinancialSplit, getSaleFinancials, getSaleItemFinancialSplit } from '../utils/financials';
-
-const discountModes = [
-  ['none', 'Sem desconto'],
-  ['code', 'Código'],
-  ['single-use', 'Código de uso único'],
-  ['percentage', '% manual'],
-  ['fixed', 'R$ manual'],
-] as const;
-type DiscountMode = (typeof discountModes)[number][0];
 
 interface SalesViewProps {
   finance?: FinanceData;
@@ -971,7 +963,6 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
   onClose,
   onSave,
 }) => {
-  const orderSteps = ['Cliente e entrega', 'Produtos', 'Conferir e salvar'];
   const [draftSaleId] = useState(() => existingSale?.id || `sale_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2)}`}`);
   const [step, setStep] = useState(0);
   const orderHeading = useRef<HTMLHeadingElement>(null);
@@ -1018,21 +1009,8 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
   const [channel, setChannel] = useState(existingSale?.channel || 'Instagram');
   const [notes, setNotes] = useState(existingSale?.notes || '');
-  const existingSingleUseCode = existingSale?.discountCodeId ? undefined : existingSale?.discountCode;
-  const [discountMode, setDiscountMode] = useState<DiscountMode>(() => {
-    if (existingSale?.discountCodeId) return 'code';
-    if (existingSingleUseCode) return 'single-use';
-    return existingSale?.discountType ?? 'none';
-  });
-  const [discountCodeId, setDiscountCodeId] = useState(existingSale?.discountCodeId || '');
-  const [manualDiscountValue, setManualDiscountValue] = useState(
-    existingSale?.discountValue?.toString() || ''
-  );
-  const [singleUseDiscount, setSingleUseDiscount] = useState<{ code: string; type: DiscountType; value: string }>(() => ({
-    code: existingSingleUseCode ?? '',
-    type: existingSingleUseCode ? existingSale?.discountType ?? 'fixed' : 'percentage',
-    value: existingSingleUseCode ? String(existingSale?.discountValue ?? existingSale?.discountAmount ?? '') : '',
-  }));
+  const [discountDraft, setDiscountDraft] = useState(() => initialOrderDiscount(existingSale));
+  const availableDiscountCodes = useMemo(() => orderDiscountOptions(discountCodes, existingSale ?? undefined), [discountCodes, existingSale]);
 
   // Computed all available payment categories
   const allPaymentCategories = useMemo(() => {
@@ -1053,24 +1031,6 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     return null;
   }, [customerId, customers]);
 
-  const appliedDiscountCode = useMemo(() => {
-    if (
-      existingSale?.discountCodeId === discountCodeId &&
-      existingSale.discountType &&
-      existingSale.discountValue !== undefined
-    ) {
-      return {
-        id: existingSale.discountCodeId,
-        code: existingSale.discountCode || 'DESCONTO',
-        type: existingSale.discountType,
-        value: existingSale.discountValue,
-        active: true,
-        createdAt: existingSale.createdAt,
-      } as DiscountCode;
-    }
-    return discountCodes.find((code) => code.id === discountCodeId) || null;
-  }, [discountCodes, discountCodeId, existingSale]);
-
   useEffect(() => {
     if (existingSale || !selectedCustomer) return;
 
@@ -1079,23 +1039,17 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
         (code) => code.id === selectedCustomer.defaultDiscountCodeId && code.active !== false
       );
       if (customerCode) {
-        setDiscountMode('code');
-        setDiscountCodeId(customerCode.id);
-        setManualDiscountValue('');
+        setDiscountDraft({ ...initialOrderDiscount(), mode: 'code', codeId: customerCode.id });
         return;
       }
     }
 
     if ((selectedCustomer.defaultDiscountPercent || 0) > 0) {
-      setDiscountMode('percentage');
-      setDiscountCodeId('');
-      setManualDiscountValue(String(selectedCustomer.defaultDiscountPercent));
+      setDiscountDraft({ ...initialOrderDiscount(), mode: 'percentage', manualValue: String(selectedCustomer.defaultDiscountPercent) });
       return;
     }
 
-    setDiscountMode('none');
-    setDiscountCodeId('');
-    setManualDiscountValue('');
+    setDiscountDraft(initialOrderDiscount());
   }, [selectedCustomer?.id, discountCodes, existingSale]);
 
   // Initialize items array from existingSale (or from single product fallback)
@@ -1538,22 +1492,8 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     return acc + split.laborRemunerationPerUnit * it.quantity;
   }, 0);
 
-  const appliedCodeName = discountMode === 'single-use'
-    ? singleUseDiscount.code.trim()
-    : discountMode === 'code' ? appliedDiscountCode?.code : undefined;
-  const effectiveDiscountType: DiscountType | undefined = discountMode === 'single-use'
-    ? singleUseDiscount.type
-    : discountMode === 'code' ? appliedDiscountCode?.type
-      : discountMode === 'none' ? undefined : discountMode;
-  const enteredDiscountValue = Number(discountMode === 'single-use' ? singleUseDiscount.value : manualDiscountValue);
-  const effectiveDiscountValue = discountMode === 'code'
-    ? appliedDiscountCode?.value ?? 0
-    : Number.isFinite(enteredDiscountValue) ? Math.max(0, enteredDiscountValue) : 0;
-  const discountAmount = effectiveDiscountType === 'percentage'
-    ? Math.min(subtotalRevenue, subtotalRevenue * Math.min(100, effectiveDiscountValue) / 100)
-    : effectiveDiscountType === 'fixed'
-      ? Math.min(subtotalRevenue, effectiveDiscountValue)
-      : 0;
+  const { fields: discountFields, error: discountError } = resolveOrderDiscount(discountDraft, availableDiscountCodes, subtotalRevenue);
+  const discountAmount = discountFields.discountAmount ?? 0;
   const totalRevenue = Math.max(0, subtotalRevenue - discountAmount) + Math.max(0,Number(shippingCharged)||0);
   const totalProfit = totalRevenue - totalBusinessCost;
   const commercialProfit = totalProfit - totalLaborRemuneration;
@@ -1566,12 +1506,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     if (isAddingPaymentCategory && newPaymentCategoryInput.trim()) { setStep(2); setFormError('Confirme a nova forma de pagamento antes de concluir.'); return; }
     if (!date) { setStep(0); setFormError('Informe a data do pedido.'); return; }
     if (!existingSale && (step !== 2 || pendingItem())) { goToStep(2); return; }
-    if (discountMode === 'single-use' && (!appliedCodeName || effectiveDiscountValue <= 0 ||
-      (singleUseDiscount.type === 'percentage' && effectiveDiscountValue > 100))) {
-      setStep(2);
-      setFormError('Informe o nome do código de uso único e um desconto válido.');
-      return;
-    }
+    if (discountError) { setStep(2); setFormError(discountError); return; }
     const invalid = e.currentTarget.querySelector(':invalid') as HTMLInputElement | null;
     if (invalid) {
       const section = invalid.closest('section');
@@ -1623,11 +1558,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       items,
       shippingCharged: Math.max(0,Number(shippingCharged)||0),
       subtotalRevenue,
-      discountType: effectiveDiscountType,
-      discountValue: effectiveDiscountType ? effectiveDiscountValue : undefined,
-      discountAmount: discountAmount > 0 ? discountAmount : undefined,
-      discountCode: appliedCodeName,
-      discountCodeId: discountMode === 'code' ? appliedDiscountCode?.id : undefined,
+      ...discountFields,
       totalRevenue,
       totalCost,
       totalBusinessCost,
@@ -1707,11 +1638,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
           </div>
           <button type="button" onClick={onClose} className="rounded-xl border border-[#e5dad1] bg-white px-4 py-2.5 text-sm hover:bg-[#fbf7f2]">{existingSale ? 'Fechar' : 'Cancelar pedido'}</button>
         </header>
-        {!existingSale && <nav aria-label="Etapas do novo pedido" className="grid grid-cols-3 gap-2 mb-6">
-          {orderSteps.map((label, index) => <button key={label} type="button" aria-current={step === index ? 'step' : undefined} onClick={() => goToStep(index)} className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition-colors ${step === index ? 'border-[#a86149] bg-[#f5e8df] text-[#8b503c]' : 'border-[#e5dad1] bg-white text-[#75665c] hover:bg-[#fbf7f2]'}`}>
-            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm ${step === index ? 'bg-[#a86149] text-white' : 'bg-[#f6f0e9]'}`}>{index + 1}</span><span className="text-sm font-semibold">{label}</span>
-          </button>)}
-        </nav>}
+        {!existingSale && <div className="mb-6"><OrderSteps step={step} onSelect={goToStep} disabled={isSaving} /></div>}
         <form onSubmit={handleSubmit} noValidate className="liare-modal-body grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
           <div className="min-w-0 space-y-5">
             {formError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{formError}</p>}
@@ -2470,126 +2397,12 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 </section>
 <section hidden={!existingSale && step !== 2} aria-label="Conferir e salvar" className="rounded-2xl border border-[#e5dad1] bg-white p-5 sm:p-6 space-y-6">
  <div><h3 className="text-xl font-semibold">Conferir e salvar</h3><p className="text-sm text-[#75665c] mt-1">Revise os valores, o recebimento e os detalhes combinados.</p></div>
-           <div className="p-4 rounded-xl bg-[#fbf7f2] border border-[#eadfd6] space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <label className="text-xs font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Percent className="w-4 h-4 text-[#b96f55]" />
-                Desconto do pedido
-              </label>
-              {discountAmount > 0 && (
-                <span className="text-xs font-bold text-[#a86149]">
-                  -{formatCurrency(discountAmount)}
-                </span>
-              )}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {discountModes.map(([mode, label]) => (
-                <button
-                  key={mode}
-                  type="button"
-                  aria-pressed={discountMode === mode}
-                  onClick={() => {
-                    setDiscountMode(mode);
-                    setFormError('');
-                    if (mode === 'none') {
-                      setDiscountCodeId('');
-                      setManualDiscountValue('');
-                    }
-                  }}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${discountMode === mode ? 'bg-[#b96f55] text-white border-[#b96f55]' : 'bg-white text-stone-600 border-stone-200 hover:border-[#c98a72]'}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {discountMode === 'code' && (
-              <select
-                aria-label="Cupom de desconto" value={discountCodeId}
-                onChange={(e) => setDiscountCodeId(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-[#b96f55] text-stone-900"
-              >
-                <option value="">Escolher código de desconto...</option>
-                {discountCodes.filter((code) => code.active !== false).map((code) => (
-                  <option key={code.id} value={code.id}>
-                    {code.code} · {code.type === 'percentage' ? `${code.value}%` : formatCurrency(code.value)}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {discountMode === 'single-use' && (
-              <div className="space-y-3">
-                <label className="block text-sm">
-                  Nome do código
-                  <input
-                    aria-label="Nome do código de uso único"
-                    value={singleUseDiscount.code}
-                    onChange={event => setSingleUseDiscount({ ...singleUseDiscount, code: event.target.value })}
-                    placeholder="Ex.: PRESENTE30"
-                    required
-                    className="mt-1 w-full min-w-0 rounded-xl border border-stone-300 bg-white px-3 py-2 text-base"
-                  />
-                </label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="text-sm">
-                    Tipo de desconto
-                    <select
-                      aria-label="Tipo do desconto de uso único"
-                      value={singleUseDiscount.type}
-                      onChange={event => setSingleUseDiscount({ ...singleUseDiscount, type: event.target.value as DiscountType })}
-                      className="mt-1 w-full min-w-0 rounded-xl border border-stone-300 bg-white px-3 py-2 text-base"
-                    >
-                      <option value="percentage">Porcentagem</option>
-                      <option value="fixed">Valor em R$</option>
-                    </select>
-                  </label>
-                  <label className="text-sm">
-                    {singleUseDiscount.type === 'percentage' ? 'Desconto (%)' : 'Desconto (R$)'}
-                    <input
-                      aria-label="Valor do desconto de uso único"
-                      type="number"
-                      min="0.01"
-                      max={singleUseDiscount.type === 'percentage' ? 100 : undefined}
-                      step="0.01"
-                      value={singleUseDiscount.value}
-                      onChange={event => setSingleUseDiscount({ ...singleUseDiscount, value: event.target.value })}
-                      required
-                      className="mt-1 w-full min-w-0 rounded-xl border border-stone-300 bg-white px-3 py-2 text-base"
-                    />
-                  </label>
-                </div>
-                <p className="text-xs text-stone-500">Válido só neste pedido.</p>
-              </div>
-            )}
-
-            {(discountMode === 'percentage' || discountMode === 'fixed') && (
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  max={discountMode === 'percentage' ? 100 : undefined}
-                  step="0.01"
-                  aria-label="Valor do desconto" value={manualDiscountValue}
-                  onChange={(e) => setManualDiscountValue(e.target.value)}
-                  placeholder={discountMode === 'percentage' ? 'Ex: 10' : 'Ex: 20,00'}
-                  className="w-full px-3 py-2 pr-10 text-sm bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-[#b96f55] text-stone-900"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-stone-500">
-                  {discountMode === 'percentage' ? '%' : 'R$'}
-                </span>
-              </div>
-            )}
-
-            {selectedCustomer && discountMode !== 'single-use' && (
-              <div className="text-xs text-stone-500">
-                {selectedCustomer.defaultDiscountCodeId || (selectedCustomer.defaultDiscountPercent || 0) > 0
-                  ? 'Benefício padrão do cliente aplicado automaticamente neste novo pedido.'
-                  : 'Este cliente não possui benefício padrão cadastrado.'}
-              </div>
-            )}
-          </div>
+            <OrderDiscountFields
+              draft={discountDraft}
+              codes={availableDiscountCodes}
+              amount={discountAmount}
+              onChange={value => { setDiscountDraft(value); setFormError(''); }}
+            />
 <label className="block text-sm">Frete cobrado do cliente (R$)<input type="number" min="0" step="0.01" className="mt-1 w-full rounded-xl border p-2 text-base" aria-label="Frete cobrado" value={shippingCharged} onChange={e=>setShippingCharged(e.target.value)}/></label>
             <div className="p-4 rounded-xl bg-stone-50 border border-stone-200/90 space-y-2.5">
               <div className="flex items-center justify-between flex-wrap gap-2">
@@ -2778,7 +2591,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
               {discountAmount > 0 && (
                 <div className="flex justify-between text-[#a86149]">
                   <span>
-                    Desconto{appliedCodeName ? ` · ${appliedCodeName}` : ''}:
+                    Desconto{discountFields.discountCode ? ` · ${discountFields.discountCode}` : ''}:
                   </span>
                   <span className="font-bold">-{formatCurrency(discountAmount)}</span>
                 </div>

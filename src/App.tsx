@@ -1624,7 +1624,7 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-28">
         {workflowSaleId && sales.find(sale => sale.id === workflowSaleId) && <OrderDetailView
           key={workflowSaleId} sale={sales.find(sale => sale.id === workflowSaleId)!}
-          finance={finance} products={products} customers={customers} settings={settings}
+          finance={finance} products={products} customers={customers} settings={settings} paymentMethods={paymentMethods}
           onAction={handleFinanceAction} onSave={handleSaveSale} onBack={closeOrderDetail}
           onProduceCustomItem={handleProduceCustomItem}
           focus={workflowFocus} onProduce={product => {

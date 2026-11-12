@@ -121,7 +121,7 @@ async function openFirstOrder() {
   await click(`Pedido #${String(originalOrderNumber).padStart(6, '0')}`);
 }
 async function fillOrderLabel(label: string, value: string) {
-  const form = document.querySelector('[aria-label="Editar dados do pedido"]')!;
+  const form = document.querySelector('[aria-label="Editar pedido"]')!;
   const row = [...form.querySelectorAll('label')].find(node => node.textContent?.includes(label));
   const control = row?.querySelector('input,textarea') as HTMLInputElement;
   assert(control, label);
@@ -132,16 +132,19 @@ async function fillOrderLabel(label: string, value: string) {
   });
 }
 await openFirstOrder();
-await click('Editar dados');
+await click('Editar pedido');
 await fillOrderLabel('Contato', '11999990000');
 await fillOrderLabel('Prazo de entrega', '2026-11-10');
+await click('Continuar para produtos');
+await click('Conferir pedido');
 await fillOrderLabel('Combinado / observações', 'Entregar na portaria');
-await click('Salvar dados do pedido');
-assert(!document.querySelector('[aria-label="Editar dados do pedido"]'));
+await click('Salvar alterações');
+assert(!document.querySelector('[aria-label="Editar pedido"]'));
 await click('Editar itens');
 await fill('Quantidade de Vela teste', '3');
 await fill('Preço de Vela teste', '20');
-await click('Salvar itens do pedido');
+await click('Conferir pedido');
+await click('Salvar alterações');
 assert.equal(scenario.financeCalls, 0, 'Editar pedido sincronizado não exige transação remota');
 assert.equal(scenario.uploads, uploadsBeforeEdit, 'Editar durante a pausa não chama a nuvem');
 assert.equal(alerts.length, 0, alerts.join('; '));
@@ -184,9 +187,11 @@ await remount();
 
 // An old upload response cannot clear a newer order or existing-order edit.
 await openFirstOrder();
-await click('Editar dados');
+await click('Editar pedido');
+await click('Continuar para produtos');
+await click('Conferir pedido');
 await fillOrderLabel('Combinado / observações', 'Edição anterior ao envio');
-await click('Salvar dados do pedido');
+await click('Salvar alterações');
 let resolveUpload!: (value: any) => void;
 scenario.delayedUpload = new Promise(resolve => { resolveUpload = resolve; });
 await cloudPanel();
@@ -196,9 +201,11 @@ await prepareOrder('Cliente durante envio');
 await click('Concluir Pedido');
 const latestId = saved().sales[0].id;
 await openFirstOrder();
-await click('Editar dados');
+await click('Editar pedido');
+await click('Continuar para produtos');
+await click('Conferir pedido');
 await fillOrderLabel('Combinado / observações', 'Edição mais recente durante envio');
-await click('Salvar dados do pedido');
+await click('Salvar alterações');
 await act(async () => resolveUpload({ ...scenario.lastUpload, revision: 10 }));
 assert.equal(saved().sales.find((sale:any)=>sale.id===firstId).notes, 'Edição mais recente durante envio');
 assert.equal(saved().sales.length, 3);
