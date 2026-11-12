@@ -230,6 +230,14 @@ export interface PurchasePayment {
 
 export type DiscountType = 'percentage' | 'fixed';
 
+export interface OrderDiscount {
+  type: DiscountType;
+  value: number;
+  amount: number;
+  code?: string;
+  codeId?: string;
+}
+
 export interface DiscountCode {
   id: string;
   code: string;
@@ -351,6 +359,8 @@ export interface Sale {
   discountType?: DiscountType;
   discountValue?: number;
   discountAmount?: number;
+  /** Saved terms and applied amount for each discount. discountAmount remains the combined total. */
+  discounts?: OrderDiscount[];
   /** Snapshot of the code used at checkout, so old orders never change retroactively. */
   discountCode?: string;
   discountCodeId?: string;

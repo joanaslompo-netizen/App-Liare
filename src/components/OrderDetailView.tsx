@@ -9,7 +9,7 @@ import { formatOrderNumber } from '../utils/orderNumbers';
 import { localDateString } from '../utils/localDate';
 import { InvoiceModal } from './InvoiceModal';
 import { OrderEditor } from './OrderEditor';
-import { getInvoiceDiscountLabel } from '../utils/invoice';
+import { getInvoiceDiscountBreakdown, getInvoiceDiscountLabel } from '../utils/invoice';
 import { ENTRY_LABEL, OrderWorkflowModal, type FinanceAction, type OrderActionMode } from './FinanceView';
 
 export type OrderFocus = 'overview' | 'payment' | 'delivery' | 'production';
@@ -131,7 +131,13 @@ export function OrderDetailView({ sale, finance, products, customers, settings, 
               {item.isCustom && item.customRecipeItems?.length ? <details className="mt-3 text-xs text-[#75665c]"><summary className="cursor-pointer">Composição personalizada</summary><ul className="mt-2 space-y-1">{item.customRecipeItems.map((recipe, index) => <li key={recipe.id || index}>{recipe.name} · {recipe.quantity} {recipe.unit}</li>)}</ul></details> : null}
             </div>;
           })}</div>
-          <div className="mt-3 space-y-2 border-t border-[#e5dad1] pt-4 text-sm">{!!sale.discountAmount && <div className="flex justify-between gap-3 text-[#75665c]"><span className="[overflow-wrap:anywhere]">{getInvoiceDiscountLabel(sale)}</span><span>−{formatCurrency(sale.discountAmount)}</span></div>}{!!sale.shippingCharged && <div className="flex justify-between gap-3 text-[#75665c]"><span>Frete</span><span>{formatCurrency(sale.shippingCharged)}</span></div>}{!!sale.returnAdjustmentCents && <div className="flex justify-between gap-3 text-[#75665c]"><span>Ajuste por devolução</span><span>−{formatCurrency(money(sale.returnAdjustmentCents))}</span></div>}<div className="flex justify-between gap-3"><span>Total combinado</span><strong>{formatCurrency(money(orderTotal(sale)))}</strong></div></div>
+          <div className="mt-3 space-y-2 border-t border-[#e5dad1] pt-4 text-sm">{!!sale.discountAmount && <div className="flex justify-between gap-3 text-[#75665c]"><span className="[overflow-wrap:anywhere]">{getInvoiceDiscountLabel(sale)}</span><span>−{formatCurrency(sale.discountAmount)}</span></div>}
+          {!!sale.discountAmount && getInvoiceDiscountBreakdown(sale).map((discount, index) => (
+            <div key={index} className="flex justify-between gap-3 pl-3 text-xs text-[#75665c]">
+              <span className="[overflow-wrap:anywhere]">{discount.label}</span>
+              <span className="shrink-0">−{formatCurrency(discount.amount)}</span>
+            </div>
+          ))}{!!sale.shippingCharged && <div className="flex justify-between gap-3 text-[#75665c]"><span>Frete</span><span>{formatCurrency(sale.shippingCharged)}</span></div>}{!!sale.returnAdjustmentCents && <div className="flex justify-between gap-3 text-[#75665c]"><span>Ajuste por devolução</span><span>−{formatCurrency(money(sale.returnAdjustmentCents))}</span></div>}<div className="flex justify-between gap-3"><span>Total combinado</span><strong>{formatCurrency(money(orderTotal(sale)))}</strong></div></div>
         </section>
 
         {action && <section ref={actionPanel} className={`${panel} scroll-mt-24`}>

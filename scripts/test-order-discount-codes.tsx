@@ -81,7 +81,7 @@ async function checkInvoice(label: string, discount: number) {
   const frame = document.querySelector<HTMLIFrameElement>('iframe');
   assert(frame);
   const invoice = new JSDOM(frame.srcdoc).window.document;
-  assert(invoice.querySelector('.summary .discount')?.textContent?.includes(label));
+  assert(invoice.querySelector('.summary')?.textContent?.includes(label));
   assert(invoice.querySelector('.summary .discount')?.textContent?.includes(formatCurrency(discount)));
   await click('[aria-label="Fechar fatura"]');
 }
@@ -120,22 +120,45 @@ const formAlert = document.querySelector('.liare-new-order [role="alert"]')?.tex
 assert(formAlert?.includes('código de uso único'), formAlert ?? 'O formulário deve explicar a falta de nome ou valor.');
 await fill('[aria-label="Nome do código de uso único"]', ' PRESENTE30 ');
 await fill('[aria-label="Valor do desconto de uso único"]', '30');
+await button('Adicionar desconto');
+await button('% manual', document.querySelector('[aria-label="Desconto 2"]')!);
+await fill('[aria-label="Desconto 2"] [aria-label="Valor do desconto"]', '5');
+await button('Adicionar desconto');
+await button('R$ manual', document.querySelector('[aria-label="Desconto 3"]')!);
+await fill('[aria-label="Desconto 3"] [aria-label="Valor do desconto"]', '7');
 await fill('[aria-label="Frete cobrado"]', '12');
 await button('Concluir Pedido');
-const singleUseOrder = saved().sales[0];
-assert.equal(singleUseOrder.discountCode, 'PRESENTE30');
-assert.equal(singleUseOrder.discountCodeId, undefined);
-assert.equal(singleUseOrder.discountAmount, 30);
-assert.equal(singleUseOrder.totalRevenue, 82);
+const combinedOrder = saved().sales[0];
+assert.deepEqual(combinedOrder.discounts, [
+  { code: 'PRESENTE30', type: 'percentage', value: 30, amount: 30 },
+  { type: 'percentage', value: 5, amount: 5 },
+  { type: 'fixed', value: 7, amount: 7 },
+]);
+assert.equal(combinedOrder.discountAmount, 42);
+assert.equal(combinedOrder.totalRevenue, 70);
 assert.deepEqual(saved().settings.discountCodes, registered);
-await checkInvoice('PRESENTE30 · 30%', 30);
+await checkInvoice('PRESENTE30 · 30%', 42);
 
 await act(async () => root.unmount());
 root = createRoot(rootNode);
 await act(async () => root.render(<App />));
 await button('Pedidos');
-await button(`Pedido #${String(singleUseOrder.orderNumber).padStart(6, '0')}`);
-await checkInvoice('PRESENTE30 · 30%', 30);
+await button(`Pedido #${String(combinedOrder.orderNumber).padStart(6, '0')}`);
+await checkInvoice('PRESENTE30 · 30%', 42);
+
+await button('Editar pedido');
+await button('Continuar para produtos');
+await fill('[aria-label="Quantidade de Vela de teste"]', '2');
+await button('Conferir pedido');
+await click('[aria-label="Remover desconto 2"]');
+assert.equal(document.querySelector<HTMLInputElement>('[aria-label="Desconto 2"] [aria-label="Valor do desconto"]')?.value, '7');
+await button('Salvar alterações');
+const editedOrder = saved().sales[0];
+assert.equal(editedOrder.id, combinedOrder.id);
+assert.deepEqual(editedOrder.discounts?.map(discount => discount.amount), [60, 7]);
+assert.equal(editedOrder.discountAmount, 67);
+assert.equal(editedOrder.totalRevenue, 145);
+await checkInvoice('PRESENTE30 · 30%', 67);
 
 await openNewOrder();
 await button('Código');
@@ -148,4 +171,4 @@ assert.equal(saved().sales.find(sale => sale.discountCodeId === reusable.id)?.di
 await checkInvoice('VIP15 · 12,5%', 12.5);
 
 await act(async () => root.unmount());
-console.log('Códigos de desconto: gestão, configurações, uso único, fatura, reabertura e código cadastrado passaram.');
+console.log('Códigos de desconto: gestão, uso único, soma de percentuais e reais, edição, remoção, recálculo e fatura passaram.');

@@ -10,7 +10,7 @@ import { CustomerSearch } from './CustomerSearch';
 import { OrderDiscountFields } from './OrderDiscountFields';
 import { OrderSteps } from './OrderSteps';
 import { formatOrderNumber } from '../utils/orderNumbers';
-import { initialOrderDiscount, orderDiscountOptions, resolveOrderDiscount } from '../utils/orderDiscount';
+import { initialOrderDiscounts, resolveOrderDiscounts } from '../utils/orderDiscount';
 import { localDateString } from '../utils/localDate';
 
 const field = 'w-full min-w-0 rounded-xl border border-[#e5dad1] bg-white px-3 py-2.5 text-base text-[#352f2b] focus:border-[#a86149]';
@@ -59,8 +59,8 @@ export function OrderEditor({
   const [custom, setCustom] = useState(false);
   const [customName, setCustomName] = useState('');
   const [customPrice, setCustomPrice] = useState('');
-  const [originalDiscount] = useState(() => initialOrderDiscount(sale));
-  const [discountDraft, setDiscountDraft] = useState(originalDiscount);
+  const [originalDiscounts] = useState(() => initialOrderDiscounts(sale));
+  const [discountDrafts, setDiscountDrafts] = useState(originalDiscounts);
   const [shipping, setShipping] = useState(String(sale.shippingCharged || 0));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -77,13 +77,12 @@ export function OrderEditor({
   const pendingItem = Boolean(selected || replacementId || customName.trim() || customPrice);
   const itemsChanged = items !== originalItems;
   const shippingAmount = money(cents(Number(shipping)));
-  const pricesChanged = itemsChanged || discountDraft !== originalDiscount || shippingAmount !== money(cents(originalSale.shippingCharged || 0));
+  const pricesChanged = itemsChanged || discountDrafts !== originalDiscounts || shippingAmount !== money(cents(originalSale.shippingCharged || 0));
   const originalSubtotal = originalSale.subtotalRevenue ?? originalSale.totalRevenue + (originalSale.discountAmount || 0) - (originalSale.shippingCharged || 0);
   const subtotal = itemsChanged
     ? money(items.reduce((sum, item) => sum + cents(item.quantity * item.unitPrice), 0))
     : originalSubtotal;
-  const codes = orderDiscountOptions(discountCodes, originalSale);
-  const { fields: discountFields, error: discountError } = resolveOrderDiscount(discountDraft, codes, subtotal);
+  const { fields: discountFields, amounts: discountAmounts, error: discountError } = resolveOrderDiscounts(discountDrafts, discountCodes, subtotal);
   const discount = pricesChanged ? money(cents(discountFields.discountAmount || 0)) : originalSale.discountAmount || 0;
   const total = pricesChanged ? money(cents(subtotal) - cents(discount) + cents(shippingAmount)) : originalSale.totalRevenue;
   const amountDue = money(orderTotal({ ...sale, totalRevenue: total }));
@@ -258,7 +257,13 @@ export function OrderEditor({
           </section>
           <section hidden={step !== 2} id="edit-order-review" aria-label="Conferir e salvar" className={panel}>
             <h3 className="text-lg font-semibold">Conferir e salvar</h3>
-            <OrderDiscountFields draft={discountDraft} codes={codes} amount={discount} onChange={value => { setDiscountDraft(value); setError(''); }} />
+            <OrderDiscountFields
+              drafts={discountDrafts}
+              codes={discountCodes}
+              amounts={discountAmounts}
+              amount={discount}
+              onChange={value => { setDiscountDrafts(value); setError(''); }}
+            />
             <div className="grid gap-4 sm:grid-cols-2">
               <label className={label}>Frete cobrado (R$)<input aria-label="Frete cobrado" type="number" min="0" step="0.01" className={input} value={shipping} onChange={e => setShipping(e.target.value)} /></label>
               <label className={label}>Previsão de recebimento<input type="date" className={input} value={details.paymentScheduledDate || ''} onChange={e => updateDetails({ paymentScheduledDate: e.target.value || undefined })} /></label>

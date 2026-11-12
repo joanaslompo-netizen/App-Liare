@@ -31,6 +31,19 @@ for (const orders of [[codedSale], [codedSale, second]]) {
   const message = getInvoiceWhatsApp(orders, settings, [customer], products).message;
   assert(message.includes('Desconto concedido (PRESENTE10 · 10%): −R$ 10,00'));
 }
+const combinedSale: Sale = {
+  ...sale, totalRevenue: 100, discountAmount: 15,
+  discounts: [
+    { code: 'PRESENTE10', type: 'percentage', value: 10, amount: 10 },
+    { code: 'OBRIGADA', type: 'fixed', value: 5, amount: 5 },
+  ],
+};
+for (const orders of [[combinedSale], [combinedSale, second]]) {
+  const message = getInvoiceWhatsApp(orders, settings, [customer], products).message;
+  assert(message.includes('Total de descontos: −R$ 15,00'));
+  assert(message.includes('PRESENTE10 · 10%: −R$ 10,00'));
+  assert(message.includes('OBRIGADA: −R$ 5,00'));
+}
 assert.equal(getInvoiceWhatsApp([sale,{...second,customerId:'other'}],settings,[customer],[]).url,null);
 assert.equal(getInvoiceWhatsApp([sale,second],settings,[{...customer,phone:''}],[]).error,'','Mesmo contato dos pedidos pode ser usado se o cadastro não tiver telefone.');
 assert(getInvoiceWhatsApp([sale,{...second,customerContact:'11977770000'}],settings,[{...customer,phone:''}],[]).error.includes('telefones diferentes'));
