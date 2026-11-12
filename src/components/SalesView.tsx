@@ -3,7 +3,7 @@ import { RECEIPT_METHODS, receiptFeeFields, isCreditCardReceipt, receiptMethodFr
 import { estimateMaterialUnitCost, expandVirtualRecipeItems, getCategoryMaterialOptions, getVirtualMaterialRequirements } from '../utils/virtualMaterials';
 import { ModalFrame } from './ModalFrame';
 import { CustomerSearch } from './CustomerSearch';
-import { isActiveOrder, cents, emptyFinance } from "../utils/financeLedger";
+import { isActiveOrder, cents, money, emptyFinance } from "../utils/financeLedger";
 import { localDateString } from '../utils/localDate';
 import { MoreOptions } from './MoreOptions';
 import { formatOrderNumber } from '../utils/orderNumbers';
@@ -11,7 +11,7 @@ import { getGroupedInvoiceTotals, getInvoiceCustomerKey, getInvoiceSelectionErro
 import { InvoiceModal } from './InvoiceModal';
 import { OrderDiscountFields } from './OrderDiscountFields';
 import { OrderSteps } from './OrderSteps';
-import { initialOrderDiscount, orderDiscountOptions, resolveOrderDiscount } from '../utils/orderDiscount';
+import { createOrderDiscountDraft, initialOrderDiscounts, resolveOrderDiscounts } from '../utils/orderDiscount';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Plus, 
@@ -1009,8 +1009,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
   const [channel, setChannel] = useState(existingSale?.channel || 'Instagram');
   const [notes, setNotes] = useState(existingSale?.notes || '');
-  const [discountDraft, setDiscountDraft] = useState(() => initialOrderDiscount(existingSale));
-  const availableDiscountCodes = useMemo(() => orderDiscountOptions(discountCodes, existingSale ?? undefined), [discountCodes, existingSale]);
+  const [discountDrafts, setDiscountDrafts] = useState(() => initialOrderDiscounts(existingSale));
 
   // Computed all available payment categories
   const allPaymentCategories = useMemo(() => {
@@ -1031,26 +1030,25 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     return null;
   }, [customerId, customers]);
 
+  const customerCodeId = selectedCustomer?.defaultDiscountCodeId;
+  const customerDiscountPercent = selectedCustomer?.defaultDiscountPercent || 0;
   useEffect(() => {
-    if (existingSale || !selectedCustomer) return;
-
-    if (selectedCustomer.defaultDiscountCodeId) {
-      const customerCode = discountCodes.find(
-        (code) => code.id === selectedCustomer.defaultDiscountCodeId && code.active !== false
-      );
-      if (customerCode) {
-        setDiscountDraft({ ...initialOrderDiscount(), mode: 'code', codeId: customerCode.id });
-        return;
+    if (existingSale) return;
+    const code = discountCodes.find(item => item.id === customerCodeId && item.active !== false);
+    setDiscountDrafts(previous => {
+      const manual = previous.filter(draft => !draft.customerDefault);
+      if (!code && customerDiscountPercent <= 0) {
+        return manual.length === previous.length ? previous : manual.length ? manual : initialOrderDiscounts();
       }
-    }
-
-    if ((selectedCustomer.defaultDiscountPercent || 0) > 0) {
-      setDiscountDraft({ ...initialOrderDiscount(), mode: 'percentage', manualValue: String(selectedCustomer.defaultDiscountPercent) });
-      return;
-    }
-
-    setDiscountDraft(initialOrderDiscount());
-  }, [selectedCustomer?.id, discountCodes, existingSale]);
+      const benefit = { ...createOrderDiscountDraft(), customerDefault: true };
+      return [
+        code
+          ? { ...benefit, mode: 'code', codeId: code.id }
+          : { ...benefit, mode: 'percentage', manualValue: String(customerDiscountPercent) },
+        ...manual.filter(draft => draft.mode !== 'none'),
+      ];
+    });
+  }, [selectedCustomer?.id, customerCodeId, customerDiscountPercent, discountCodes, existingSale]);
 
   // Initialize items array from existingSale (or from single product fallback)
   const [items, setItems] = useState<SaleItem[]>(() => {
@@ -1481,7 +1479,8 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 
   // Aggregate totals from items + order discount
   const totalQuantity = items.reduce((acc, it) => acc + it.quantity, 0);
-  const subtotalRevenue = items.reduce((acc, it) => acc + (it.subtotal || (it.quantity * it.unitPrice)), 0);
+  const subtotalCents = items.reduce((sum, item) => sum + cents(item.subtotal || item.quantity * item.unitPrice), 0);
+  const subtotalRevenue = money(subtotalCents);
   const totalCost = items.reduce((acc, it) => acc + it.totalCost, 0);
   const totalBusinessCost = items.reduce((acc, it) => {
     const split = getSaleItemFinancialSplit(it, products);
@@ -1492,9 +1491,10 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
     return acc + split.laborRemunerationPerUnit * it.quantity;
   }, 0);
 
-  const { fields: discountFields, error: discountError } = resolveOrderDiscount(discountDraft, availableDiscountCodes, subtotalRevenue);
+  const { fields: discountFields, amounts: discountAmounts, error: discountError } = resolveOrderDiscounts(discountDrafts, discountCodes, subtotalRevenue);
   const discountAmount = discountFields.discountAmount ?? 0;
-  const totalRevenue = Math.max(0, subtotalRevenue - discountAmount) + Math.max(0,Number(shippingCharged)||0);
+  const shippingCents = Math.max(0, cents(Number(shippingCharged)));
+  const totalRevenue = money(Math.max(0, subtotalCents - cents(discountAmount)) + shippingCents);
   const totalProfit = totalRevenue - totalBusinessCost;
   const commercialProfit = totalProfit - totalLaborRemuneration;
   const marginPercent = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
@@ -1556,7 +1556,7 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
       unitPrice: totalQuantity > 0 ? totalRevenue / totalQuantity : firstItem.unitPrice,
       unitCost: totalQuantity > 0 ? totalCost / totalQuantity : firstItem.unitCost,
       items,
-      shippingCharged: Math.max(0,Number(shippingCharged)||0),
+      shippingCharged: money(shippingCents),
       subtotalRevenue,
       ...discountFields,
       totalRevenue,
@@ -2398,10 +2398,11 @@ const OrderSaleModal: React.FC<OrderSaleModalProps> = ({
 <section hidden={!existingSale && step !== 2} aria-label="Conferir e salvar" className="rounded-2xl border border-[#e5dad1] bg-white p-5 sm:p-6 space-y-6">
  <div><h3 className="text-xl font-semibold">Conferir e salvar</h3><p className="text-sm text-[#75665c] mt-1">Revise os valores, o recebimento e os detalhes combinados.</p></div>
             <OrderDiscountFields
-              draft={discountDraft}
-              codes={availableDiscountCodes}
+              drafts={discountDrafts}
+              codes={discountCodes}
+              amounts={discountAmounts}
               amount={discountAmount}
-              onChange={value => { setDiscountDraft(value); setFormError(''); }}
+              onChange={value => { setDiscountDrafts(value); setFormError(''); }}
             />
 <label className="block text-sm">Frete cobrado do cliente (R$)<input type="number" min="0" step="0.01" className="mt-1 w-full rounded-xl border p-2 text-base" aria-label="Frete cobrado" value={shippingCharged} onChange={e=>setShippingCharged(e.target.value)}/></label>
             <div className="p-4 rounded-xl bg-stone-50 border border-stone-200/90 space-y-2.5">

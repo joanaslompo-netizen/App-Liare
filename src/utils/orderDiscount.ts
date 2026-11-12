@@ -1,82 +1,135 @@
-import type { DiscountCode, DiscountType, Sale } from '../types';
+import type { DiscountCode, DiscountType, OrderDiscount, Sale } from '../types';
 
 export type OrderDiscountMode = 'none' | 'code' | 'single-use' | DiscountType;
 
 export interface OrderDiscountDraft {
+  id: string;
   mode: OrderDiscountMode;
   codeId: string;
   manualValue: string;
   singleUse: { name: string; type: DiscountType; value: string };
+  savedCode?: DiscountCode;
+  customerDefault?: boolean;
 }
 
-export function initialOrderDiscount(sale?: Sale): OrderDiscountDraft {
-  const type = sale?.discountType ?? (sale?.discountAmount ? 'fixed' : undefined);
-  const value = sale?.discountValue ?? sale?.discountAmount;
-  const singleUseName = sale?.discountCodeId ? '' : sale?.discountCode ?? '';
+export function createOrderDiscountDraft(): OrderDiscountDraft {
   return {
-    mode: sale?.discountCodeId ? 'code' : singleUseName ? 'single-use' : type ?? 'none',
-    codeId: sale?.discountCodeId ?? '',
-    manualValue: value == null ? '' : String(value),
-    singleUse: { name: singleUseName, type: singleUseName ? type ?? 'fixed' : 'percentage', value: singleUseName && value != null ? String(value) : '' },
+    id: crypto.randomUUID(),
+    mode: 'none',
+    codeId: '',
+    manualValue: '',
+    singleUse: { name: '', type: 'percentage', value: '' },
   };
 }
 
-export function orderDiscountOptions(codes: DiscountCode[], sale?: Sale): DiscountCode[] {
-  const active = codes.filter(code => code.active !== false && code.id !== sale?.discountCodeId);
-  if (!sale?.discountCodeId) return active;
-  const catalog = codes.find(code => code.id === sale.discountCodeId);
-  const type = sale.discountValue != null ? sale.discountType ?? 'fixed' : 'fixed';
-  return [{
-    id: sale.discountCodeId,
-    code: sale.discountCode ?? catalog?.code ?? 'DESCONTO',
-    type,
-    value: sale.discountValue ?? sale.discountAmount ?? 0,
-    createdAt: sale.createdAt,
-  }, ...active];
+export function initialOrderDiscounts(sale?: Sale): OrderDiscountDraft[] {
+  const saved = sale?.discounts?.length ? sale.discounts : legacyDiscounts(sale);
+  if (!saved.length) return [createOrderDiscountDraft()];
+
+  return saved.map(discount => {
+    const draft = createOrderDiscountDraft();
+    if (discount.codeId) {
+      return {
+        ...draft,
+        mode: 'code',
+        codeId: discount.codeId,
+        savedCode: {
+          id: discount.codeId,
+          code: discount.code ?? '',
+          type: discount.type,
+          value: discount.value,
+          createdAt: sale?.createdAt ?? '',
+        },
+      };
+    }
+    if (discount.code) {
+      return {
+        ...draft,
+        mode: 'single-use',
+        singleUse: { name: discount.code, type: discount.type, value: String(discount.value) },
+      };
+    }
+    return { ...draft, mode: discount.type, manualValue: String(discount.value) };
+  });
 }
 
-export function resolveOrderDiscount(draft: OrderDiscountDraft, codes: DiscountCode[], subtotal: number) {
-  let type: DiscountType | undefined;
-  let value = 0;
-  let name: string | undefined;
-  let codeId: string | undefined;
+function legacyDiscounts(sale?: Sale): OrderDiscount[] {
+  if (!sale || !(sale.discountType || sale.discountAmount || sale.discountCode || sale.discountCodeId)) return [];
+  return [{
+    type: sale.discountValue != null ? sale.discountType ?? 'fixed' : 'fixed',
+    value: sale.discountValue ?? sale.discountAmount ?? 0,
+    amount: sale.discountAmount ?? 0,
+    code: sale.discountCode,
+    codeId: sale.discountCodeId,
+  }];
+}
+
+export function orderDiscountOptions(codes: DiscountCode[], draft: OrderDiscountDraft): DiscountCode[] {
+  const saved = draft.savedCode?.id === draft.codeId ? draft.savedCode : undefined;
+  const active = codes.filter(code => code.active !== false && code.id !== saved?.id);
+  if (!saved) return active;
+  const name = saved.code || codes.find(code => code.id === saved.id)?.code || 'DESCONTO';
+  return [{ ...saved, code: name }, ...active];
+}
+
+function resolveDiscount(draft: OrderDiscountDraft, codes: DiscountCode[]) {
+  let terms: Omit<OrderDiscount, 'amount'> | undefined;
   let error = '';
 
   if (draft.mode === 'code') {
-    const selected = codes.find(code => code.id === draft.codeId);
+    const selected = orderDiscountOptions(codes, draft).find(code => code.id === draft.codeId);
     if (!selected) error = 'Escolha um código de desconto.';
-    else {
-      type = selected.type;
-      value = selected.value;
-      name = selected.code;
-      codeId = selected.id;
-    }
+    else terms = { type: selected.type, value: selected.value, code: selected.code, codeId: selected.id };
   } else if (draft.mode === 'single-use') {
-    ({ type } = draft.singleUse);
-    name = draft.singleUse.name.trim();
-    value = Number(draft.singleUse.value);
-    if (!name || !Number.isFinite(value) || value <= 0 || (type === 'percentage' && value > 100)) {
+    const { type, name, value } = draft.singleUse;
+    const number = Number(value);
+    if (!name.trim() || !Number.isFinite(number) || number <= 0 || (type === 'percentage' && number > 100)) {
       error = 'Informe o nome do código de uso único e um desconto válido.';
-    }
+    } else terms = { type, value: number, code: name.trim() };
   } else if (draft.mode !== 'none') {
-    type = draft.mode;
-    value = Number(draft.manualValue);
-    if (!Number.isFinite(value) || value < 0 || (type === 'percentage' && value > 100)) {
+    const value = Number(draft.manualValue);
+    if (!Number.isFinite(value) || value < 0 || (draft.mode === 'percentage' && value > 100)) {
       error = 'Informe um valor de desconto válido.';
-    }
+    } else if (value > 0) terms = { type: draft.mode, value };
   }
 
-  const validValue = Number.isFinite(value) ? Math.max(0, value) : 0;
-  const amount = type === 'percentage' ? subtotal * Math.min(100, validValue) / 100 : validValue;
-  const discountAmount = Math.max(0, Math.min(subtotal, amount));
+  return { terms, error };
+}
+
+export function resolveOrderDiscounts(drafts: OrderDiscountDraft[], codes: DiscountCode[], subtotal: number) {
+  const subtotalCents = Number.isFinite(subtotal) ? Math.max(0, Math.round(subtotal * 100)) : 0;
+  let nominalCents = 0;
+  let appliedCents = 0;
+  let error = '';
+  const discounts: OrderDiscount[] = [];
+
+  const amounts = drafts.map(draft => {
+    const resolved = resolveDiscount(draft, codes);
+    error ||= resolved.error;
+    if (!resolved.terms) return 0;
+
+    const { type, value } = resolved.terms;
+    const positiveValue = Number.isFinite(value) ? Math.max(0, value) : 0;
+    nominalCents += type === 'percentage' ? subtotalCents * Math.min(100, positiveValue) / 100 : positiveValue * 100;
+    // Round the combined amount and assign each row its contribution to that total.
+    const nextCents = Math.min(subtotalCents, Math.round(nominalCents));
+    const amount = (nextCents - appliedCents) / 100;
+    discounts.push({ ...resolved.terms, value: positiveValue, amount });
+    appliedCents = nextCents;
+    return amount;
+  });
+  const single = discounts.length === 1 ? discounts[0] : undefined;
+
   return {
     fields: {
-      discountType: type,
-      discountValue: type ? validValue : undefined,
-      discountAmount: discountAmount || undefined,
-      discountCode: name || undefined,
-      discountCodeId: codeId,
+      discounts: discounts.length ? discounts : undefined,
+      discountAmount: appliedCents ? appliedCents / 100 : undefined,
+      discountType: single?.type,
+      discountValue: single?.value,
+      discountCode: single?.code,
+      discountCodeId: single?.codeId,
     },
+    amounts,
     error,
   };
 }

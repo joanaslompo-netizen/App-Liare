@@ -1,8 +1,8 @@
 import React from 'react';
-import { Percent } from 'lucide-react';
+import { Percent, Plus } from 'lucide-react';
 import type { DiscountCode, DiscountType } from '../types';
 import { formatCurrency, formatNumber } from '../utils/formatters';
-import { initialOrderDiscount, type OrderDiscountDraft } from '../utils/orderDiscount';
+import { createOrderDiscountDraft, orderDiscountOptions, type OrderDiscountDraft } from '../utils/orderDiscount';
 
 const modes = [
   ['none', 'Sem desconto'],
@@ -14,29 +14,21 @@ const modes = [
 
 const field = 'w-full min-w-0 rounded-xl border border-stone-300 bg-white px-3 py-2 text-base';
 
-export function OrderDiscountFields({ draft, codes, amount, onChange }: {
+function DiscountFields({ draft, codes, onChange }: {
   draft: OrderDiscountDraft;
   codes: DiscountCode[];
-  amount: number;
   onChange: (draft: OrderDiscountDraft) => void;
 }) {
   const { mode, singleUse } = draft;
   return (
-    <fieldset className="min-w-0 space-y-3 rounded-xl border border-[#eadfd6] bg-[#fbf7f2] p-4" aria-label="Desconto do pedido">
-      <div className="flex items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-sm font-semibold">
-          <Percent className="h-4 w-4 text-[#b96f55]" aria-hidden="true" />
-          Desconto do pedido
-        </p>
-        {amount > 0 && <strong className="text-sm text-[#a86149]">−{formatCurrency(amount)}</strong>}
-      </div>
+    <>
       <div className="flex flex-wrap gap-2">
         {modes.map(([value, label]) => (
           <button
             key={value}
             type="button"
             aria-pressed={mode === value}
-            onClick={() => onChange(value === 'none' ? initialOrderDiscount() : { ...draft, mode: value })}
+            onClick={() => onChange(value === 'none' ? { ...createOrderDiscountDraft(), id: draft.id } : { ...draft, mode: value })}
             className={`rounded-lg border px-2.5 py-2 text-xs font-semibold ${mode === value ? 'border-[#b96f55] bg-[#b96f55] text-white' : 'border-stone-200 bg-white text-stone-600 hover:border-[#c98a72]'}`}
           >
             {label}
@@ -44,9 +36,9 @@ export function OrderDiscountFields({ draft, codes, amount, onChange }: {
         ))}
       </div>
       {mode === 'code' && (
-        <select aria-label="Cupom de desconto" value={draft.codeId} onChange={event => onChange({ ...draft, codeId: event.target.value })} className={field}>
+        <select aria-label="Cupom de desconto" value={draft.codeId} onChange={event => onChange({ ...draft, codeId: event.target.value, savedCode: undefined })} className={field}>
           <option value="">Escolher código de desconto...</option>
-          {codes.map(code => (
+          {orderDiscountOptions(codes, draft).map(code => (
             <option key={code.id} value={code.id}>
               {code.code} · {code.type === 'percentage' ? `${formatNumber(code.value)}%` : formatCurrency(code.value)}
             </option>
@@ -112,6 +104,66 @@ export function OrderDiscountFields({ draft, codes, amount, onChange }: {
           />
         </label>
       )}
+    </>
+  );
+}
+
+export function OrderDiscountFields({ drafts, codes, amount, amounts, onChange }: {
+  drafts: OrderDiscountDraft[];
+  codes: DiscountCode[];
+  amount: number;
+  amounts: number[];
+  onChange: (drafts: OrderDiscountDraft[]) => void;
+}) {
+  const multiple = drafts.length > 1;
+  return (
+    <fieldset className="min-w-0 space-y-3 rounded-xl border border-[#eadfd6] bg-[#fbf7f2] p-4" aria-label="Desconto do pedido">
+      <div className="flex items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-sm font-semibold">
+          <Percent className="h-4 w-4 text-[#b96f55]" aria-hidden="true" />
+          Descontos do pedido
+        </p>
+        {amount > 0 && <strong className="shrink-0 text-sm text-[#a86149]">−{formatCurrency(amount)}</strong>}
+      </div>
+      {drafts.map((draft, index) => (
+        <div
+          key={draft.id}
+          role="group"
+          aria-label={`Desconto ${index + 1}`}
+          className={multiple ? 'min-w-0 space-y-3 rounded-xl border border-[#eadfd6] bg-white p-3' : 'min-w-0 space-y-3'}
+        >
+          {multiple && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm font-semibold">Desconto {index + 1}</span>
+              <div className="flex items-center gap-3">
+                {amounts[index] > 0 && <span className="text-sm text-[#a86149]">−{formatCurrency(amounts[index])}</span>}
+                <button
+                  type="button"
+                  aria-label={`Remover desconto ${index + 1}`}
+                  onClick={() => onChange(drafts.filter(row => row.id !== draft.id))}
+                  className="rounded-lg px-2 py-1 text-sm text-[#a44132] hover:bg-[#fbf0eb]"
+                >
+                  Remover
+                </button>
+              </div>
+            </div>
+          )}
+          <DiscountFields
+            draft={draft}
+            codes={codes}
+            onChange={value => onChange(drafts.map(row => row.id === draft.id ? { ...value, customerDefault: false } : row))}
+          />
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange([...drafts, createOrderDiscountDraft()])}
+        className="inline-flex items-center gap-2 rounded-xl border border-[#e5dad1] bg-white px-3 py-2 text-sm font-semibold text-[#80503c] hover:bg-[#f6f1ec]"
+      >
+        <Plus className="h-4 w-4" aria-hidden="true" />
+        Adicionar desconto
+      </button>
+      {multiple && <p className="text-xs text-[#75665c]">Os percentuais são somados sobre o subtotal dos produtos.</p>}
     </fieldset>
   );
 }

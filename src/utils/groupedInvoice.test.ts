@@ -38,6 +38,22 @@ assert(document.body.textContent?.includes('Entregar com laço'));
 assert(document.body.textContent?.includes('Vencimento:'));
 assert.equal(JSON.stringify(orders), original, 'Gerar e ordenar a fatura não muda os pedidos');
 
+const combined: Sale = {
+  ...first, totalRevenue: 95, discountAmount: 15, discountCode: undefined, discountValue: undefined, discountType: undefined,
+  discounts: [
+    { code: 'Presente <Especial>', type: 'percentage', value: 10, amount: 10 },
+    { code: 'OBRIGADA', type: 'fixed', value: 5, amount: 5 },
+  ],
+};
+const combinedInvoice = new JSDOM(buildGroupedInvoiceHtml([combined, second], DEFAULT_SETTINGS, [customer], [])).window.document;
+const discountRows = [...combinedInvoice.querySelectorAll('.order-summary .discount-breakdown li')];
+assert.equal(discountRows.length, 2);
+assert(discountRows[0].textContent?.includes('Presente <Especial> · 10%'));
+assert(discountRows[1].textContent?.includes('OBRIGADA'));
+assert(discountRows[1].textContent?.includes(formatCurrency(5)));
+assert(!combinedInvoice.querySelector('especial'));
+assert(combinedInvoice.querySelector('.summary .discount')?.textContent?.includes(formatCurrency(15)));
+
 // Paid orders and excess receipts cannot hide another order's unpaid balance.
 assert.deepEqual(getGroupedInvoiceTotals([{ ...second, totalRevenue: 80, amountPaid: 100 }, { ...second, id: 'other', totalRevenue: 20, amountPaid: 0 }]),
   { subtotal: 100, discount: 0, shipping: 0, returns: 0, total: 100, paid: 80, balance: 20 });

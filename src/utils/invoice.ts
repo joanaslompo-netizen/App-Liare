@@ -8,7 +8,8 @@ const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (
 const money = (value: number) => escapeHtml(formatCurrency(value));
 const date = (value?: string) => value ? escapeHtml(formatDate(value)) : 'A combinar';
 
-export const getInvoiceDiscountLabel = ({ discountCode, discountType, discountValue = 0 }: Sale) => {
+export const getInvoiceDiscountLabel = ({ discounts, discountCode, discountType, discountValue = 0 }: Sale) => {
+  if ((discounts?.length ?? 0) > 1) return 'Total de descontos';
   const percent = discountType === 'percentage' && Number.isFinite(discountValue) && discountValue > 0
     ? `${formatNumber(Math.min(100, discountValue))}%`
     : '';
@@ -16,14 +17,31 @@ export const getInvoiceDiscountLabel = ({ discountCode, discountType, discountVa
   return details ? `Desconto concedido (${details})` : 'Desconto concedido';
 };
 
+export function getInvoiceDiscountBreakdown(sale: Sale) {
+  if (!sale.discounts || sale.discounts.length < 2) return [];
+  return sale.discounts.map(discount => ({
+    label: `${discount.code || 'Desconto manual'}${discount.type === 'percentage' ? ` · ${formatNumber(discount.value)}%` : ''}`,
+    amount: discount.amount,
+  }));
+}
+
+function renderDiscountBreakdown(sale: Sale) {
+  const discounts = getInvoiceDiscountBreakdown(sale);
+  if (!discounts.length) return '';
+  return `<ul class="discount-breakdown">${discounts.map(discount =>
+    `<li><span>${escapeHtml(discount.label)}</span><strong>−${money(discount.amount)}</strong></li>`
+  ).join('')}</ul>`;
+}
+
 export const getInvoiceDocumentTitle = (sale: Pick<Sale, 'orderNumber'>) =>
   `Liare - Pedido ${sale.orderNumber ? String(sale.orderNumber).padStart(3, '0') : 'A definir'}`;
 
 export const getInvoiceTotals = (sale: Sale) => {
-  const total = Math.max(0, (sale.totalRevenue || 0)-(sale.returnAdjustmentCents||0)/100);
+  const gross = sale.totalRevenue || 0;
+  const total = Math.max(0, gross - (sale.returnAdjustmentCents || 0) / 100);
   const paid = Math.max(0, sale.amountPaid ?? (sale.paymentStatus === 'pago' ? total : 0));
   const discount = Math.max(0, sale.discountAmount || 0);
-  return { total, paid, balance: Math.max(0, total - paid), discount, subtotal: total + discount + (sale.returnAdjustmentCents||0)/100 - (sale.shippingCharged||0) };
+  return { total, paid, balance: Math.max(0, total - paid), discount, subtotal: gross + discount - (sale.shippingCharged || 0) };
 };
 
 const normalizeCustomerName = (name?: string) => (name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase('pt-BR').replace(/\s+/g, ' ');
@@ -126,6 +144,7 @@ const buildInvoiceDocument = (
   .balance{background:#f1f8ff;border:1px solid #d2e8ff;border-radius:8px;padding:12px;margin-top:12px;font-size:14px}.notes{margin-top:26px;white-space:pre-wrap;overflow-wrap:anywhere;break-inside:avoid}footer{text-align:center;border-top:1px solid #dce1ea;margin-top:30px;padding-top:16px;font-size:11px;break-inside:avoid}
   .original{background:#f8f4ed;border:1px solid #e4d7bf;border-radius:8px;padding:12px;margin-top:8px;font-size:13px}.discount{background:#edf5ed;border:1px solid #c9ddcd;color:#315c42;border-radius:8px;padding:12px;margin-top:8px;font-size:14px}.sum strong{flex-shrink:0}.order-original,.order-discount{font-weight:700}.order-discount{color:#315c42}.sum.discount span,.order-summary .order-discount{overflow-wrap:anywhere;white-space:normal}
   .order{margin-bottom:28px}.order-head{padding:12px 8px;background:#f6f3ee;break-after:avoid}.order-head h2{font-size:14px}.order-info{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;color:#69758c}.order-summary{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px 16px;padding:12px 8px;break-inside:avoid}.order-summary span{white-space:nowrap}.order .notes{margin:8px}.details,.right{overflow-wrap:anywhere}
+  .discount-breakdown{width:100%;margin:4px 0 8px;padding:0 4px;list-style:none;color:#315c42}.discount-breakdown li{display:flex;justify-content:space-between;gap:12px;padding:3px 0}.discount-breakdown li span{overflow-wrap:anywhere;white-space:normal}.discount-breakdown li strong{flex-shrink:0}
   @media screen{body{padding:24px}.page{min-height:245mm}}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
   </style></head><body><main class="page"><header><div><div class="brand">LIARE</div><strong>${escapeHtml(settings.atelierName)}</strong>
   ${settings.invoiceContact ? `<p class="muted">${escapeHtml(settings.invoiceContact)}</p>` : ''}
@@ -139,12 +158,12 @@ const buildInvoiceDocument = (
   ${groupedSales ? groupedSales.map(order => {
     const orderTotals = getGroupedInvoiceTotals([order]);
     return `<section class="order"><div class="order-head"><h2>Pedido nº ${escapeHtml(formatOrderNumber(order.orderNumber))}</h2><div class="order-info"><span>Data do pedido: ${date(order.date)}</span>${order.paymentScheduledDate ? `<span>Vencimento: ${date(order.paymentScheduledDate)}</span>` : ''}</div>${deliveryInfo(order)}${order.paymentMethod ? `<p>Pagamento: ${escapeHtml(order.paymentMethod)}</p>` : ''}</div>
-    ${renderItemsTable(order, products)}<div class="order-summary">${orderTotals.shipping ? `<span>Frete: ${money(orderTotals.shipping)}</span>` : ''}${orderTotals.discount ? `<span class="order-original">Total antes do desconto: ${money(Math.round((orderTotals.subtotal + orderTotals.shipping) * 100) / 100)}</span><span class="order-discount">${escapeHtml(getInvoiceDiscountLabel(order))}: −${money(orderTotals.discount)}</span>` : ''}${orderTotals.returns ? `<span>Devoluções compensadas: −${money(orderTotals.returns)}</span>` : ''}<span>Total: <strong>${money(orderTotals.total)}</strong></span><span>Valor pago: ${money(orderTotals.paid)}</span><span>Saldo: <strong>${money(orderTotals.balance)}</strong></span></div>${order.notes ? `<div class="notes"><strong>Observações:</strong> ${escapeHtml(order.notes)}</div>` : ''}</section>`;
+    ${renderItemsTable(order, products)}<div class="order-summary">${orderTotals.shipping ? `<span>Frete: ${money(orderTotals.shipping)}</span>` : ''}${orderTotals.discount ? `<span class="order-original">Total antes do desconto: ${money(Math.round((orderTotals.subtotal + orderTotals.shipping) * 100) / 100)}</span><span class="order-discount">${escapeHtml(getInvoiceDiscountLabel(order))}: −${money(orderTotals.discount)}</span>${renderDiscountBreakdown(order)}` : ''}${orderTotals.returns ? `<span>Devoluções compensadas: −${money(orderTotals.returns)}</span>` : ''}<span>Total: <strong>${money(orderTotals.total)}</strong></span><span>Valor pago: ${money(orderTotals.paid)}</span><span>Saldo: <strong>${money(orderTotals.balance)}</strong></span></div>${order.notes ? `<div class="notes"><strong>Observações:</strong> ${escapeHtml(order.notes)}</div>` : ''}</section>`;
   }).join('') : renderItemsTable(sale, products)}
   <section class="bottom"><div class="payment">${settings.pixKey ? `<h2>Pagamento via Pix</h2><p>Chave Pix: ${escapeHtml(settings.pixKey)}</p>${settings.pixHolder ? `<p>Titular: ${escapeHtml(settings.pixHolder)}</p>` : ''}<p class="muted">Envie o comprovante após o pagamento.</p><p class="muted">Para pagar com cartão, solicite o link pelo WhatsApp do ateliê.</p>` : ''}</div>
   <div class="summary">${!totals.discount || shipping ? `<div class="sum"><span>Subtotal dos produtos</span><strong>${money(totals.subtotal)}</strong></div>` : ''}
   ${shipping ? `<div class="sum"><span>Frete</span><span>${money(shipping)}</span></div>` : ''}
-  ${totals.discount ? `<div class="sum original"><span>${groupedSales ? 'Total dos pedidos antes dos descontos' : 'Total do pedido antes do desconto'}</span><strong>${money(originalTotal)}</strong></div><div class="sum discount"><span>${groupedSales ? 'Desconto concedido' : escapeHtml(getInvoiceDiscountLabel(sale))}</span><strong>−${money(totals.discount)}</strong></div>` : ''}
+  ${totals.discount ? `<div class="sum original"><span>${groupedSales ? 'Total dos pedidos antes dos descontos' : 'Total do pedido antes do desconto'}</span><strong>${money(originalTotal)}</strong></div><div class="sum discount"><span>${groupedSales ? 'Desconto concedido' : escapeHtml(getInvoiceDiscountLabel(sale))}</span><strong>−${money(totals.discount)}</strong></div>${groupedSales ? '' : renderDiscountBreakdown(sale)}` : ''}
   ${returns ? `<div class="sum"><span>Devoluções compensadas</span><span>−${money(returns)}</span></div>` : ''}
   <div class="sum total"><span>Total da fatura</span><strong>${money(totals.total)}</strong></div><div class="sum"><span>Valor pago</span><span>${money(totals.paid)}</span></div>
   <div class="sum balance"><span>Saldo devedor</span><strong>${money(totals.balance)}</strong></div></div></section>
