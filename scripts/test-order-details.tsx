@@ -23,21 +23,31 @@ const saved=()=>JSON.parse(localStorage.getItem('atelie_workspace_finance_v1')!)
 const {makeEntry}=await import('../src/utils/financeLedger');
 Object.assign(fixture.products[0],{actualPrice:120,isIntermediate:false,isCustomRecipe:false,productFamily:undefined,fragrance:undefined});
 fixture.products.push({...fixture.products[0],id:'p2',name:'Produto adicional',actualPrice:48,currentStock:10});
+fixture.settings = { ...DEFAULT_SETTINGS, discountCodes: [{ id: 'vip25', code: 'VIP25', type: 'percentage', value: 25, active: true, createdAt: '2026-10-14' }] };
 fixture.finance.entries=[makeEntry('receipt',50,{id:'receipt-original',saleId:'s',customerId:'c',date:'2026-10-15',method:'PIX',account:'Principal',allocatedCents:5000})] as any;
 localStorage.setItem('atelie_workspace_finance_v1',JSON.stringify(fixture));
 const originalReceipt=JSON.stringify(fixture.finance.entries[0]);
 const detail=()=>document.querySelector('[data-testid=order-detail]')!;
-async function editField(label:string,value:string){const el=detail().querySelector(`[aria-label="${label}"]`) as HTMLInputElement;assert(el,label);await act(async()=>{Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value')!.set!.call(el,value);el.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});}
+async function editField(label: string, value: string) {
+  const element = detail().querySelector<HTMLInputElement | HTMLSelectElement>(`[aria-label="${label}"]`);
+  assert(element, label);
+  const select = element.tagName === 'SELECT';
+  await act(async () => {
+    const prototype = select ? dom.window.HTMLSelectElement.prototype : dom.window.HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(element, value);
+    element.dispatchEvent(new dom.window.Event(select ? 'change' : 'input', { bubbles: true }));
+  });
+}
 async function openHomeOrder(){const el=[...document.querySelectorAll('button')].find(el=>el.textContent?.includes('Cliente teste')&&el.textContent?.includes('un a entregar'));assert(el);await act(async()=>el.click());assert(detail());}
 async function chooseProduct(){const model=document.querySelector('#detail-product-search-model') as HTMLSelectElement;assert(model);await act(async()=>{model.value='product:p2';model.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});}
 await mount();await openHomeOrder();
 assert.equal(detail().querySelectorAll('form').length,0,'A ficha abre para consulta, sem formulário');
 assert.equal(document.querySelectorAll('.liare-form-dialog').length,0,'Sem pop-up ao abrir pedido');
-await button('Editar itens');await editField('Quantidade de Vela','2');await editField('Preço de Vela','70');await button('Salvar itens do pedido');
+await button('Editar itens');await editField('Quantidade de Vela','2');await editField('Preço de Vela','70');await button('Conferir pedido');await button('Salvar alterações');
 let order=saved().sales[0];assert.equal(saved().sales.length,1);assert.equal(order.id,'s');assert.equal(order.orderNumber,1);assert.equal(order.totalRevenue,140);assert.equal(order.items[0].quantity,2);assert.equal(order.items[0].reservedQuantity,2);assert.equal(saved().products[0].currentStock,10);assert(detail().textContent?.includes('90,00'));assert.equal(JSON.stringify(saved().finance.entries[0]),originalReceipt);
-await button('Editar itens');await button('Trocar produto');await chooseProduct();await button('Substituir item');await button('Salvar itens do pedido');
+await button('Editar itens');await button('Trocar produto');await chooseProduct();await button('Substituir item');await button('Conferir pedido');await button('Salvar alterações');
 order=saved().sales[0];assert.equal(order.items[0].productId,'p2');assert.equal(order.totalRevenue,48);assert.equal(order.orderNumber,1);assert.equal(JSON.stringify(saved().finance.entries[0]),originalReceipt);assert(saved().finance.entries.some((entry:any)=>entry.kind==='credit_release'&&entry.amountCents===200));assert.equal(saved().products[1].currentStock,10);assert.equal(order.items[0].reservedQuantity,1);
-await button('Editar itens');await chooseProduct();await button('Adicionar item');await button('Salvar itens do pedido');
+await button('Editar itens');await chooseProduct();await button('Adicionar item');await button('Conferir pedido');await button('Salvar alterações');
 order=saved().sales[0];assert.equal(order.items.length,2);assert.equal(order.totalRevenue,96);assert.equal(saved().sales.length,1);assert.equal(JSON.stringify(saved().finance.entries[0]),originalReceipt);
 await button('Registrar entrega');
 const deliveryRows = document.querySelectorAll('[data-delivery-item]');assert.equal(deliveryRows.length,2);
@@ -48,7 +58,53 @@ await button('Editar itens');
 const deliveredRow=detail().querySelector(`[data-order-item="${order.items[0].id}"]`)!;
 assert((deliveredRow.querySelector('[aria-label="Preço de Produto adicional"]') as HTMLInputElement).disabled);
 assert((deliveredRow.querySelector('[aria-label="Remover Produto adicional"]') as HTMLButtonElement).disabled);
-await button('Cancelar alterações');await button('Voltar');
+await button('Cancelar alterações');
+
+const beforeDiscount = saved();
+await button('Editar pedido');
+assert(detail().querySelector('[aria-current="step"]')?.textContent?.includes('Cliente e entrega'));
+await field('Contato', 'Contato atualizado');
+await button('Continuar para produtos');
+assert(detail().querySelector('[aria-current="step"]')?.textContent?.includes('Produtos'));
+await button('Conferir pedido');
+await button('Código');
+await editField('Cupom de desconto', 'vip25');
+assert.deepEqual(saved(), beforeDiscount, 'Navegar nas seções mantém as mudanças como rascunho.');
+await button('Salvar alterações');
+order = saved().sales[0];
+assert.equal(order.customerContact, 'Contato atualizado');
+assert.equal(order.discountCodeId, 'vip25');
+assert.equal(order.discountAmount, 24);
+assert.equal(order.totalRevenue, 72);
+assert(detail().querySelector('[data-testid="order-balance"]')?.textContent?.includes('24,00'));
+assert.deepEqual(order.deliveryHistory, beforeDiscount.sales[0].deliveryHistory);
+assert.deepEqual(saved().stockMovements, beforeDiscount.stockMovements);
+assert.equal(JSON.stringify(saved().finance.entries[0]), originalReceipt);
+await button('Ver fatura');
+assert(document.querySelector<HTMLIFrameElement>('iframe')?.srcdoc.includes('VIP25 · 25%'));
+await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Fechar fatura"]')!.click());
+
+await button('Editar pedido');
+await button('Continuar para produtos');
+await button('Conferir pedido');
+assert.equal(detail().querySelector<HTMLSelectElement>('[aria-label="Cupom de desconto"]')?.value, 'vip25');
+await button('Código de uso único');
+await editField('Nome do código de uso único', 'PRESENTE');
+await editField('Tipo do desconto de uso único', 'fixed');
+await editField('Valor do desconto de uso único', '60');
+await button('Voltar');
+await button('Conferir pedido');
+assert.equal(detail().querySelector<HTMLInputElement>('[aria-label="Nome do código de uso único"]')?.value, 'PRESENTE');
+await button('Salvar alterações');
+order = saved().sales[0];
+assert.equal(order.discountCode, 'PRESENTE');
+assert.equal(order.discountCodeId, undefined);
+assert.equal(order.totalRevenue, 36);
+assert.equal(saved().finance.entries.filter((entry: any) => entry.kind === 'credit_release').at(-1)?.amountCents, 1200);
+assert.deepEqual(order.deliveryHistory, beforeDiscount.sales[0].deliveryHistory);
+assert.equal(saved().products[1].currentStock, 9);
+assert.equal(saved().settings.discountCodes.length, 1);
+await button('Voltar');
 await button('Pedidos');
 const search=[...document.querySelectorAll('input')].find(input=>input.placeholder?.startsWith('Buscar por cliente'))!;assert(search);
 await act(async()=>{Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value')!.set!.call(search,'Cliente teste');search.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});
@@ -57,6 +113,7 @@ assert.equal(search.value,'Cliente teste','Voltar preserva a busca da lista');
 assert.equal(alerts.length,0,alerts.join('; '));
 await act(async()=>root.unmount());root=createRoot(document.querySelector('#root')!);await mount();await openHomeOrder();
 assert.equal(saved().sales.length,1);assert.equal(saved().sales[0].orderNumber,1);assert.equal(saved().sales[0].items.length,2);assert.equal(JSON.stringify(saved().finance.entries[0]),originalReceipt);
+assert.equal(saved().sales[0].discountCode, 'PRESENTE');
 await act(async()=>root.unmount());
 console.log('Pedidos: ficha ampla sem edição automática; quantidade/preço, troca e inclusão no mesmo pedido; recebimento original preservado; excedente em crédito; reservas sem baixa física; entrega parcial; itens entregues protegidos; busca e dados preservados ao voltar/reabrir.');
 process.exit(0);
