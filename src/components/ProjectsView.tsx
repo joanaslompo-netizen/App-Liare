@@ -1,12 +1,13 @@
-import { ModalFrame } from './ModalFrame';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowLeft,
   Plus,
   ClipboardList,
   CalendarDays,
   CheckCircle2,
   Circle,
   Edit2,
+  Copy,
   Trash2,
   X,
   Sparkles,
@@ -31,7 +32,10 @@ import { formatCurrency, formatNumber, UNIT_SHORT } from '../utils/formatters';
 import { SearchableProductCombobox } from './SearchableProductCombobox';
 import { SearchableMaterialCombobox } from './SearchableMaterialCombobox';
 import { ProjectMaterialQuoteDetails, ProjectSimulatedMaterialForm } from './ProjectSimulatedMaterialForm';
-import { isRecipeSimulation } from '../utils/projectSimulation';
+import { RecipeCard } from './RecipeCard';
+import { calculateRecipePricing, getCatalogRecipeFinancials } from '../utils/financials';
+import { getEmbeddedRecipeLaborCost } from '../utils/storage';
+import { duplicateProjectRecipe, isRecipeSimulation } from '../utils/projectSimulation';
 import { expandVirtualRecipeItems, getCategoryMaterialOptions, getVirtualMaterialRequirements, materialRecipeCosts } from '../utils/virtualMaterials';
 
 interface ProjectsViewProps {
@@ -88,8 +92,8 @@ function ProjectMaterialChoices({ id, material, choices, materials, onChange }: 
   </div>;
 }
 
-const getCustomLineUnitCost = (
-  line: Pick<ProjectProductLine, 'customRecipeItems' | 'batchYield'>,
+const getCustomLineFinancials = (
+  line: Pick<ProjectProductLine, 'customRecipeItems' | 'batchYield' | 'targetSalePrice' | 'recipePricing'>,
   products: Product[],
   materials: Material[]
 ) => {
@@ -104,8 +108,53 @@ const getCustomLineUnitCost = (
     const product = products.find((p) => p.id === item.targetId);
     return sum + item.quantity * (product ? getProductUnitCost(product) : item.unitCost || 0);
   }, 0);
-  return batchCost / yieldQty;
+  const pricing = line.recipePricing;
+  const laborCost = ((pricing?.productionTimeMinutes || 0) / 60) * (pricing?.hourlyRate || 0);
+  const otherCosts = pricing?.otherCosts || 0;
+  const { fixedCost } = calculateRecipePricing(batchCost, laborCost, pricing?.fixedCostPercent || 0, otherCosts, yieldQty, 0);
+  const items = (line.customRecipeItems || []).filter(item => !item.materialQuote);
+  return {
+    materialsCost: batchCost / yieldQty,
+    embeddedLaborCost: getEmbeddedRecipeLaborCost(items, materials, products) / yieldQty,
+    laborCost: laborCost / yieldQty,
+    fixedCost: fixedCost / yieldQty,
+    otherCosts: otherCosts / yieldQty,
+    batchYield: 1,
+    salePrice: line.targetSalePrice || undefined,
+  };
 };
+
+const getCustomLineUnitCost = (line: Parameters<typeof getCustomLineFinancials>[0], products: Product[], materials: Material[]) => {
+  const cost = getCustomLineFinancials(line, products, materials);
+  return cost.materialsCost + cost.laborCost + cost.fixedCost + cost.otherCosts;
+};
+
+function ProjectRecipeCard({ line, product, products, materials, children }: {
+  key?: string;
+  line: ProjectProductLine;
+  product?: Product | null;
+  products: Product[];
+  materials: Material[];
+  children: React.ReactNode;
+}) {
+  const custom = line.source === 'custom';
+  const items = line.customRecipeItems || [];
+  const financials = product ? getCatalogRecipeFinancials(product) : custom ? getCustomLineFinancials(line, products, materials) : undefined;
+  const recipe = product || { name: line.name, items, batchYield: line.batchYield, notes: line.notes, productionTimeMinutes: line.recipePricing?.productionTimeMinutes };
+  const badge = custom
+    ? isRecipeSimulation(line) ? 'Simulação' : line.approvedAt ? 'Aprovada' : 'Personalizada'
+    : undefined;
+
+  return (
+    <RecipeCard recipe={recipe} financials={financials} badge={badge} groupLabel={recipe.name} heading="h4" showProfit>
+      <div className="space-y-3 p-4">
+        {product && <p className="text-xs font-semibold text-stone-600">Estoque atual: {formatNumber(product.currentStock ?? 0, 4)} un</p>}
+        {!product && !custom && <p className="text-xs text-stone-600">Receita do catálogo indisponível.</p>}
+        {children}
+      </div>
+    </RecipeCard>
+  );
+}
 
 const plannedLines = (project: ProductionProject) => project.lines.filter(line => !isRecipeSimulation(line));
 
@@ -300,13 +349,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   onDeleteProject,
 }) => {
   const [editingProject, setEditingProject] = useState<ProductionProject | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const openNew = () => {
     const now = today();
     setEditingProject({
-      id: `project_${Date.now()}`,
+      id: `project_${crypto.randomUUID()}`,
       name: '',
       status: 'planning',
       notes: '',
@@ -317,12 +365,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       createdAt: now,
       updatedAt: now,
     });
-    setIsModalOpen(true);
   };
 
-  const openEdit = (project: ProductionProject) => {
-    setEditingProject(JSON.parse(JSON.stringify(project)));
-    setIsModalOpen(true);
+  const closeEditor = () => {
+    setEditingProject(null);
+    window.scrollTo(0, 0);
   };
 
   const ordered = useMemo(
@@ -334,6 +381,20 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       }),
     [projects]
   );
+
+  if (editingProject) {
+    return (
+      <ProjectEditor
+        project={editingProject}
+        products={products}
+        materials={materials}
+        onClose={closeEditor}
+        onSave={(project, approvalLineId) => {
+          if (onSaveProject(project, approvalLineId)) closeEditor();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -401,7 +462,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             const expanded = expandedId === project.id;
 
             return (
-              <div key={project.id} className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
+              <article key={project.id} aria-label={project.name} className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
                 <div className="p-5">
                   <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                     <div className="min-w-0">
@@ -434,7 +495,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
-                        onClick={() => openEdit(project)}
+                        onClick={() => setEditingProject(project)}
                         className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 flex items-center gap-1.5"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
@@ -485,28 +546,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     <ProjectDetails project={project} products={products} materials={materials} requirements={requirements} />
                   </div>
                 )}
-              </div>
+              </article>
             );
           })}
         </div>
       )}
 
-      {isModalOpen && editingProject && (
-        <ProjectModal
-          project={editingProject}
-          products={products}
-          materials={materials}
-          onClose={() => {
-            setIsModalOpen(false);
-            setEditingProject(null);
-          }}
-          onSave={(project, approvalLineId) => {
-            if (!onSaveProject(project, approvalLineId)) return;
-            setIsModalOpen(false);
-            setEditingProject(null);
-          }}
-        />
-      )}
     </div>
   );
 };
@@ -543,7 +588,7 @@ const ProjectDetails = ({
   <>
     <div>
       <h4 className="text-xs font-bold text-stone-800 mb-2">Receitas do projeto</h4>
-      <div className="space-y-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         {project.lines.length === 0 ? (
           <p className="text-xs text-stone-500">Nenhum produto adicionado.</p>
         ) : (
@@ -556,36 +601,25 @@ const ProjectDetails = ({
               ? getProductUnitCost(product)
               : 0;
             return (
-              <div key={line.id} className="bg-white border border-stone-200 rounded-xl p-3 flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-stone-900">{product?.name || line.name}</span>
-                    {line.source === 'custom' && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-800 border border-purple-200 font-semibold">
-                        {simulation ? 'Simulação' : line.approvedAt ? 'Aprovada' : 'Receita do projeto'}
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[11px] text-stone-500 mt-1">
+              <ProjectRecipeCard key={line.id} line={line} product={product} products={products} materials={materials}>
+                <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm text-stone-700">
+                  <span>
                     {simulation
-                      ? `${formatNumber(line.quantity)} un simuladas • custo est. ${formatCurrency(cost)}/un`
-                      : `${formatNumber(line.quantity)} un planejadas • ${formatNumber(line.producedQuantity || 0)} un produzidas • custo est. ${formatCurrency(cost)}/un`}
+                      ? `${formatNumber(line.quantity)} un simuladas`
+                      : `${formatNumber(line.quantity)} un planejadas · ${formatNumber(line.producedQuantity || 0)} un produzidas`}
+                  </span>
+                  <strong>{formatCurrency(cost * line.quantity)} no projeto</strong>
+                </div>
+                {product && line.quantity > (line.producedQuantity || 0) && <p className="text-xs text-stone-500" aria-label={`Etapas atuais de ${product.name}`}>
+                  Receita atual: {product.useProductionStages && product.productionStages?.length ? [...product.productionStages].sort((a, b) => a.order - b.order).map(stage => stage.name).join(' → ') : 'Produção direta'}
+                </p>}
+                {simulation && line.customRecipeItems?.filter(item => item.materialQuote).map(item => (
+                  <div key={item.id} className="text-xs text-stone-700">
+                    <span className="font-medium">{item.name}</span>
+                    <ProjectMaterialQuoteDetails item={item} />
                   </div>
-                  {product && line.quantity > (line.producedQuantity || 0) && <p className="mt-1 text-[11px] text-stone-500" aria-label={`Etapas atuais de ${product.name}`}>
-                    Receita atual: {product.useProductionStages && product.productionStages?.length ? [...product.productionStages].sort((a, b) => a.order - b.order).map(stage => stage.name).join(' → ') : 'Produção direta'}
-                  </p>}
-                  {line.notes && <div className="text-[11px] text-stone-600 mt-1 italic">{line.notes}</div>}
-                  {simulation && line.customRecipeItems?.filter(item => item.materialQuote).map(item => (
-                    <div key={item.id} className="mt-2 text-xs text-stone-700">
-                      <span className="font-medium">{item.name}</span>
-                      <ProjectMaterialQuoteDetails item={item} />
-                    </div>
-                  ))}
-                </div>
-                <div className="text-xs font-semibold text-stone-700 shrink-0">
-                  {formatCurrency(cost * line.quantity)}
-                </div>
-              </div>
+                ))}
+              </ProjectRecipeCard>
             );
           })
         )}
@@ -709,7 +743,9 @@ const ProjectDetails = ({
   </>
 );
 
-const ProjectModal = ({
+const projectPanel = 'min-w-0 rounded-2xl border border-[#e5dad1] bg-white p-4 sm:p-5';
+
+const ProjectEditor = ({
   project,
   products,
   materials,
@@ -731,7 +767,9 @@ const ProjectModal = ({
   const [checkText, setCheckText] = useState('');
   const [showCustom, setShowCustom] = useState(false);
   const [editingLine, setEditingLine] = useState<ProjectProductLine | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const customNameRef = useRef<HTMLInputElement>(null);
+  const ingredientEditorRef = useRef<HTMLDivElement>(null);
   const [customName, setCustomName] = useState('');
   const [customQty, setCustomQty] = useState('1');
   const [customYield, setCustomYield] = useState('1');
@@ -739,7 +777,7 @@ const ProjectModal = ({
   const [customNotes, setCustomNotes] = useState('');
   const [customItems, setCustomItems] = useState<ProjectRecipeItem[]>([]);
   const [customItemType, setCustomItemType] = useState<'material' | 'product' | 'quote'>('material');
-  const [editingQuote, setEditingQuote] = useState<ProjectRecipeItem>();
+  const [editingIngredient, setEditingIngredient] = useState<ProjectRecipeItem>();
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   const [selectedSubProduct, setSelectedSubProduct] = useState<Product | null>(null);
   const [customItemQty, setCustomItemQty] = useState('1');
@@ -755,8 +793,26 @@ const ProjectModal = ({
   const categories = useMemo(() => [...new Set(materials.map(material => material.category).filter(Boolean))].sort(), [materials]);
 
   useEffect(() => {
-    if (editingLine) customNameRef.current?.focus();
-  }, [editingLine]);
+    window.scrollTo(0, 0);
+    headingRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  useEffect(() => {
+    if (showCustom) customNameRef.current?.focus();
+  }, [showCustom]);
+
+  useEffect(() => {
+    if (editingIngredient) ingredientEditorRef.current?.focus();
+  }, [editingIngredient]);
+
+  const resetIngredient = () => {
+    setCustomItemType('material');
+    setEditingIngredient(undefined);
+    setSelectedMaterial(null);
+    setSelectedSubProduct(null);
+    setCustomChoices({});
+    setCustomItemQty('1');
+  };
 
   const editCustomLine = (line: ProjectProductLine) => {
     setEditingLine(line);
@@ -766,12 +822,7 @@ const ProjectModal = ({
     setCustomSalePrice(line.targetSalePrice ? String(line.targetSalePrice) : '');
     setCustomNotes(line.notes || '');
     setCustomItems(line.customRecipeItems || []);
-    setCustomItemType('material');
-    setEditingQuote(undefined);
-    setSelectedMaterial(null);
-    setSelectedSubProduct(null);
-    setCustomChoices({});
-    setCustomItemQty('1');
+    resetIngredient();
     setShowCustom(true);
   };
 
@@ -783,13 +834,24 @@ const ProjectModal = ({
     setCustomSalePrice('');
     setCustomNotes('');
     setCustomItems([]);
-    setCustomItemType('material');
-    setEditingQuote(undefined);
-    setSelectedMaterial(null);
-    setSelectedSubProduct(null);
-    setCustomChoices({});
-    setCustomItemQty('1');
+    resetIngredient();
     setShowCustom(false);
+  };
+
+  const editIngredient = (item: ProjectRecipeItem) => {
+    setEditingIngredient(item);
+    setCustomItemType(item.materialQuote ? 'quote' : item.type);
+    setCustomItemQty(String(item.quantity));
+    setCustomChoices(item.categorySelections || {});
+    setSelectedMaterial(item.type === 'material' && !item.materialQuote ? materials.find(material => material.id === item.targetId) || null : null);
+    setSelectedSubProduct(item.type === 'product' ? products.find(product => product.id === item.targetId) || null : null);
+  };
+
+  const saveIngredient = (item: ProjectRecipeItem) => {
+    setCustomItems(previous => editingIngredient
+      ? previous.map(value => value.id === editingIngredient.id ? item : value)
+      : [...previous, item]);
+    resetIngredient();
   };
 
   const addProjectMaterial = () => {
@@ -844,7 +906,7 @@ const ProjectModal = ({
         };
       }
       const line: ProjectProductLine = {
-        id: `project_line_${Date.now()}`,
+        id: `project_line_${crypto.randomUUID()}`,
         source: 'catalog',
         productId: selectedProduct.id,
         name: selectedProduct.name,
@@ -861,55 +923,45 @@ const ProjectModal = ({
   const addCustomRecipeItem = () => {
     const qty = Number(customItemQty);
     if (!Number.isFinite(qty) || qty <= 0) return;
+    const id = editingIngredient?.id || crypto.randomUUID();
 
     if (customItemType === 'material' && selectedMaterial) {
       let categorySelections: Record<string, string> | undefined;
       try { categorySelections = configuredChoices(selectedMaterial, customChoices, materials, products); }
       catch (error) { alert((error as Error).message); return; }
       const unitCost = getProjectMaterialUnitCost(selectedMaterial, materials, products, categorySelections);
-      setCustomItems((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          type: 'material',
-          targetId: selectedMaterial.id,
-          name: selectedMaterial.name,
-          quantity: qty,
-          unit: selectedMaterial.unit,
-          unitCost,
-          totalCost: unitCost * qty,
-          categorySelections,
-        },
-      ]);
-      setSelectedMaterial(null);
-      setCustomItemQty('1');
-      setCustomChoices({});
-      return;
+      saveIngredient({
+        id,
+        type: 'material',
+        targetId: selectedMaterial.id,
+        name: selectedMaterial.name,
+        quantity: qty,
+        unit: selectedMaterial.unit,
+        unitCost,
+        totalCost: unitCost * qty,
+        categorySelections,
+        durableOption: selectedMaterial.id === editingIngredient?.targetId ? editingIngredient.durableOption : undefined,
+      });
     }
 
     if (customItemType === 'product' && selectedSubProduct) {
       const unitCost = getProductUnitCost(selectedSubProduct);
-      setCustomItems((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          type: 'product',
-          targetId: selectedSubProduct.id,
-          name: selectedSubProduct.name,
-          quantity: qty,
-          unit: 'un',
-          unitCost,
-          totalCost: unitCost * qty,
-        },
-      ]);
-      setSelectedSubProduct(null);
-      setCustomItemQty('1');
+      saveIngredient({
+        id,
+        type: 'product',
+        targetId: selectedSubProduct.id,
+        name: selectedSubProduct.name,
+        quantity: qty,
+        unit: 'un',
+        unitCost,
+        totalCost: unitCost * qty,
+      });
     }
   };
 
   const addCustomLine = () => {
-    if (customItemType === 'quote') {
-      alert('Adicione o material de teste à receita ou volte para a opção Material.');
+    if (editingIngredient || customItemType === 'quote') {
+      alert('Conclua ou cancele a alteração do insumo antes de salvar a receita.');
       return;
     }
     const qty = Number(customQty);
@@ -940,7 +992,9 @@ const ProjectModal = ({
 
     setDraft(prev => ({
       ...prev,
-      lines: editingLine ? prev.lines.map(value => value.id === line.id ? line : value) : [...prev.lines, line],
+      lines: prev.lines.some(value => value.id === line.id)
+        ? prev.lines.map(value => value.id === line.id ? line : value)
+        : [...prev.lines, line],
     }));
     resetCustomLine();
   };
@@ -964,7 +1018,12 @@ const ProjectModal = ({
         if (material) configuredChoices(material, item.categorySelections || {}, materials, products);
       }
     } catch (error) { alert((error as Error).message); return; }
-    if (approvalLine && !confirm(`Aprovar "${approvalLine.name}"? O projeto será salvo e os materiais de teste dessa receita serão cadastrados com os custos informados e estoque inicial zero.`)) return;
+    if (approvalLine) {
+      const materialNotice = approvalLine.customRecipeItems?.some(item => item.materialQuote)
+        ? ' Os materiais de teste dessa receita serão cadastrados com os custos informados e estoque inicial zero.'
+        : '';
+      if (!confirm(`Aprovar "${approvalLine.name}"? A receita entra no planejamento e o projeto será salvo.${materialNotice}`)) return;
+    }
     onSave({
       ...draft,
       name: draft.name.trim(),
@@ -973,85 +1032,87 @@ const ProjectModal = ({
   };
 
   return (
-    <ModalFrame onClose={onClose} className="fixed inset-0 z-50 bg-stone-950/65 backdrop-blur-xs flex items-start justify-center p-3 sm:p-5 overflow-y-auto">
-      <div className="bg-[#fbf8f4] w-full max-w-5xl rounded-2xl shadow-2xl border border-stone-200 my-3 overflow-hidden">
-        <div className="liare-modal-header bg-stone-900 text-white p-5 flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-bold">{project.name ? 'Editar Projeto' : 'Novo Projeto'}</h3>
-            <p className="text-xs text-stone-400 mt-0.5">Planejamento não movimenta estoque.</p>
-          </div>
-          <button aria-label="Fechar janela" type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-800 text-stone-300">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <section aria-labelledby="project-editor-title" className="space-y-5">
+      <div className="space-y-2">
+        <button type="button" onClick={onClose} className="inline-flex min-h-9 items-center gap-2 rounded-lg pr-2 text-sm font-semibold text-[#8c5441] hover:text-stone-900">
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          Voltar aos projetos
+        </button>
+        <h2 id="project-editor-title" tabIndex={-1} ref={headingRef} className="text-2xl font-semibold tracking-tight text-[#352f2b] sm:text-3xl">
+          {project.name ? 'Editar projeto' : 'Novo projeto'}
+        </h2>
+      </div>
 
-        <div className="liare-modal-body p-5 sm:p-6 space-y-6">
-          <div className="grid md:grid-cols-[1fr_190px_190px] gap-3">
-            <label className="text-xs font-semibold text-stone-700">
-              Nome do projeto
-              <input
-                value={draft.name}
-                onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))}
-                placeholder="Ex.: Produção Dia das Mães"
-                className="mt-1.5 w-full px-3 py-2.5 rounded-xl border border-stone-300 bg-white text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
-              />
-            </label>
-            <label className="text-xs font-semibold text-stone-700">
-              Status
-              <select
-                value={draft.status}
-                onChange={(e) => setDraft((p) => ({ ...p, status: e.target.value as ProductionProject['status'] }))}
-                className="mt-1.5 w-full px-3 py-2.5 rounded-xl border border-stone-300 bg-white text-sm text-stone-900"
-              >
-                <option value="planning">Planejamento</option>
-                <option value="in_progress">Em produção</option>
-                <option value="completed">Finalizado</option>
-              </select>
-            </label>
-            <label className="text-xs font-semibold text-stone-700">
-              Prazo
-              <input
-                type="date"
-                value={draft.dueDate || ''}
-                onChange={(e) => setDraft((p) => ({ ...p, dueDate: e.target.value }))}
-                className="mt-1.5 w-full px-3 py-2.5 rounded-xl border border-stone-300 bg-white text-sm text-stone-900"
-              />
-            </label>
-          </div>
+      <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="min-w-0 space-y-5">
+          <section className={`${projectPanel} space-y-3`} aria-labelledby="project-info-title">
+            <h3 id="project-info-title" className="text-base font-semibold text-stone-900">Dados do projeto</h3>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_160px_160px]">
+              <label className="min-w-0 text-xs font-semibold text-stone-700 sm:col-span-2 xl:col-span-1">
+                Nome do projeto
+                <input
+                  value={draft.name}
+                  onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))}
+                  placeholder="Ex.: Produção Dia das Mães"
+                  className="mt-1.5 w-full px-3 py-2.5 rounded-xl border border-stone-300 bg-white text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </label>
+              <label className="min-w-0 text-xs font-semibold text-stone-700">
+                Status
+                <select
+                  value={draft.status}
+                  onChange={(e) => setDraft((p) => ({ ...p, status: e.target.value as ProductionProject['status'] }))}
+                  className="mt-1.5 w-full px-3 py-2.5 rounded-xl border border-stone-300 bg-white text-sm text-stone-900"
+                >
+                  <option value="planning">Planejamento</option>
+                  <option value="in_progress">Em produção</option>
+                  <option value="completed">Finalizado</option>
+                </select>
+              </label>
+              <label className="min-w-0 text-xs font-semibold text-stone-700">
+                Prazo
+                <input
+                  type="date"
+                  value={draft.dueDate || ''}
+                  onChange={(e) => setDraft((p) => ({ ...p, dueDate: e.target.value }))}
+                  className="mt-1.5 w-full px-3 py-2.5 rounded-xl border border-stone-300 bg-white text-sm text-stone-900"
+                />
+              </label>
+            </div>
+          </section>
 
-          <section className="bg-white border border-stone-200 rounded-2xl p-4 space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h4 className="text-sm font-bold text-stone-900">Produtos e receitas</h4>
-                <p className="text-[11px] text-stone-500">Misture receitas do catálogo com receitas exclusivas deste projeto.</p>
-              </div>
+          <section className={`${projectPanel} space-y-4`} aria-labelledby="project-recipes-title">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 id="project-recipes-title" className="text-lg font-semibold text-stone-900">Receitas do projeto</h3>
               <button
                 type="button"
-                onClick={() => {
-                  if (!showCustom) setShowCustom(true);
-                  else if (!editingLine) setShowCustom(false);
-                }}
+                onClick={() => setShowCustom(true)}
                 aria-expanded={showCustom}
-                disabled={!!editingLine}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-50 text-purple-800 border border-purple-200 hover:bg-purple-100 flex items-center gap-1.5"
+                disabled={showCustom}
+                className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-3 text-sm font-semibold text-purple-800 hover:bg-purple-100 disabled:opacity-60"
               >
-                <Sparkles className="w-3.5 h-3.5" />
-                Receita personalizada
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                Criar receita personalizada
               </button>
             </div>
 
-            <div className="grid min-w-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_110px_auto] gap-2 items-end">
-              <SearchableProductCombobox
-                products={products.filter((p) => !p.isCustomRecipe)}
-                selectedProductId={selectedProduct?.id || ''}
-                onSelectProduct={setSelectedProduct}
-                placeholder="Buscar uma receita cadastrada..."
-                filterOnlyFinalForSale={false}
-                mode="production"
-              />
-              <label className="text-[11px] font-semibold text-stone-600">
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-2 rounded-xl border border-stone-200 bg-stone-50 p-3 md:grid-cols-[minmax(0,1fr)_100px_auto]">
+              <div className="col-span-2 min-w-0 md:col-span-1">
+                <label htmlFor="project-catalog-recipe" className="mb-1 block text-xs font-semibold text-stone-700">Receita do catálogo</label>
+                <SearchableProductCombobox
+                  id="project-catalog-recipe"
+                  products={products.filter((p) => !p.isCustomRecipe)}
+                  selectedProductId={selectedProduct?.id || ''}
+                  onSelectProduct={setSelectedProduct}
+                  placeholder="Buscar uma receita cadastrada..."
+                  filterOnlyFinalForSale={false}
+                  mode="production"
+                />
+              </div>
+              <label className="min-w-0 text-xs font-semibold text-stone-700">
                 Quantidade
                 <input
+                  aria-label="Quantidade da receita do catálogo"
                   type="number"
                   min="0.01"
                   step="any"
@@ -1063,10 +1124,11 @@ const ProjectModal = ({
               <button
                 type="button"
                 onClick={addCatalogLine}
-                disabled={!selectedProduct}
-                className="px-3.5 py-2 rounded-xl bg-stone-900 text-white text-xs font-semibold disabled:opacity-40"
+                disabled={!selectedProduct || !Number.isFinite(Number(catalogQty)) || Number(catalogQty) <= 0}
+                className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-[#a86149] px-3 text-sm font-semibold text-white hover:bg-[#92533c] disabled:opacity-40"
               >
-                Adicionar
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                Adicionar receita
               </button>
             </div>
 
@@ -1107,8 +1169,14 @@ const ProjectModal = ({
                   </label>
                 </div>
 
-                <div>
-                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                <div ref={ingredientEditorRef} tabIndex={-1} className="scroll-mt-20">
+                  {editingIngredient && (
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-purple-100 px-3 py-2 text-xs text-purple-950">
+                      <strong>Alterar insumo: {editingIngredient.name}</strong>
+                      <button type="button" onClick={resetIngredient} className="font-semibold underline">Cancelar alteração do insumo</button>
+                    </div>
+                  )}
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setCustomItemType('material')}
@@ -1127,7 +1195,7 @@ const ProjectModal = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setEditingQuote(undefined); setCustomItemType('quote'); }}
+                      onClick={() => setCustomItemType('quote')}
                       aria-pressed={customItemType === 'quote'}
                       className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold ${customItemType === 'quote' ? 'bg-stone-900 text-white' : 'bg-white text-stone-600 border border-stone-200'}`}
                     >
@@ -1137,16 +1205,10 @@ const ProjectModal = ({
 
                   {customItemType === 'quote' ? (
                     <ProjectSimulatedMaterialForm
-                      key={editingQuote?.id || 'novo'}
-                      item={editingQuote}
+                      key={editingIngredient?.id || 'novo'}
+                      item={editingIngredient}
                       categories={categories}
-                      onAdd={item => {
-                        setCustomItems(previous => editingQuote
-                          ? previous.map(value => value.id === item.id ? item : value)
-                          : [...previous, item]);
-                        setEditingQuote(undefined);
-                        setCustomItemType('material');
-                      }}
+                      onAdd={saveIngredient}
                     />
                   ) : <div className="grid min-w-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_110px_auto] gap-2 items-end">
                     {customItemType === 'material' ? (
@@ -1183,7 +1245,7 @@ const ProjectModal = ({
                       onClick={addCustomRecipeItem}
                       className="px-3.5 py-2 rounded-xl bg-white border border-stone-300 text-stone-800 text-xs font-semibold hover:bg-stone-50"
                     >
-                      + Insumo
+                      {editingIngredient ? 'Atualizar insumo' : '+ Insumo'}
                     </button>
                   </div>}
                   {customItemType === 'material' && <div className="mt-3"><ProjectMaterialChoices id="project-custom-aroma" material={selectedMaterial} materials={materials} choices={customChoices} onChange={setCustomChoices} /></div>}
@@ -1202,21 +1264,21 @@ const ProjectModal = ({
                           {item.categorySelections && <div className="text-[11px] text-purple-700">{Object.values(item.categorySelections).map(id => materials.find(material => material.id === id)?.name).filter(Boolean).join(' · ')}</div>}
                         </div>
                         <div className="flex shrink-0 items-center gap-1">
-                          {item.materialQuote && <button
+                          <button
                             type="button"
-                            aria-label={`Editar cotação de ${item.name}`}
-                            onClick={() => { setEditingQuote(item); setCustomItemType('quote'); }}
-                            className="p-2 rounded-lg text-purple-800 hover:bg-purple-50"
-                          ><Edit2 className="w-3.5 h-3.5" /></button>}
+                            aria-label={item.materialQuote ? `Editar cotação de ${item.name}` : `Trocar insumo ${item.name}`}
+                            onClick={() => editIngredient(item)}
+                            className="flex min-h-8 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-purple-800 hover:bg-purple-50"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" aria-hidden="true" />
+                            {item.materialQuote ? 'Editar' : 'Trocar'}
+                          </button>
                           <button
                             type="button"
                             aria-label={`Remover ${item.name} da receita`}
                             onClick={() => {
                               setCustomItems(previous => previous.filter(value => value.id !== item.id));
-                              if (editingQuote?.id === item.id) {
-                                setEditingQuote(undefined);
-                                setCustomItemType('material');
-                              }
+                              if (editingIngredient?.id === item.id) resetIngredient();
                             }}
                             className="p-2 rounded-lg text-stone-500 hover:text-rose-600"
                           >
@@ -1254,7 +1316,9 @@ const ProjectModal = ({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <span className="text-xs text-stone-700">
                     Custo estimado por peça <strong>{formatCurrency(getCustomLineUnitCost({
-                      customRecipeItems: customItems, batchYield: Math.max(0, Number(customYield)) || 1,
+                      customRecipeItems: customItems,
+                      batchYield: Math.max(0, Number(customYield)) || 1,
+                      recipePricing: editingLine?.recipePricing,
                     }, products, materials))}</strong>
                   </span>
                   <div className="flex flex-wrap gap-2">
@@ -1273,8 +1337,12 @@ const ProjectModal = ({
               </div>
             )}
 
-            {draft.lines.length > 0 && (
-              <div className="space-y-2 pt-2 border-t border-stone-100">
+            <div className="space-y-3 border-t border-stone-100 pt-3">
+              <h4 className="text-sm font-semibold text-stone-800" aria-live="polite">
+                {draft.lines.length} {draft.lines.length === 1 ? 'receita no projeto' : 'receitas no projeto'}
+              </h4>
+              {draft.lines.length === 0 && <p className="text-sm text-stone-500">Escolha uma receita do catálogo ou crie uma personalizada.</p>}
+              <div className="grid gap-4 xl:grid-cols-2">
                 {draft.lines.map((line) => {
                   const simulation = isRecipeSimulation(line);
                   const product = line.source === 'catalog' ? products.find((p) => p.id === line.productId) : null;
@@ -1284,22 +1352,11 @@ const ProjectModal = ({
                     ? getProductUnitCost(product)
                     : 0;
                   return (
-                    <div key={line.id} role="group" aria-label={product?.name || line.name} className="rounded-xl border border-stone-200 bg-stone-50/60 p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-bold text-stone-900">{product?.name || line.name}</span>
-                            {line.source === 'custom' && (
-                              <span className="text-[10px] bg-purple-100 text-purple-800 border border-purple-200 rounded-full px-1.5 py-0.5 font-semibold">
-                                {simulation ? 'Simulação' : line.approvedAt ? 'Aprovada' : 'Personalizada'}
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[10px] text-stone-500 mt-1">
-                            Custo estimado {formatCurrency(unitCost)}/un
-                            {simulation && ` · ${formatCurrency(unitCost * line.quantity)} para ${formatNumber(line.quantity)} un`}
-                          </div>
-                        </div>
+                    <ProjectRecipeCard key={line.id} line={line} product={product} products={products} materials={materials}>
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-2">
+                        <span className="text-xs text-stone-600">
+                          Custo para {formatNumber(line.quantity)} un <strong>{formatCurrency(unitCost * line.quantity)}</strong>
+                        </span>
                         <div className="flex shrink-0 gap-1">
                           {line.source === 'custom' && <button
                             type="button"
@@ -1307,6 +1364,15 @@ const ProjectModal = ({
                             onClick={() => editCustomLine(line)}
                             className="rounded-lg px-2 py-1 text-xs font-semibold text-purple-800 hover:bg-purple-100 disabled:opacity-50"
                           >Editar receita</button>}
+                          {(product || line.source === 'custom') && (
+                            <button type="button" disabled={showCustom}
+                              onClick={() => editCustomLine(duplicateProjectRecipe(line, product, draft.lines))}
+                              aria-label={`Duplicar receita ${product?.name || line.name}`}
+                              title="Duplicar receita para comparar"
+                              className="rounded-lg p-2 text-stone-600 hover:bg-stone-100 disabled:opacity-40">
+                              <Copy className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                          )}
                           <button
                             type="button"
                             aria-label={`Remover receita ${product?.name || line.name}`}
@@ -1318,8 +1384,8 @@ const ProjectModal = ({
                           </button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 mt-2">
-                        <label className="text-[10px] text-stone-500">
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="min-w-0 text-xs text-stone-600">
                           {simulation ? 'Quantidade simulada' : 'Planejado'}
                           <input
                             type="number"
@@ -1336,7 +1402,7 @@ const ProjectModal = ({
                             className="mt-1 w-full px-2 py-1.5 rounded-lg border border-stone-300 bg-white text-xs text-stone-800"
                           />
                         </label>
-                        {!simulation && <label className="text-[10px] text-stone-500">
+                        {!simulation && <label className="min-w-0 text-xs text-stone-600">
                           Já produzido
                           <input
                             type="number"
@@ -1376,16 +1442,16 @@ const ProjectModal = ({
                           </button>
                         </div>
                       )}
-                    </div>
+                    </ProjectRecipeCard>
                   );
                 })}
               </div>
-            )}
+            </div>
           </section>
 
-          <section className="bg-white border border-stone-200 rounded-2xl p-4 space-y-4">
+          <section className={`${projectPanel} space-y-4`} aria-labelledby="project-materials-title">
             <div>
-              <h4 className="text-sm font-bold text-stone-900">Materiais do projeto</h4>
+              <h3 id="project-materials-title" className="text-base font-semibold text-stone-900">Materiais do projeto</h3>
               <p className="text-[11px] text-stone-500">
                 Para embalagens, saquinhos, papéis, etiquetas, fitas e outros materiais que não fazem parte de uma receita.
               </p>
@@ -1511,20 +1577,21 @@ const ProjectModal = ({
             )}
           </section>
 
-          <section className="grid lg:grid-cols-2 gap-4">
-            <div className="bg-white border border-stone-200 rounded-2xl p-4">
-              <h4 className="text-sm font-bold text-stone-900 mb-2">Anotações</h4>
+          <div className="grid gap-4 md:grid-cols-2">
+            <section className={projectPanel} aria-labelledby="project-notes-title">
+              <h3 id="project-notes-title" className="mb-2 text-base font-semibold text-stone-900">Anotações</h3>
               <textarea
+                aria-labelledby="project-notes-title"
                 value={draft.notes || ''}
                 onChange={(e) => setDraft((p) => ({ ...p, notes: e.target.value }))}
                 placeholder="Ideias, fornecedores, detalhes de embalagem, testes, lembretes..."
                 rows={7}
                 className="w-full px-3 py-2 rounded-xl border border-stone-300 bg-white text-sm text-stone-900 resize-y focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
-            </div>
+            </section>
 
-            <div className="bg-white border border-stone-200 rounded-2xl p-4">
-              <h4 className="text-sm font-bold text-stone-900 mb-2">Checklist</h4>
+            <section className={projectPanel} aria-labelledby="project-checklist-title">
+              <h3 id="project-checklist-title" className="mb-2 text-base font-semibold text-stone-900">Checklist</h3>
               <div className="flex gap-2">
                 <input
                   value={checkText}
@@ -1544,7 +1611,8 @@ const ProjectModal = ({
                     }
                   }}
                   placeholder="Ex.: imprimir rótulos"
-                  className="flex-1 px-3 py-2 rounded-xl border border-stone-300 bg-white text-sm"
+                  aria-label="Novo item do checklist"
+                  className="min-w-0 flex-1 px-3 py-2 rounded-xl border border-stone-300 bg-white text-sm"
                 />
                 <button
                   type="button"
@@ -1592,50 +1660,54 @@ const ProjectModal = ({
                   </div>
                 ))}
               </div>
-            </div>
-          </section>
+            </section>
+          </div>
+        </div>
 
-          <section className="bg-white border border-stone-200 rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h4 className="text-sm font-bold text-stone-900">Resumo do planejamento</h4>
-                <p className="text-[11px] text-stone-500">Atualizado automaticamente pelas receitas e quantidades acima.</p>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] text-stone-500 block">Custo previsto</span>
-                <span className="text-sm font-bold text-stone-900">{formatCurrency(projectedCost)}</span>
-              </div>
+        <aside aria-labelledby="project-summary-title" className={`${projectPanel} space-y-4`}>
+          <h3 id="project-summary-title" className="text-base font-semibold text-stone-900">Resumo do planejamento</h3>
+          <dl className="space-y-2 rounded-xl bg-[#f8f4ef] p-3 text-sm">
+            <div className="flex justify-between gap-2">
+              <dt className="text-stone-600">Unidades planejadas</dt>
+              <dd className="font-semibold">{formatNumber(getProjectPlannedUnits(draft))}</dd>
             </div>
-            {requirements.length === 0 ? (
-              <p className="text-xs text-stone-500">Adicione produtos para ver os materiais necessários.</p>
-            ) : (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {requirements.slice(0, 12).map((req) => {
+            <div className="flex justify-between gap-2">
+              <dt className="font-semibold text-stone-800">Custo previsto</dt>
+              <dd className="font-bold">{formatCurrency(projectedCost)}</dd>
+            </div>
+          </dl>
+          {requirements.length === 0 ? (
+            <p className="text-xs text-stone-500">Adicione receitas para ver os insumos necessários.</p>
+          ) : (
+            <div className="space-y-2">
+              <h4 className="text-sm font-semibold text-stone-800">Insumos necessários</h4>
+              <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                {requirements.map(req => {
                   const missing = req.available !== undefined && req.required > req.available + 0.000001;
                   return (
-                    <div key={req.key} className={`rounded-lg border px-3 py-2 ${missing ? 'border-rose-200 bg-rose-50' : 'border-stone-200 bg-stone-50'}`}>
-                      <div className="text-[11px] font-semibold text-stone-800 truncate">{req.name}</div>
-                      <div className="text-[10px] text-stone-500 mt-0.5">
+                    <li key={req.key} className={`min-w-0 rounded-lg border px-3 py-2 ${missing ? 'border-rose-200 bg-rose-50' : 'border-stone-200 bg-stone-50'}`}>
+                      <div className="break-words text-xs font-semibold text-stone-800">{req.name}</div>
+                      <div className="mt-0.5 text-xs text-stone-500">
                         {formatNumber(req.required)} {UNIT_SHORT[req.unit as keyof typeof UNIT_SHORT] || req.unit}
-                        {req.available !== undefined ? ` • estoque ${formatNumber(req.available)}` : ''}
+                        {req.available !== undefined ? ` · estoque ${formatNumber(req.available)}` : ''}
                       </div>
-                    </div>
+                    </li>
                   );
                 })}
-              </div>
-            )}
-          </section>
-        </div>
-
-        <div className="sticky bottom-0 bg-white border-t border-stone-200 p-4 flex items-center justify-end gap-2">
-          <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-100">
-            Cancelar
-          </button>
-          <button type="button" onClick={() => save()} className="px-5 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-sm font-semibold">
-            Salvar Projeto
-          </button>
-        </div>
+              </ul>
+            </div>
+          )}
+        </aside>
       </div>
-    </ModalFrame>
+
+      <div className="sticky bottom-[calc(5rem+env(safe-area-inset-bottom))] z-20 flex items-center justify-end gap-2 rounded-xl border border-[#e5dad1] bg-white p-2.5 shadow-sm">
+        <button type="button" onClick={onClose} className="min-h-10 rounded-xl px-4 text-sm font-medium text-stone-600 hover:bg-stone-100">
+          Cancelar
+        </button>
+        <button type="button" onClick={() => save()} className="min-h-10 rounded-xl bg-[#a86149] px-5 text-sm font-semibold text-white hover:bg-[#92533c]">
+          Salvar Projeto
+        </button>
+      </div>
+    </section>
   );
 };

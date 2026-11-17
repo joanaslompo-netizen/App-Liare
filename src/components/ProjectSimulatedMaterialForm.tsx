@@ -14,11 +14,12 @@ export function ProjectSimulatedMaterialForm({ item, categories, onAdd }: {
 }) {
   const categoryListId = useId();
   const quote = item?.materialQuote;
+  const originalUnit = units.find(value => value === item?.unit || UNIT_SHORT[value] === item?.unit);
   const [name, setName] = useState(item?.name ?? '');
   const [category, setCategory] = useState(quote?.category ?? '');
-  const [unit, setUnit] = useState<UnitOfMeasure>(quote?.unit ?? 'un');
+  const [unit, setUnit] = useState<UnitOfMeasure>(quote?.unit ?? originalUnit ?? 'un');
   const [quantity, setQuantity] = useState(item?.quantity.toString() ?? '1');
-  const [packageUnit, setPackageUnit] = useState<UnitOfMeasure>(quote?.packageUnit ?? 'un');
+  const [packageUnit, setPackageUnit] = useState<UnitOfMeasure>(quote?.packageUnit ?? originalUnit ?? 'un');
   const [packageQuantity, setPackageQuantity] = useState(quote?.packageQuantity.toString() ?? '1');
   const [packagePrice, setPackagePrice] = useState(quote?.packagePrice.toString() ?? '');
   const [error, setError] = useState('');
