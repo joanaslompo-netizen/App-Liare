@@ -23,7 +23,13 @@ let root=createRoot(document.querySelector('#root')!);
 const saved=()=>JSON.parse(workspaceStorage.getItem('atelie_workspace_finance_v1')!);
 async function click(text:string,scope:ParentNode=document){const element=[...scope.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.textContent?.trim()===text);assert(element,text);await act(async()=>element.click());}
 async function fill(element:HTMLInputElement|HTMLSelectElement,value:string){assert(element,'Campo encontrado');await act(async()=>{const proto=element.tagName==='SELECT'?dom.window.HTMLSelectElement.prototype:dom.window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value')!.set!.call(element,value);element.dispatchEvent(new dom.window.Event(element.tagName==='SELECT'?'change':'input',{bubbles:true}));});}
-async function field(label:string,value:string){const container=[...document.querySelectorAll('label')].find(element=>[...element.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join('').trim()===label);assert(container,label);await fill(container.querySelector('input,select') as HTMLInputElement,value);}
+function fieldInput(label: string) {
+  const container = [...document.querySelectorAll('label')].find(element =>
+    [...element.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join('').trim() === label);
+  assert(container, label);
+  return container.querySelector('input,select') as HTMLInputElement | HTMLSelectElement;
+}
+const field = (label: string, value: string) => fill(fieldInput(label), value);
 async function choose(selector:string,name:string){const input=document.querySelector<HTMLInputElement>(selector);assert(input,selector);await act(async()=>input.focus());const option=[...input.parentElement!.parentElement!.querySelectorAll('li')].find(element=>element.textContent?.includes(name));assert(option,name);await act(async()=>option.click());}
 async function open(){await act(async()=>(document.querySelector('[aria-label="Abrir atalhos rápidos"]') as HTMLButtonElement).click());await click('Projetos');}
 const directSection=()=>document.querySelector('section[aria-label="Materiais do projeto"]')!;
@@ -200,6 +206,9 @@ const copiedCatalogCard = () => recipeCard(catalogCopyName);
 await clickLabel('Duplicar receita ' + catalogProduct.name);
 const composer = document.querySelector('[aria-label="Editar receita personalizada"]')!;
 assert(composer.querySelector('input')?.value.endsWith('(cópia)'));
+assert.equal(fieldInput('Tempo de produção por lote (min)').value, '15');
+assert.equal(fieldInput('Valor da hora (R$/h)').value, '40');
+assert.equal(fieldInput('Custos fixos (%)').value, '5');
 await click('Salvar receita no projeto');
 assert(copiedCatalogCard().textContent?.includes('Simulação'));
 for (const term of ['Custos financeiros', 'Custos + mão de obra', 'Valor de venda', 'Lucro bruto', 'Margem']) {
@@ -249,6 +258,36 @@ await tab('Orçamento');
 preview(28);
 assert.equal(simulations().lines[2].excludedFromBudget, true);
 assert.equal(simulations().lines.length, 5);
+
+await tab('Receitas');
+await click('Editar receita', recipeA());
+await field('Tempo de produção por lote (min)', '12');
+await field('Valor da hora (R$/h)', '-30');
+await click('Salvar receita no projeto');
+assert(alerts.pop()?.includes('valores válidos a partir de zero'));
+await field('Valor da hora (R$/h)', '30');
+await field('Custos fixos (%)', '10');
+assert(document.querySelector('[aria-label="Editar receita personalizada"]')?.textContent?.includes(formatCurrency(7.15)));
+await click('Salvar receita no projeto');
+const bannerProfit = (card: Element) => [...card.querySelectorAll('dl dt')]
+  .find(term => term.textContent === 'Lucro bruto por un.')?.nextElementSibling?.textContent;
+assert.equal(bannerProfit(recipeA()), formatCurrency(5.85));
+assert.equal(bannerProfit(recipeCard('Vela com cera B')), '—');
+assert.equal(financialValue(recipeA(), 'Custos + mão de obra'), formatCurrency(7.15));
+assert.equal(financialValue(recipeA(), 'Margem'), '58,5%');
+await tab('Orçamento');
+preview(57.2);
+await click('Salvar Projeto');
+assert.deepEqual(simulations().lines[0].recipePricing, {
+  productionTimeMinutes: 12, hourlyRate: 30, fixedCostPercent: 10, otherCosts: 0,
+});
+await click('Voltar aos projetos');
+await openProject('Comparar cera vegetal');
+assert.equal(bannerProfit(recipeA()), formatCurrency(5.85));
+await click('Editar receita', recipeA());
+assert.equal(fieldInput('Tempo de produção por lote (min)').value, '12');
+assert.equal(fieldInput('Valor da hora (R$/h)').value, '30');
+assert.equal(fieldInput('Custos fixos (%)').value, '10');
 assert.deepEqual(alerts, []);
 await act(async()=>root.unmount());
 console.log('Duplicação em Projetos: mantém a análise da original, troca insumo por cotação, edita cotação copiada, persiste como simulação e preserva as receitas de origem.');
