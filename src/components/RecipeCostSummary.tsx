@@ -11,7 +11,6 @@ export interface RecipeCostSummaryProps {
   batchYield: number;
   salePrice?: number;
   compact?: boolean;
-  showProfit?: boolean;
 }
 
 export const RecipeCostSummary: React.FC<RecipeCostSummaryProps> = (props) => {
@@ -45,7 +44,7 @@ export const RecipeCostSummary: React.FC<RecipeCostSummaryProps> = (props) => {
           <dd className="w-full text-[11px] text-stone-500">Referência mínima de venda incluindo sua remuneração</dd>
         </div>
         <div className="flex items-center justify-between gap-3"><dt>Valor de venda:</dt><dd className="text-lg font-bold text-stone-900 tabular-nums">{props.salePrice == null ? 'A definir' : formatCurrency(props.salePrice)}</dd></div>
-        {(!props.compact || props.showProfit) && (
+        {!props.compact && (
           <div className="flex justify-between gap-3"><dt>Lucro bruto (inclui sua mão de obra):</dt><dd className={`font-semibold tabular-nums shrink-0 ${props.salePrice == null ? 'text-stone-600' : cost.profit < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>{props.salePrice == null ? '—' : formatCurrency(cost.profit)}</dd></div>
         )}
         <div className="flex justify-between gap-3"><dt>Margem:</dt><dd className={`font-bold tabular-nums ${cost.marginPercent == null ? 'text-stone-600' : cost.profit < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>{cost.marginPercent == null ? '—' : formatPercent(cost.marginPercent)}</dd></div>

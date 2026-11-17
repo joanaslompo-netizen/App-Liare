@@ -24,31 +24,40 @@ const saved=()=>JSON.parse(workspaceStorage.getItem('atelie_workspace_finance_v1
 async function click(text:string,scope:ParentNode=document){const element=[...scope.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.textContent?.trim()===text);assert(element,text);await act(async()=>element.click());}
 async function fill(element:HTMLInputElement|HTMLSelectElement,value:string){assert(element,'Campo encontrado');await act(async()=>{const proto=element.tagName==='SELECT'?dom.window.HTMLSelectElement.prototype:dom.window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value')!.set!.call(element,value);element.dispatchEvent(new dom.window.Event(element.tagName==='SELECT'?'change':'input',{bubbles:true}));});}
 async function field(label:string,value:string){const container=[...document.querySelectorAll('label')].find(element=>[...element.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join('').trim()===label);assert(container,label);await fill(container.querySelector('input,select') as HTMLInputElement,value);}
-async function choose(selector:string,name:string){const input=document.querySelector<HTMLInputElement>(selector);assert(input,selector);await act(async()=>input.focus());const option=[...document.querySelectorAll('li')].find(element=>element.textContent?.includes(name));assert(option,name);await act(async()=>option.click());}
+async function choose(selector:string,name:string){const input=document.querySelector<HTMLInputElement>(selector);assert(input,selector);await act(async()=>input.focus());const option=[...input.parentElement!.parentElement!.querySelectorAll('li')].find(element=>element.textContent?.includes(name));assert(option,name);await act(async()=>option.click());}
 async function open(){await act(async()=>(document.querySelector('[aria-label="Abrir atalhos rápidos"]') as HTMLButtonElement).click());await click('Projetos');}
-const directSection=()=>document.querySelector('section[aria-labelledby="project-materials-title"]')!;
+const directSection=()=>document.querySelector('section[aria-label="Materiais do projeto"]')!;
+const sections = () => document.querySelector('nav[aria-label="Seções do projeto"]')!;
+const tab = (name: string) => click(name, sections());
+const projectCard = (name: string) => [...document.querySelectorAll('article')].find(article => article.getAttribute('aria-label') === name)!;
+const openProject = async (name: string) => {
+  const button = projectCard(name).querySelector('button')!;
+  await act(async () => button.click());
+};
 async function addDirect(aroma:string,quantity:string){await choose('#project-direct-material','Cera aromatizada');await choose('#project-direct-aroma-0',aroma);await fill(directSection().querySelector('input[type=number]')!,quantity);await click('Adicionar',directSection());}
-const summary=()=>document.querySelector('aside[aria-labelledby="project-summary-title"]')!;
+const summary=()=>document.querySelector('[aria-label="Resumo do orçamento"]')!;
+const requirements=()=>document.querySelector('ul[aria-label="Insumos do orçamento"]')!;
 const preview=(cost:number)=>assert(summary().textContent?.includes(formatCurrency(cost)),`Custo previsto ${cost}: ${summary().textContent}`);
 await act(async()=>root.render(<App/>));await open();const baseline=saved();await click('Novo Projeto');
 assert(document.querySelector('main #project-editor-title'));
 assert(!document.querySelector('[role="dialog"]'), 'O projeto abre dentro da página principal.');
-assert(!document.body.textContent?.includes('Projetos de Produção'), 'A edição ocupa o lugar da lista de projetos.');
-await field('Nome do projeto','Projeto fictício');await click('Criar receita personalizada');await field('Nome da receita','Receita exclusiva');await field('Produzir','2');
+assert(!document.querySelector('#projects-title'), 'A edição ocupa o lugar da lista de projetos.');
+assert(!document.body.textContent?.includes('Já produzido'));
+await field('Nome do projeto','Projeto fictício');await click('Criar receita personalizada');await field('Nome da receita','Receita exclusiva');await field('Quantidade para cálculo','2');
 await choose('#project-custom-material','Cera aromatizada');assert(document.querySelector('#project-custom-aroma-0'),'Escolher a cera abre o seletor de essências.');
 await click('+ Insumo');assert(alerts.pop()?.includes('Escolha um material de Essências'),'Não adiciona a cera sem configurar.');
 await act(async()=>(document.querySelector('#project-custom-aroma-0') as HTMLInputElement).focus());const options=[...document.querySelectorAll('li')].map(element=>element.textContent||'');assert(options.some(option=>option.includes('Milk-shake de Chocolate')));assert(!options.some(option=>option.includes('Cera de coco')||option.includes('Essência em ml')),'Filtra por categoria/unidade e preserva receitas virtuais.');
-await choose('#project-custom-aroma-0','Milk-shake de Chocolate');await field('Qtd. por receita','100');await click('+ Insumo');await click('Adicionar receita personalizada ao projeto');preview(78.2);
+await choose('#project-custom-aroma-0','Milk-shake de Chocolate');await field('Qtd. por receita','100');await click('+ Insumo');await click('Adicionar receita personalizada ao projeto');await tab('Orçamento');preview(78.2);
 await addDirect('Vanilla','100');await addDirect('Chocolate','50');await addDirect('Vanilla','100');preview(160.7);
-assert(!summary().textContent?.includes('Escolher em:'));assert(summary().textContent?.includes('405 g'));
+assert(!requirements().textContent?.includes('Escolher em:'));assert(requirements().textContent?.includes('405 g'));
 await click('Salvar Projeto');let data=saved();let project=data.projects[0];assert.equal(project.lines[0].customRecipeItems[0].categorySelections.aroma,'Milk-shake de Chocolate');assert.equal(project.directMaterials.length,2);assert.equal(project.directMaterials.find((line:any)=>line.categorySelections.aroma==='Vanilla').quantity,200,'Mesmo aroma soma; aromas diferentes permanecem separados.');
 for(const key of Object.keys(fixture).filter(key=>key!=='projects'))assert.deepEqual(data[key],baseline[key],`Planejar preserva ${key}`);
-await click('Editar');const customBlock=document.querySelector<HTMLElement>('[data-project-choice^="project-saved-"]')!;assert(customBlock.textContent?.includes('Milk-shake de Chocolate'),'Reabrir mantém a essência.');await click('Trocar',customBlock);await choose('[data-project-choice^="project-saved-"] input','Vanilla');preview(140.5);
+await click('Voltar aos projetos');await openProject('Projeto fictício');const customBlock=document.querySelector<HTMLElement>('[data-project-choice^="project-saved-"]')!;assert(customBlock.textContent?.includes('Milk-shake de Chocolate'),'Reabrir mantém a essência.');await click('Trocar',customBlock);await choose('[data-project-choice^="project-saved-"] input','Vanilla');await tab('Orçamento');preview(140.5);
 const chocolateLine=project.directMaterials.find((line:any)=>line.categorySelections.aroma==='Chocolate');const chocolateBlock=document.querySelector(`[data-project-choice="project-direct-saved-${chocolateLine.id}"]`)!.parentElement!.parentElement!;await fill(chocolateBlock.querySelector('select')!,'per_unit');preview(165);
 await choose('#project-direct-material','Cera aromatizada');await choose('#project-direct-aroma-0','Mistura variável');assert(document.querySelector('#project-direct-aroma-1'),'Uma essência virtual variável abre a próxima escolha.');await choose('#project-direct-aroma-1','Chocolate');await fill(directSection().querySelector('input[type=number]')!,'100');await click('Adicionar',directSection());preview(214);await click('Salvar Projeto');
 data=saved();project=data.projects[0];const nested=project.directMaterials.find((line:any)=>line.categorySelections.aroma==='nested');assert(nested);assert.equal(nested.categorySelections['aroma::nested::part'],'Chocolate');
-await act(async()=>root.unmount());root=createRoot(document.querySelector('#root')!);await act(async()=>root.render(<App/>));await open();await click('Editar');preview(214);assert(!summary().textContent?.includes('Escolher em:'));assert(summary().textContent?.includes('540 g'));const nestedSaved=document.querySelector(`[data-project-choice="project-direct-saved-${nested.id}"]`)!;assert(nestedSaved.textContent?.includes('Mistura variável'));assert(nestedSaved.textContent?.includes('Chocolate'));
-const beforeCancel=JSON.stringify(saved());const customAgain=document.querySelector<HTMLElement>('[data-project-choice^="project-saved-"]')!;await click('Trocar',customAgain);await choose('[data-project-choice^="project-saved-"] input','Chocolate');await click('Cancelar');assert.equal(JSON.stringify(saved()),beforeCancel,'Cancelar não altera o projeto nem as escolhas.');
+await act(async()=>root.unmount());root=createRoot(document.querySelector('#root')!);await act(async()=>root.render(<App/>));await open();await openProject('Projeto fictício');await tab('Orçamento');preview(214);assert(!requirements().textContent?.includes('Escolher em:'));assert(requirements().textContent?.includes('540 g'));const nestedSaved=document.querySelector(`[data-project-choice="project-direct-saved-${nested.id}"]`)!;assert(nestedSaved.textContent?.includes('Mistura variável'));assert(nestedSaved.textContent?.includes('Chocolate'));
+const beforeCancel=JSON.stringify(saved());await tab('Receitas');const customAgain=document.querySelector<HTMLElement>('[data-project-choice^="project-saved-"]')!;await click('Trocar',customAgain);await choose('[data-project-choice^="project-saved-"] input','Chocolate');await click('Voltar aos projetos');assert.equal(JSON.stringify(saved()),beforeCancel,'Cancelar não altera o projeto nem as escolhas.');
 assert.deepEqual(alerts,[]);
 
 const beforeSimulation = saved();
@@ -56,7 +65,7 @@ await click('Novo Projeto');
 await field('Nome do projeto', 'Comparar cera vegetal');
 await click('Criar receita personalizada');
 await field('Nome da receita', 'Vela com cera A');
-await field('Produzir', '8');
+await field('Quantidade para cálculo', '8');
 await field('Rende por receita', '2');
 await field('Preço de venda estimado por unidade (opcional)', '10');
 await click('Material de teste');
@@ -91,11 +100,12 @@ const recipeB = document.querySelector('[aria-label="Vela com cera B"]')!;
 assert.equal(financialValue(recipeB, 'Valor de venda'), 'A definir');
 assert.equal(financialValue(recipeB, 'Lucro bruto'), '—');
 assert.equal(financialValue(recipeB, 'Margem'), '—');
-preview(0);
+await tab('Orçamento');preview(0);await tab('Receitas');
 
 const catalogProduct = beforeSimulation.products[0];
 const catalogCost = catalogProduct.unitCostFromBatch || catalogProduct.totalCost;
 const catalogQty = () => document.querySelector<HTMLInputElement>('input[aria-label="Quantidade da receita do catálogo"]')!;
+await click('Adicionar do catálogo');
 await choose('#project-catalog-recipe', catalogProduct.name);
 await fill(catalogQty(), '2');
 await click('Adicionar receita');
@@ -103,7 +113,7 @@ await choose('#project-catalog-recipe', catalogProduct.name);
 await click('Adicionar receita');
 assert(document.body.textContent?.includes('3 receitas no projeto'));
 assert(document.querySelector('main #project-editor-title'), 'Adicionar uma receita mantém a página aberta.');
-preview(catalogCost * 3);
+await tab('Orçamento');preview(catalogCost * 3);
 await click('Salvar Projeto');
 assert.deepEqual(saved().materials, beforeSimulation.materials);
 const simulations = () => saved().projects.find((value: any) => value.name === 'Comparar cera vegetal');
@@ -117,9 +127,7 @@ await act(async()=>root.unmount());
 root = createRoot(document.querySelector('#root')!);
 await act(async()=>root.render(<App/>));
 await open();
-const projectCard = () => [...document.querySelectorAll('h3')]
-  .find(heading => heading.textContent === 'Comparar cera vegetal')!.closest('article')!;
-await click('Editar', projectCard());
+await openProject('Comparar cera vegetal');
 assert(document.querySelector('main #project-editor-title'));
 assert(!document.querySelector('[role="dialog"]'));
 for (const name of ['Vela com cera A', 'Vela com cera B', catalogProduct.name]) {
@@ -159,20 +167,24 @@ for (const key of ['products', 'purchases', 'productions', 'stockMovements', 'fi
   assert.deepEqual(saved()[key], beforeSimulation[key], `Aprovação preserva ${key}`);
 }
 
-await click('Editar', projectCard());
-preview(28 + catalogCost * 3);
 assert(recipeA().textContent?.includes('Aprovada'));
 assert(!recipeA().textContent?.includes('Aprovar receita'));
+await tab('Orçamento');
+preview(28 + catalogCost * 3);
 await click('Salvar Projeto');
 assert.equal(saved().materials.filter((value: any) => value.name === 'Cera do fornecedor A').length, 1);
-await click('Editar', projectCard());
 await click('Voltar aos projetos');
 assert(!document.querySelector('#project-editor-title'));
 assert(document.body.textContent?.includes('Comparar cera vegetal'));
 assert.equal(simulations().lines.length, 3);
-await click('Ver materiais, receitas e anotações', projectCard());
+await openProject('Comparar cera vegetal');
+await tab('Análise');
+const analysis = document.querySelector('[aria-labelledby="project-analysis-title"]')!;
+assert(analysis.textContent?.includes('Vela com cera A'));
+assert(analysis.textContent?.includes('Vela com cera B'));
+assert(analysis.textContent?.includes('65,0%'));
+await tab('Receitas');
 assert.equal(financialValue(recipeA(), 'Valor de venda'), formatCurrency(10));
-assert.equal(financialValue(recipeA(), 'Margem'), '65,0%');
 
 async function clickLabel(label: string) {
   const button = [...document.querySelectorAll('button')].find(element => element.getAttribute('aria-label') === label);
@@ -185,7 +197,6 @@ const originalLines = structuredClone(simulations().lines);
 const catalogCopyName = catalogProduct.name + ' (cópia)';
 const copiedCatalogCard = () => recipeCard(catalogCopyName);
 
-await click('Editar', projectCard());
 await clickLabel('Duplicar receita ' + catalogProduct.name);
 const composer = document.querySelector('[aria-label="Editar receita personalizada"]')!;
 assert(composer.querySelector('input')?.value.endsWith('(cópia)'));
@@ -194,7 +205,7 @@ assert(copiedCatalogCard().textContent?.includes('Simulação'));
 for (const term of ['Custos financeiros', 'Custos + mão de obra', 'Valor de venda', 'Lucro bruto', 'Margem']) {
   assert.equal(financialValue(copiedCatalogCard(), term), financialValue(recipeCard(catalogProduct.name), term), term);
 }
-preview(28 + catalogCost * 3);
+await tab('Orçamento');preview(28 + catalogCost * 3);await tab('Receitas');
 
 await click('Editar receita', copiedCatalogCard());
 await clickLabel('Trocar insumo Cera aromatizada');
@@ -204,7 +215,7 @@ await field('Preço da embalagem (R$)', '0.2');
 await click('Atualizar material de teste');
 await click('Salvar receita no projeto');
 assert.notEqual(financialValue(copiedCatalogCard(), 'Custos financeiros'), financialValue(recipeCard(catalogProduct.name), 'Custos financeiros'));
-preview(28 + catalogCost * 3);
+await tab('Orçamento');preview(28 + catalogCost * 3);await tab('Receitas');
 
 await clickLabel('Duplicar receita Vela com cera B');
 await clickLabel('Editar cotação de Cera do fornecedor B');
@@ -223,6 +234,21 @@ assert.equal(catalogCopy.customRecipeItems[0].materialQuote.packagePrice, 0.2);
 assert.equal(quoteCopy.customRecipeItems[0].materialQuote.packagePrice, 6.5);
 assert.notEqual(quoteCopy.customRecipeItems[0].targetId, originalB.customRecipeItems[0].targetId);
 assert(!saved().materials.some((value: any) => value.name === 'Cera de outra marca'));
+await tab('Orçamento');
+assert(!document.querySelector('input[aria-label="Incluir Vela com cera B no orçamento"]'));
+const catalogOption = [...document.querySelectorAll('input[type="checkbox"]')].find(input => input.getAttribute('aria-label') === `Incluir ${catalogProduct.name} no orçamento`) as HTMLInputElement;
+assert(catalogOption.checked);
+await act(async () => catalogOption.click());
+preview(28);
+assert(summary().textContent?.includes(formatCurrency(80)));
+await click('Salvar Projeto');
+assert(document.querySelector('[role="status"]')?.textContent?.includes('Projeto salvo'));
+await click('Voltar aos projetos');
+await openProject('Comparar cera vegetal');
+await tab('Orçamento');
+preview(28);
+assert.equal(simulations().lines[2].excludedFromBudget, true);
+assert.equal(simulations().lines.length, 5);
 assert.deepEqual(alerts, []);
 await act(async()=>root.unmount());
 console.log('Duplicação em Projetos: mantém a análise da original, troca insumo por cotação, edita cotação copiada, persiste como simulação e preserva as receitas de origem.');

@@ -13,6 +13,7 @@ interface SearchableProductComboboxProps {
   autoFocus?: boolean;
   filterOnlyFinalForSale?: boolean; // When true, filters out intermediate products if desired, or highlights them
   mode?: 'sale' | 'production';
+  showInventory?: boolean;
   embeddedSelectedCard?: boolean;
 }
 
@@ -25,6 +26,7 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
   autoFocus = false,
   filterOnlyFinalForSale = true,
   mode = 'sale',
+  showInventory = true,
   embeddedSelectedCard = false,
 }) => {
   const [query, setQuery] = useState('');
@@ -233,7 +235,7 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
                 {mode === 'production' ? (
                   <span>
                     Rendimento: <strong className="text-stone-900 font-bold">{selectedProduct.batchYield || 1} un/batelada</strong>
-                    {' '}• Estoque atual: <strong className={`font-bold ${!selectedProduct.isPaused && (selectedProduct.minStock ?? 0) > 0 && (selectedProduct.currentStock ?? 0) <= (selectedProduct.minStock ?? 0) ? 'text-amber-800' : 'text-stone-800'}`}>{selectedProduct.currentStock ?? 0} un</strong>
+                    {showInventory && <> • Estoque atual: <strong className={`font-bold ${!selectedProduct.isPaused && (selectedProduct.minStock ?? 0) > 0 && (selectedProduct.currentStock ?? 0) <= (selectedProduct.minStock ?? 0) ? 'text-amber-800' : 'text-stone-800'}`}>{selectedProduct.currentStock ?? 0} un</strong></>}
                     {' '}• Custo: {formatCurrency(selectedProduct.unitCostFromBatch > 0 ? selectedProduct.unitCostFromBatch : selectedProduct.totalCost)}
                   </span>
                 ) : (
@@ -363,9 +365,9 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
                                 {group.variants.length} {group.variants.length === 1 ? 'aroma' : 'aromas'}
                               </span>
                             </div>
-                            <div className="text-[10px] text-stone-500 mt-0.5">
+                            {showInventory && <div className="text-[10px] text-stone-500 mt-0.5">
                               Estoque total: {group.totalStock} un
-                            </div>
+                            </div>}
                           </button>
                         ))}
                       </div>
@@ -457,10 +459,12 @@ export const SearchableProductCombobox: React.FC<SearchableProductComboboxProps>
                                 <span>
                                   Rende: <strong className="text-stone-800 font-semibold">{prod.batchYield || 1} un</strong>
                                 </span>
-                                <span>•</span>
-                                <span>
-                                  Estoque: <strong className={`font-semibold ${!prod.isPaused && (prod.minStock ?? 0) > 0 && (prod.currentStock ?? 0) <= (prod.minStock ?? 0) ? 'text-amber-800' : 'text-stone-800'}`}>{prod.currentStock ?? 0} un</strong>
-                                </span>
+                                {showInventory && <>
+                                  <span>•</span>
+                                  <span>
+                                    Estoque: <strong className={`font-semibold ${!prod.isPaused && (prod.minStock ?? 0) > 0 && (prod.currentStock ?? 0) <= (prod.minStock ?? 0) ? 'text-amber-800' : 'text-stone-800'}`}>{prod.currentStock ?? 0} un</strong>
+                                  </span>
+                                </>}
                                 <span>•</span>
                                 <span>
                                   Custo: <span className="text-stone-700 font-medium">{formatCurrency(unitCost)}</span>

@@ -490,6 +490,7 @@ export interface ProjectProductLine {
   customRecipeItems?: ProjectRecipeItem[];
   /** A comparison copy stays outside the production plan until approved. */
   isSimulation?: boolean;
+  excludedFromBudget?: boolean;
   /** Pricing inputs carried over when copying a catalog recipe for comparison. */
   recipePricing?: Pick<Product, 'productionTimeMinutes' | 'hourlyRate' | 'fixedCostPercent' | 'otherCosts'>;
   approvedAt?: string;
