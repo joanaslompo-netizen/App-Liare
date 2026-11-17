@@ -1464,7 +1464,7 @@ export default function App() {
       }
       return [project, ...prev];
     });
-    return true;
+    return project;
   }, []);
 
   const handleDeleteProject = useCallback((id: string) => {

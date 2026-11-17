@@ -8,7 +8,7 @@ type RecipeCardIdentity = Pick<Product, 'name' | 'items' | 'batchYield'> & Parti
   | 'isCustomRecipe' | 'isPaused' | 'isIntermediate' | 'sourceCustomerName' | 'productionTimeMinutes'
 >>;
 
-export function RecipeCard({ recipe: p, financials, badge, groupLabel, heading: Heading = 'h3', id, children, footer, showProfit }: {
+export function RecipeCard({ recipe: p, financials, badge, groupLabel, heading: Heading = 'h3', id, children, footer, compactHeader }: {
   key?: string;
   recipe: RecipeCardIdentity;
   financials?: RecipeCostSummaryProps;
@@ -18,7 +18,7 @@ export function RecipeCard({ recipe: p, financials, badge, groupLabel, heading: 
   id?: string;
   children?: ReactNode;
   footer?: ReactNode;
-  showProfit?: boolean;
+  compactHeader?: boolean;
 }) {
   const materialItemsCount = p.items.filter(item => item.type === 'material').length;
   const subProductItemsCount = p.items.length - materialItemsCount;
@@ -28,9 +28,9 @@ export function RecipeCard({ recipe: p, financials, badge, groupLabel, heading: 
   return (
     <div id={id} role={groupLabel ? 'group' : undefined} aria-label={groupLabel} className={`flex min-w-0 flex-col justify-between overflow-hidden rounded-2xl border border-stone-200 shadow-xs transition-shadow hover:shadow-md ${isPaused ? 'bg-stone-50/70 opacity-75' : 'bg-white'}`}>
       <div>
-        <div className="p-5 pb-4 flex items-start gap-4">
+        <div className={`flex items-start gap-4 ${compactHeader ? 'p-4 pb-3 sm:px-5' : 'p-5 pb-4'}`}>
           {/* Photo or Icon */}
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-stone-100 border border-stone-200 shrink-0 overflow-hidden flex items-center justify-center">
+          {(!compactHeader || p.imageUrl) && <div className={`rounded-xl bg-stone-100 border border-stone-200 shrink-0 overflow-hidden flex items-center justify-center ${compactHeader ? 'size-12' : 'size-16 sm:size-20'}`}>
             {p.imageUrl ? (
               <img
                 src={p.imageUrl}
@@ -44,7 +44,7 @@ export function RecipeCard({ recipe: p, financials, badge, groupLabel, heading: 
                 <span className="text-[10px] mt-0.5 text-stone-400 font-medium">Sem foto</span>
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Details */}
           <div className="flex-1 min-w-0">
@@ -121,7 +121,7 @@ export function RecipeCard({ recipe: p, financials, badge, groupLabel, heading: 
             )}
 
             {/* Composition summary badge */}
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
+            {!compactHeader && <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
               <span className="flex items-center gap-1">
                 <Tag className="w-3.5 h-3.5 text-stone-400" />
                 {materialItemsCount} {materialItemsCount === 1 ? 'material' : 'materiais'}
@@ -136,12 +136,12 @@ export function RecipeCard({ recipe: p, financials, badge, groupLabel, heading: 
                 <Clock className="w-3.5 h-3.5 text-stone-400" />
                 {p.productionTimeMinutes} min
               </span>}
-            </div>
+            </div>}
           </div>
         </div>
         {financials && (
           <div className="border-y border-stone-100 bg-stone-50 px-5 py-3.5">
-            <RecipeCostSummary {...financials} compact showProfit={showProfit} />
+            <RecipeCostSummary {...financials} compact />
           </div>
         )}
         {children}

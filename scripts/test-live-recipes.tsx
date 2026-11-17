@@ -11,6 +11,7 @@ const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'http://loc
 for (const key of ['window', 'document', 'HTMLElement', 'HTMLInputElement', 'Event', 'MouseEvent']) Object.defineProperty(globalThis, key, { value: dom.window[key], configurable: true });
 Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, configurable: true });
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true, alert: (text: string) => { throw Error(text); } });
+dom.window.scrollTo = () => {};
 const { createRoot } = await import('react-dom/client');
 const { ProjectsView } = await import('../src/components/ProjectsView');
 const { StageProgressModal } = await import('../src/components/ProductionDetails');
@@ -22,16 +23,18 @@ const project: ProductionProject = { id: 'project', name: 'Planejamento de teste
   checklist: [{ id: 'manual', text: 'Anotação de trabalho', completed: true }] };
 const beforeProject = JSON.stringify(project);
 let saves = 0;
-const renderProject = async (current = product, materials = fixture.materials) => act(async () => root.render(<ProjectsView projects={[project]} products={[current]} materials={materials} onSaveProject={() => { saves++; }} onDeleteProject={() => { saves++; }} />));
+const renderProject = async (current = product, materials = fixture.materials) => act(async () => root.render(<ProjectsView projects={[project]} products={[current]} materials={materials} onSaveProject={project => { saves++; return project; }} onDeleteProject={() => { saves++; }} />));
 const clickText = async (text: string) => {
   const button = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === text);
   assert(button, text); await act(async () => button.click());
 };
-const materialQuantity = (name: string) => [...document.querySelectorAll('tbody tr')].find(row => row.querySelector('td')?.textContent?.startsWith(name))?.querySelectorAll('td')[1]?.textContent;
+const materialQuantity = (name: string) => [...document.querySelectorAll('ul[aria-label="Insumos do orçamento"] li')]
+  .find(row => row.firstElementChild?.textContent === name)?.lastElementChild?.textContent;
 await renderProject();
-await clickText('Ver materiais, receitas e anotações');
+await clickText('Planejamento de teste2 receitas');
+await clickText('Orçamento');
 assert.equal(materialQuantity('Cera'), '70 g');
-assert(document.body.textContent?.includes('Fabricação → Rotulagem'));
+assert(!document.body.textContent?.includes('Fabricação → Rotulagem'));
 const latest = { ...product, name: 'Modelo atualizado', batchYield: 5, unitCostFromBatch: 20, actualPrice: 55,
   items: product.items.map(item => item.targetId === 'wax' ? { ...item, quantity: 200 } : item),
   productionStages: product.productionStages!.map(stage => stage.id === 'label' ? { ...stage, name: 'Embalagem atual' } : stage) };
@@ -39,7 +42,7 @@ await renderProject(latest);
 assert.equal(materialQuantity('Cera'), '220 g', 'A saved project follows the new quantity and yield immediately.');
 assert(document.body.textContent?.includes('Modelo atualizado'));
 assert(!document.body.textContent?.includes('Nome salvo anteriormente'));
-assert(document.body.textContent?.includes('Fabricação → Embalagem atual'));
+assert(!document.body.textContent?.includes('Fabricação → Embalagem atual'));
 assert(document.body.textContent?.includes(formatCurrency(120)));
 assert(document.body.textContent?.includes('Personalizado exclusivo'));
 assert.equal(JSON.stringify(project), beforeProject);
