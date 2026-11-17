@@ -145,9 +145,10 @@ function ProjectRecipeCard({ line, product, products, materials, children }: {
     <RecipeCard recipe={recipe} badge={badge} groupLabel={recipe.name} heading="h4" compactHeader>
       {cost && financials ? (
         <div className="px-4 sm:px-5">
-          <dl className="grid grid-cols-3 gap-2 rounded-xl bg-[#f8f3ee] p-3">
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-xl bg-[#f8f3ee] p-3 sm:grid-cols-4">
             <div><dt className="text-xs text-stone-600">Custo por un.</dt><dd className="mt-1 text-sm font-semibold tabular-nums">{formatCurrency(cost.total)}</dd></div>
             <div><dt className="text-xs text-stone-600">Venda por un.</dt><dd className="mt-1 text-sm font-semibold tabular-nums">{financials.salePrice == null ? 'A definir' : formatCurrency(financials.salePrice)}</dd></div>
+            <div><dt className="text-xs text-stone-600">Lucro bruto por un.</dt><dd className={`mt-1 text-sm font-semibold tabular-nums ${financials.salePrice == null ? 'text-stone-600' : cost.profit < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>{financials.salePrice == null ? '—' : formatCurrency(cost.profit)}</dd></div>
             <div><dt className="text-xs text-stone-600">Margem</dt><dd className="mt-1 text-sm font-semibold tabular-nums">{cost.marginPercent == null ? '—' : formatPercent(cost.marginPercent)}</dd></div>
           </dl>
           <details className="mt-2 text-sm">
@@ -418,6 +419,13 @@ const sections = [
   { id: 'details', title: 'Dados' },
 ] as const;
 
+const pricingFields = [
+  { key: 'productionTimeMinutes', label: 'Tempo de produção por lote (min)', step: '1' },
+  { key: 'hourlyRate', label: 'Valor da hora (R$/h)', step: '0.01' },
+  { key: 'fixedCostPercent', label: 'Custos fixos (%)', step: '0.01' },
+] as const;
+const emptyPricing = { productionTimeMinutes: '', hourlyRate: '', fixedCostPercent: '' };
+
 const ProjectEditor = ({
   project,
   products,
@@ -451,6 +459,7 @@ const ProjectEditor = ({
   const [customQty, setCustomQty] = useState('1');
   const [customYield, setCustomYield] = useState('1');
   const [customSalePrice, setCustomSalePrice] = useState('');
+  const [customPricing, setCustomPricing] = useState(emptyPricing);
   const [customNotes, setCustomNotes] = useState('');
   const [customItems, setCustomItems] = useState<ProjectRecipeItem[]>([]);
   const [customItemType, setCustomItemType] = useState<'material' | 'product' | 'quote'>('material');
@@ -460,6 +469,15 @@ const ProjectEditor = ({
   const [customItemQty, setCustomItemQty] = useState('1');
   const [customChoices, setCustomChoices] = useState<Record<string, string>>({});
   const [directChoices, setDirectChoices] = useState<Record<string, string>>({});
+
+  const validPricing = Object.values(customPricing).every(value => Number.isFinite(Number(value)) && Number(value) >= 0);
+  const hasPricing = Boolean(editingLine?.recipePricing) || Object.values(customPricing).some(value => value !== '');
+  const recipePricing = hasPricing ? {
+    productionTimeMinutes: Number(customPricing.productionTimeMinutes),
+    hourlyRate: Number(customPricing.hourlyRate),
+    fixedCostPercent: Number(customPricing.fixedCostPercent),
+    otherCosts: editingLine?.recipePricing?.otherCosts ?? 0,
+  } : undefined;
 
   const requirements = useMemo(() => buildRequirements(draft, products, materials), [draft, products, materials]);
   const additionalCost = getDirectMaterialsCost(draft, materials, products);
@@ -509,6 +527,11 @@ const ProjectEditor = ({
     setCustomQty(String(line.quantity));
     setCustomYield(String(line.batchYield));
     setCustomSalePrice(line.targetSalePrice ? String(line.targetSalePrice) : '');
+    setCustomPricing({
+      productionTimeMinutes: line.recipePricing?.productionTimeMinutes?.toString() ?? '',
+      hourlyRate: line.recipePricing?.hourlyRate?.toString() ?? '',
+      fixedCostPercent: line.recipePricing?.fixedCostPercent?.toString() ?? '',
+    });
     setCustomNotes(line.notes || '');
     setCustomItems(line.customRecipeItems || []);
     resetIngredient();
@@ -522,6 +545,7 @@ const ProjectEditor = ({
     setCustomQty('1');
     setCustomYield('1');
     setCustomSalePrice('');
+    setCustomPricing(emptyPricing);
     setCustomNotes('');
     setCustomItems([]);
     resetIngredient();
@@ -665,6 +689,10 @@ const ProjectEditor = ({
       alert('Adicione pelo menos um material ou subproduto à receita personalizada.');
       return;
     }
+    if (!validPricing) {
+      alert('Informe valores válidos a partir de zero para o tempo, o valor da hora e os custos fixos.');
+      return;
+    }
 
     const line: ProjectProductLine = {
       ...editingLine,
@@ -675,6 +703,7 @@ const ProjectEditor = ({
       producedQuantity: editingLine?.producedQuantity || 0,
       batchYield: yieldQty,
       targetSalePrice: Number.isFinite(salePrice) ? salePrice : 0,
+      recipePricing,
       notes: customNotes.trim() || undefined,
       customRecipeItems: customItems,
       approvedAt: customItems.some(item => item.materialQuote) ? undefined : editingLine?.approvedAt,
@@ -984,6 +1013,27 @@ const ProjectEditor = ({
                 </div>
               )}
 
+              <fieldset className="min-w-0 rounded-xl border border-[#e7dcd2] px-3 pb-3">
+                <legend className="px-1 text-sm font-semibold text-stone-900">Mão de obra e custos fixos</legend>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {pricingFields.map(({ key, label, step }) => (
+                    <label key={key} className="min-w-0 text-xs font-semibold text-stone-700">
+                      {label}
+                      <input
+                        type="number"
+                        min="0"
+                        step={step}
+                        value={customPricing[key]}
+                        onChange={event => setCustomPricing(previous => ({ ...previous, [key]: event.target.value }))}
+                        placeholder="0"
+                        className="mt-1 block w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-normal"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-stone-600">O tempo é do lote inteiro. Os custos fixos são calculados sobre os insumos e a mão de obra.</p>
+              </fieldset>
+
               <div className="grid md:grid-cols-2 gap-3">
                 <label className="text-[11px] font-semibold text-stone-700">
                   Preço de venda estimado por unidade (opcional)
@@ -1012,7 +1062,7 @@ const ProjectEditor = ({
                   Custo estimado por peça <strong>{formatCurrency(getCustomLineUnitCost({
                     customRecipeItems: customItems,
                     batchYield: Math.max(0, Number(customYield)) || 1,
-                    recipePricing: editingLine?.recipePricing,
+                    recipePricing: validPricing ? recipePricing : undefined,
                   }, products, materials))}</strong>
                 </span>
                 <div className="flex flex-wrap gap-2">
