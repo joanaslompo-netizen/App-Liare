@@ -2,19 +2,20 @@ import React from 'react';
 import { getRecipeCostSummary } from '../utils/financials';
 import { formatCurrency, formatNumber, formatPercent } from '../utils/formatters';
 
-interface RecipeCostSummaryProps {
+export interface RecipeCostSummaryProps {
   materialsCost: number;
   embeddedLaborCost?: number;
   laborCost: number;
   fixedCost: number;
   otherCosts: number;
   batchYield: number;
-  salePrice: number;
+  salePrice?: number;
   compact?: boolean;
+  showProfit?: boolean;
 }
 
 export const RecipeCostSummary: React.FC<RecipeCostSummaryProps> = (props) => {
-  const cost = getRecipeCostSummary(props);
+  const cost = getRecipeCostSummary({ ...props, salePrice: props.salePrice ?? 0 });
   return (
     <section aria-label="Resumo de custos e venda" className="rounded-xl border border-stone-200 bg-white p-4 space-y-3">
       <div>
@@ -43,11 +44,11 @@ export const RecipeCostSummary: React.FC<RecipeCostSummaryProps> = (props) => {
           <dt className="font-semibold">Custos + mão de obra:</dt><dd className="font-bold tabular-nums">{formatCurrency(cost.total)}</dd>
           <dd className="w-full text-[11px] text-stone-500">Referência mínima de venda incluindo sua remuneração</dd>
         </div>
-        <div className="flex items-center justify-between gap-3"><dt>Valor de venda:</dt><dd className="text-lg font-bold text-stone-900 tabular-nums">{formatCurrency(props.salePrice)}</dd></div>
-        {!props.compact && (
-          <div className="flex justify-between gap-3"><dt>Lucro bruto (inclui sua mão de obra):</dt><dd className={`font-semibold tabular-nums shrink-0 ${cost.profit < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>{formatCurrency(cost.profit)}</dd></div>
+        <div className="flex items-center justify-between gap-3"><dt>Valor de venda:</dt><dd className="text-lg font-bold text-stone-900 tabular-nums">{props.salePrice == null ? 'A definir' : formatCurrency(props.salePrice)}</dd></div>
+        {(!props.compact || props.showProfit) && (
+          <div className="flex justify-between gap-3"><dt>Lucro bruto (inclui sua mão de obra):</dt><dd className={`font-semibold tabular-nums shrink-0 ${props.salePrice == null ? 'text-stone-600' : cost.profit < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>{props.salePrice == null ? '—' : formatCurrency(cost.profit)}</dd></div>
         )}
-        <div className="flex justify-between gap-3"><dt>Margem:</dt><dd className={`font-bold tabular-nums ${cost.profit < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>{cost.marginPercent == null ? '—' : formatPercent(cost.marginPercent)}</dd></div>
+        <div className="flex justify-between gap-3"><dt>Margem:</dt><dd className={`font-bold tabular-nums ${cost.marginPercent == null ? 'text-stone-600' : cost.profit < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>{cost.marginPercent == null ? '—' : formatPercent(cost.marginPercent)}</dd></div>
       </dl>
       {!props.compact && <p className="text-[11px] text-stone-500">A mão de obra dos componentes e desta receita aparece à parte, sem reduzir o lucro nem a margem. A margem é calculada sobre o preço de venda, descontando apenas os custos financeiros.</p>}
     </section>

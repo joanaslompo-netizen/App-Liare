@@ -4,7 +4,8 @@ import { getEmbeddedRecipeLaborCost, getRecipeItemEmbeddedLaborCost } from "../u
 import { localDateString } from '../utils/localDate';
 import { MoreOptions } from './MoreOptions';
 import { RecipeCostSummary } from './RecipeCostSummary';
-import { calculateRecipePricing, getRecipePricing } from '../utils/financials';
+import { RecipeCard } from './RecipeCard';
+import { calculateRecipePricing, getCatalogRecipeFinancials, getRecipePricing } from '../utils/financials';
 import { inheritRecipe } from '../utils/recipeFamilies';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
@@ -18,7 +19,6 @@ import {
   Trash2, 
   Copy, 
   FileText, 
-  Image as ImageIcon, 
   Upload, 
   X, 
   Check, 
@@ -640,143 +640,84 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           {filteredProducts.map((savedProduct) => {
             const pricing = getRecipePricing(savedProduct);
             const p = { ...savedProduct, ...pricing, actualPrice: pricing.currentActualPrice };
-            const materialItemsCount = p.items.filter((it) => it.type === 'material').length;
-            const subProductItemsCount = p.items.filter((it) => it.type === 'product').length;
-            const hasSubProducts = subProductItemsCount > 0;
-
-            const isPaused = !p.isCustomRecipe && !!p.isPaused;
-
             return (
-              <div
+              <RecipeCard
                 key={p.id}
                 id={`product-card-${p.id}`}
-                className={`rounded-2xl border shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden ${
-                  isPaused
-                    ? 'opacity-75 bg-stone-50/70 border-stone-200'
-                    : 'bg-white border-stone-200'
-                }`}
+                recipe={p}
+                financials={getCatalogRecipeFinancials(p, pricing)}
+                footer={(
+                  <div className="px-5 py-3 bg-white border-t border-stone-100 flex items-center justify-between">
+                    <button
+                      id={`btn-ficha-${p.id}`}
+                      onClick={() => setViewingFichaProduct(p)}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-800 hover:text-amber-800 transition-colors cursor-pointer"
+                    >
+                      <FileText className="w-4 h-4 text-stone-400" />
+                      <span>Ver Ficha Técnica</span>
+                    </button>
+
+                    <div className="flex items-center gap-1">
+                      {!p.isCustomRecipe && (
+                        <button
+                          type="button"
+                          id={`btn-pause-product-${p.id}`}
+                          onClick={() => onSaveProduct({
+                            ...p,
+                            isPaused: !p.isPaused,
+                            updatedAt: localDateString(),
+                          })}
+                          className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer ${
+                            p.isPaused
+                              ? 'text-emerald-700 hover:bg-emerald-50'
+                              : 'text-stone-400 hover:text-stone-700 hover:bg-stone-100'
+                          }`}
+                          title={p.isPaused ? 'Retomar item' : 'Pausar item'}
+                        >
+                          {p.isPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+                          <span>{p.isPaused ? 'Retomar' : 'Pausar'}</span>
+                        </button>
+                      )}
+                      <button
+                        id={`btn-duplicate-product-${p.id}`}
+                        onClick={() => onDuplicateProduct(p)}
+                        className="p-1.5 text-stone-500 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors"
+                        title={p.isCustomRecipe ? 'Duplicar receita' : 'Criar variação vinculada (estoque zerado)'}
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                      <button
+                        id={`btn-edit-product-${p.id}`}
+                        onClick={() => handleOpenEdit(p)}
+                        className="p-1.5 text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors"
+                        title="Editar produto e receita"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        id={`btn-delete-product-${p.id}`}
+                        onClick={() => {
+                          // Check if any other product uses this one as ingredient!
+                          const dependents = products.filter((other) =>
+                            other.id !== p.id && other.items.some((it) => it.type === 'product' && it.targetId === p.id)
+                          );
+                          if (dependents.length > 0) {
+                            alert(`Não é possível excluir este produto pois ele é usado como insumo em: ${dependents.map((d) => d.name).join(', ')}.`);
+                            return;
+                          }
+                          if (confirm(`Excluir a receita de "${p.name}"?`)) {
+                            onDeleteProduct(p.id);
+                          }
+                        }}
+                        className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                        title="Excluir"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               >
-                <div>
-                  {/* Top Product Header */}
-                  <div className="p-5 pb-4 flex items-start gap-4">
-                    {/* Photo or Icon */}
-                    <div className="w-20 h-20 rounded-xl bg-stone-100 border border-stone-200 shrink-0 overflow-hidden flex items-center justify-center">
-                      {p.imageUrl ? (
-                        <img
-                          src={p.imageUrl}
-                          alt={p.name}
-                          className="w-full h-full object-cover"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <div className="text-stone-400 flex flex-col items-center">
-                          <ImageIcon className="w-7 h-7 stroke-1" />
-                          <span className="text-[10px] mt-0.5 text-stone-400 font-medium">Sem foto</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Details */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-                        <span className="text-xs font-semibold text-stone-700 bg-stone-100 px-2 py-0.5 rounded-md">
-                          {p.category}
-                        </span>
-
-                        {p.productFamily && (
-                          <span className="text-[11px] font-semibold text-amber-900 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
-                            {p.productFamily}
-                          </span>
-                        )}
-
-                        {p.fragrance && (
-                          <span className="text-[11px] font-semibold text-purple-800 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md flex items-center gap-1">
-                            <Sparkles className="w-3 h-3" />
-                            {p.fragrance}
-                          </span>
-                        )}
-
-                        {p.isCustomRecipe && (
-                          <span className="text-[11px] font-semibold text-purple-800 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md flex items-center gap-1">
-                            <Sparkles className="w-3 h-3" />
-                            Personalizada
-                          </span>
-                        )}
-
-                        {isPaused && (
-                          <span className="text-[11px] font-medium text-stone-600 bg-stone-200/90 border border-stone-300 px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0" title="Item pausado manualmente">
-                            <span className="w-1.5 h-1.5 rounded-full bg-stone-400" />
-                            Pausado
-                          </span>
-                        )}
-
-                        {p.isIntermediate ? (
-                          <span className="text-[11px] font-semibold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md flex items-center gap-1" title="Disponível como sub-produto, mas não aparece em pedidos">
-                            <Layers className="w-3 h-3 text-amber-700" />
-                            Receita Interna
-                          </span>
-                        ) : (
-                          <span className="text-[11px] font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md">
-                            Produto Final
-                          </span>
-                        )}
-
-                        {p.batchYield > 1 && (
-                          <span className="text-[11px] text-stone-500 bg-stone-50 px-2 py-0.5 rounded border border-stone-200">
-                            Rende {p.batchYield} un
-                          </span>
-                        )}
-                      </div>
-
-                      <h3 className="text-base font-bold text-stone-900 leading-snug">
-                        {p.name}
-                      </h3>
-                      {p.isCustomRecipe && p.sourceCustomerName && (
-                        <p className="text-[11px] text-purple-700 mt-0.5">
-                          Criada para {p.sourceCustomerName}
-                        </p>
-                      )}
-
-                      {p.description && (
-                        <p className="text-xs text-stone-500 mt-1 line-clamp-2">
-                          {p.description}
-                        </p>
-                      )}
-
-                      {p.notes && (
-                        <p className="text-[11px] text-stone-600 bg-stone-50 border border-stone-200/80 rounded-md px-2 py-1 mt-1.5 line-clamp-2 italic" title={p.notes}>
-                          <span className="font-semibold not-italic text-stone-700">Obs: </span>
-                          {p.notes}
-                        </p>
-                      )}
-
-                      {/* Composition summary badge */}
-                      <div className="flex items-center gap-3 mt-2 text-xs text-stone-500">
-                        <span className="flex items-center gap-1">
-                          <Tag className="w-3.5 h-3.5 text-stone-400" />
-                          {materialItemsCount} {materialItemsCount === 1 ? 'material' : 'materiais'}
-                        </span>
-                        {hasSubProducts && (
-                          <span className="flex items-center gap-1 text-amber-800 font-medium bg-amber-50 px-1.5 py-0.5 rounded">
-                            <Layers className="w-3.5 h-3.5 text-amber-600" />
-                            {subProductItemsCount} {subProductItemsCount === 1 ? 'sub-produto' : 'sub-produtos'}
-                          </span>
-                        )}
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5 text-stone-400" />
-                          {p.productionTimeMinutes} min
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="px-5 py-3.5 bg-stone-50 border-y border-stone-100">
-                    <RecipeCostSummary materialsCost={p.materialsCost} embeddedLaborCost={p.embeddedLaborCost}
-                      laborCost={(p.productionTimeMinutes || 0) / 60 * (p.hourlyRate || 0)}
-                      fixedCost={pricing.fixedCost} otherCosts={p.otherCosts || 0} batchYield={p.batchYield}
-                      salePrice={p.actualPrice} compact />
-                  </div>
-
                   {/* Product Inventory Control & Stock Level */}
                   {(() => {
                     const currentStock = p.currentStock ?? 0;
@@ -890,79 +831,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       </div>
                     );
                   })()}
-                </div>
-
-                {/* Footer Controls */}
-                <div className="px-5 py-3 bg-white border-t border-stone-100 flex items-center justify-between">
-                  <button
-                    id={`btn-ficha-${p.id}`}
-                    onClick={() => setViewingFichaProduct(p)}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-800 hover:text-amber-800 transition-colors cursor-pointer"
-                  >
-                    <FileText className="w-4 h-4 text-stone-400" />
-                    <span>Ver Ficha Técnica</span>
-                  </button>
-
-                  <div className="flex items-center gap-1">
-                    {!p.isCustomRecipe && (
-                      <button
-                        type="button"
-                        id={`btn-pause-product-${p.id}`}
-                        onClick={() => onSaveProduct({
-                          ...p,
-                          isPaused: !p.isPaused,
-                          updatedAt: localDateString(),
-                        })}
-                        className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer ${
-                          p.isPaused
-                            ? 'text-emerald-700 hover:bg-emerald-50'
-                            : 'text-stone-400 hover:text-stone-700 hover:bg-stone-100'
-                        }`}
-                        title={p.isPaused ? 'Retomar item' : 'Pausar item'}
-                      >
-                        {p.isPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
-                        <span>{p.isPaused ? 'Retomar' : 'Pausar'}</span>
-                      </button>
-                    )}
-                    <button
-                      id={`btn-duplicate-product-${p.id}`}
-                      onClick={() => onDuplicateProduct(p)}
-                      className="p-1.5 text-stone-500 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors"
-                      title={p.isCustomRecipe ? 'Duplicar receita' : 'Criar variação vinculada (estoque zerado)'}
-                    >
-                      <Copy className="w-4 h-4" />
-                    </button>
-                    <button
-                      id={`btn-edit-product-${p.id}`}
-                      onClick={() => handleOpenEdit(p)}
-                      className="p-1.5 text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors"
-                      title="Editar produto e receita"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      id={`btn-delete-product-${p.id}`}
-                      onClick={() => {
-                        // Check if any other product uses this one as ingredient!
-                        const dependents = products.filter((other) =>
-                          other.id !== p.id && other.items.some((it) => it.type === 'product' && it.targetId === p.id)
-                        );
-                        if (dependents.length > 0) {
-                          alert(`Não é possível excluir este produto pois ele é usado como insumo em: ${dependents.map((d) => d.name).join(', ')}.`);
-                          return;
-                        }
-                        if (confirm(`Excluir a receita de "${p.name}"?`)) {
-                          onDeleteProduct(p.id);
-                        }
-                      }}
-                      className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                      title="Excluir"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
+              </RecipeCard>
             );
           })}
         </div>

@@ -1,8 +1,39 @@
-import type { Material, ProductionProject, ProjectMaterialQuote, ProjectProductLine, ProjectRecipeItem, UnitOfMeasure } from '../types';
+import type { Material, Product, ProductionProject, ProjectMaterialQuote, ProjectProductLine, ProjectRecipeItem, UnitOfMeasure } from '../types';
 import { calculateUnitCost, getUnitConversionMultiplier, normalizeSearchText } from './formatters';
 
 export const isRecipeSimulation = (line: ProjectProductLine) =>
-  line.source === 'custom' && !!line.customRecipeItems?.some(item => item.materialQuote);
+  line.source === 'custom' && (!!line.isSimulation || !!line.customRecipeItems?.some(item => item.materialQuote));
+
+export function duplicateProjectRecipe(line: ProjectProductLine, product: Product | null, lines: ProjectProductLine[]): ProjectProductLine {
+  const originalName = product?.name || line.name;
+  const names = new Set(lines.map(value => value.name));
+  let name = `${originalName} (cópia)`;
+  for (let number = 2; names.has(name); number++) name = `${originalName} (cópia ${number})`;
+
+  const sourceItems: ProjectRecipeItem[] = product?.items || line.customRecipeItems || [];
+  return {
+    id: crypto.randomUUID(),
+    source: 'custom',
+    name,
+    quantity: line.quantity,
+    producedQuantity: 0,
+    batchYield: product?.batchYield || line.batchYield,
+    targetSalePrice: product?.actualPrice ?? line.targetSalePrice,
+    notes: product?.notes ?? line.notes,
+    isSimulation: true,
+    recipePricing: product ? {
+      productionTimeMinutes: product.productionTimeMinutes,
+      hourlyRate: product.hourlyRate,
+      fixedCostPercent: product.fixedCostPercent,
+      otherCosts: product.otherCosts,
+    } : line.recipePricing,
+    customRecipeItems: sourceItems.map(item => {
+      const id = crypto.randomUUID();
+      if (item.materialQuote) return createQuotedRecipeItem(item.name, item.quantity, item.materialQuote, id);
+      return { ...item, id, categorySelections: item.categorySelections && { ...item.categorySelections } };
+    }),
+  };
+}
 
 export const isCompatibleQuoteUnit = (packageUnit: UnitOfMeasure, unit: UnitOfMeasure) =>
   packageUnit === unit || getUnitConversionMultiplier(packageUnit, unit) !== 1;
@@ -46,7 +77,7 @@ export function approveProjectRecipe(project: ProductionProject, lineId: string,
 
   const newMaterials: Material[] = [];
   const knownMaterials = [...materials];
-  const items = line.customRecipeItems!.map(item => {
+  const items = (line.customRecipeItems || []).map(item => {
     const { materialQuote, ...ingredient } = item;
     if (!materialQuote) return item;
 
@@ -90,7 +121,7 @@ export function approveProjectRecipe(project: ProductionProject, lineId: string,
     project: {
       ...project,
       lines: project.lines.map(value => value.id === lineId
-        ? { ...value, customRecipeItems: items, approvedAt: project.updatedAt }
+        ? { ...value, customRecipeItems: items, isSimulation: undefined, approvedAt: project.updatedAt }
         : value),
     },
     newMaterials,

@@ -151,3 +151,13 @@ export const getRecipePricing = (product: Product) => calculateRecipePricing(
   product.profitMarginPercent || 0,
   product.actualPrice, product.embeddedLaborCost || 0
 );
+
+export const getCatalogRecipeFinancials = (product: Product, pricing = getRecipePricing(product)) => ({
+  materialsCost: product.materialsCost || 0,
+  embeddedLaborCost: product.embeddedLaborCost,
+  laborCost: ((product.productionTimeMinutes || 0) / 60) * (product.hourlyRate || 0),
+  fixedCost: pricing.fixedCost,
+  otherCosts: product.otherCosts || 0,
+  batchYield: product.batchYield,
+  salePrice: pricing.currentActualPrice,
+});
