@@ -17,6 +17,7 @@ import { executeFinanceInCloud } from "./services/cloudSync";
 import { saveWorkspaceSnapshot } from "./utils/storage";
 import type { FinanceData, PurchasePayment, PurchaseEditOptions, StockMovement } from "./types";
 import { ensureOrderNumbers, getHighestOrderNumber } from './utils/orderNumbers';
+import { approveProjectRecipe } from './utils/projectSimulation';
 import React, { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { 
   loadStoredData, 
@@ -1441,7 +1442,19 @@ export default function App() {
   // ----------------------------------------------------
   // Project Handlers
   // ----------------------------------------------------
-  const handleSaveProject = useCallback((project: ProductionProject) => {
+  const handleSaveProject = useCallback((project: ProductionProject, approvalLineId?: string) => {
+    if (approvalLineId) {
+      try {
+        const approval = approveProjectRecipe(project, approvalLineId, workspaceRef.current.materials);
+        project = approval.project;
+        if (approval.newMaterials.length) {
+          setMaterials(current => [...approval.newMaterials.filter(material => !current.some(value => value.id === material.id)), ...current]);
+        }
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'Não foi possível aprovar a receita.');
+        return false;
+      }
+    }
     setProjects((prev) => {
       const idx = prev.findIndex((p) => p.id === project.id);
       if (idx >= 0) {
@@ -1451,6 +1464,7 @@ export default function App() {
       }
       return [project, ...prev];
     });
+    return true;
   }, []);
 
   const handleDeleteProject = useCallback((id: string) => {
