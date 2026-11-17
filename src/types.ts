@@ -463,6 +463,19 @@ export interface ProjectChecklistItem {
   completed: boolean;
 }
 
+export interface ProjectMaterialQuote {
+  category: string;
+  unit: UnitOfMeasure;
+  packageQuantity: number;
+  packageUnit: UnitOfMeasure;
+  packagePrice: number;
+}
+
+export interface ProjectRecipeItem extends RecipeItem {
+  /** Quoted material used only in this project until the recipe is approved. */
+  materialQuote?: ProjectMaterialQuote;
+}
+
 export interface ProjectProductLine {
   id: string;
   /** Catalog recipes follow the current registered product. Custom recipes live only inside this project. */
@@ -474,7 +487,8 @@ export interface ProjectProductLine {
   batchYield: number;
   targetSalePrice?: number;
   notes?: string;
-  customRecipeItems?: RecipeItem[];
+  customRecipeItems?: ProjectRecipeItem[];
+  approvedAt?: string;
 }
 
 export interface ProjectMaterialLine {
