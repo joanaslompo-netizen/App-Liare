@@ -1,8 +1,13 @@
 import type { Material, Product, ProductionProject, ProjectMaterialQuote, ProjectProductLine, ProjectRecipeItem, UnitOfMeasure } from '../types';
+import { getRecipePricing } from './financials';
 import { calculateUnitCost, getUnitConversionMultiplier, normalizeSearchText } from './formatters';
 
 export const isRecipeSimulation = (line: ProjectProductLine) =>
   line.source === 'custom' && (!!line.isSimulation || !!line.customRecipeItems?.some(item => item.materialQuote));
+
+export const getProjectRecipeSalePrice = (line: Pick<ProjectProductLine, 'targetSalePrice'>, catalogSalePrice?: number) =>
+  line.targetSalePrice != null && Number.isFinite(line.targetSalePrice) && line.targetSalePrice > 0
+    ? line.targetSalePrice : catalogSalePrice;
 
 export function duplicateProjectRecipe(line: ProjectProductLine, product: Product | null, lines: ProjectProductLine[]): ProjectProductLine {
   const originalName = product?.name || line.name;
@@ -11,6 +16,7 @@ export function duplicateProjectRecipe(line: ProjectProductLine, product: Produc
   for (let number = 2; names.has(name); number++) name = `${originalName} (cópia ${number})`;
 
   const sourceItems: ProjectRecipeItem[] = product?.items || line.customRecipeItems || [];
+  const catalogSalePrice = product ? getRecipePricing(product).currentActualPrice : undefined;
   return {
     id: crypto.randomUUID(),
     source: 'custom',
@@ -18,7 +24,7 @@ export function duplicateProjectRecipe(line: ProjectProductLine, product: Produc
     quantity: line.quantity,
     producedQuantity: 0,
     batchYield: product?.batchYield || line.batchYield,
-    targetSalePrice: product?.actualPrice ?? line.targetSalePrice,
+    targetSalePrice: getProjectRecipeSalePrice(line, catalogSalePrice),
     notes: product?.notes ?? line.notes,
     isSimulation: true,
     recipePricing: product ? {
