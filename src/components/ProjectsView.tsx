@@ -1182,19 +1182,13 @@ const ProjectEditor = ({
                         />
                       </label>
                     </div>
-                    {line.source === 'custom' && (line.customRecipeItems || []).map(item => {
-                      if (item.materialQuote) return <div key={item.id} className="mt-2 border-t border-stone-200 pt-2 text-xs text-stone-700">
+                    {line.source === 'custom' && (line.customRecipeItems || []).filter(item => item.materialQuote).map(item => (
+                      <div key={item.id} className="mt-2 border-t border-stone-200 pt-2 text-xs text-stone-700">
                         <span className="font-semibold">{item.name}</span>
-                        <span> · {formatNumber(item.quantity, 4)} {UNIT_SHORT[item.materialQuote.unit]} por receita</span>
+                        <span> · {formatNumber(item.quantity, 4)} {UNIT_SHORT[item.unit]} por receita</span>
                         <ProjectMaterialQuoteDetails item={item} />
-                      </div>;
-                      const material = item.type === 'material' ? materials.find(value => value.id === item.targetId) : undefined;
-                      return material?.isVirtualRecipe ? <div key={item.id} className="mt-3"><ProjectMaterialChoices id={`project-saved-${line.id}-${item.id}`} material={material} materials={materials} choices={item.categorySelections} onChange={choices => setDraft(previous => ({ ...previous, lines: previous.lines.map(value => value.id === line.id ? { ...value, customRecipeItems: value.customRecipeItems?.map(recipeItem => {
-                        if (recipeItem.id !== item.id) return recipeItem;
-                        const unitCost = getProjectMaterialUnitCost(material, materials, products, choices);
-                        return { ...recipeItem, categorySelections: choices, unitCost, totalCost: recipeItem.quantity * unitCost };
-                      }) } : value) }))} /></div> : null;
-                    })}
+                      </div>
+                    ))}
                     {simulation && (
                       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                         <span className="text-[11px] text-stone-600">Entra no orçamento após a aprovação.</span>
