@@ -23,6 +23,7 @@ import {
   formatDate, 
   formatNumber, 
   UNIT_SHORT,
+  getUnitConversionMultiplier,
   matchesSearchText
 } from '../utils/formatters';
 import { FinancialAccountSelect } from './FinancialAccountSelect';
@@ -392,6 +393,10 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
   const selectedMat = useMemo(() => {
     return materials.find((m) => m.id === selectedMatId);
   }, [materials, selectedMatId]);
+  const baseUnitsPerPackage = selectedMat
+    ? (selectedMat.packageQuantity || 1) * getUnitConversionMultiplier(selectedMat.packageUnit || selectedMat.unit, selectedMat.unit)
+    : 0;
+  const purchasedBaseQuantity = (parseFloat(qty) || 0) * baseUnitsPerPackage;
 
   const handleAddItem = () => {
     if (!selectedMatId) {
@@ -650,16 +655,18 @@ const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
             {selectedMat && (
               <div className="text-[11px] text-stone-500 bg-amber-50/50 rounded-lg p-2.5 border border-amber-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                 <span>
-                  Conversão para estoque: 1 {selectedMat.packageUnit} = {formatNumber(selectedMat.packageQuantity)} {UNIT_SHORT[selectedMat.unit]}.
-                  {parseFloat(qty) > 0 && (
+                  Conversão para estoque: 1 {selectedMat.packageUnit || selectedMat.unit} = {formatNumber(baseUnitsPerPackage)} {UNIT_SHORT[selectedMat.unit]}.
+                  {purchasedBaseQuantity > 0 && (
                     <strong className="text-amber-900 ml-1">
-                      Entrarão +{formatNumber((parseFloat(qty) || 0) * selectedMat.packageQuantity)} {UNIT_SHORT[selectedMat.unit]} no estoque.
+                      Entrarão +{formatNumber(purchasedBaseQuantity)} {UNIT_SHORT[selectedMat.unit]} no estoque.
                     </strong>
                   )}
                 </span>
-                {parseFloat(pricePaid) > 0 && parseFloat(qty) > 0 && (
+                {parseFloat(pricePaid) > 0 && purchasedBaseQuantity > 0 && (
                   <span className="font-semibold text-stone-700">
-                    Custo por {UNIT_SHORT[selectedMat.unit]}: {formatCurrency(parseFloat(pricePaid) / ((parseFloat(qty) || 1) * selectedMat.packageQuantity))}
+                    Custo por {UNIT_SHORT[selectedMat.unit]}: {(parseFloat(pricePaid) / purchasedBaseQuantity).toLocaleString('pt-BR', {
+                      style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4,
+                    })}
                   </span>
                 )}
               </div>
